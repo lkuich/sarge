@@ -63,11 +63,19 @@ sarge-hosted
 4. Add it to GitHub as `NEON_DATABASE_URL`.
 5. Run Prisma migrations against the Neon database.
 
-Migration command:
+Development migration command:
 
 ```bash
 DATABASE_URL="postgresql://..." pnpm prisma:migrate
 ```
+
+Production/CI migration command:
+
+```bash
+DATABASE_URL="postgresql://..." pnpm prisma:deploy
+```
+
+Use `prisma:migrate` while developing migrations locally. Use `prisma:deploy` for Neon production or GitHub Actions because it applies committed migrations without trying to create a new migration.
 
 ## Cloudflare Setup
 
@@ -84,6 +92,15 @@ Deploy from CI:
 ```text
 push to main
 ```
+
+The CI pipeline:
+
+1. installs dependencies
+2. generates the Prisma client
+3. runs typecheck/tests/build
+4. applies committed Prisma migrations to Neon
+5. deploys the Cloudflare Worker
+6. sets the Worker `DATABASE_URL` secret
 
 Deploy manually from local machine:
 

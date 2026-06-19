@@ -46,6 +46,57 @@ jobs:
           DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
         run: pnpm prisma:deploy
 
+      - name: Check Cloudflare route permissions
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'NODE'
+          const token = process.env.CLOUDFLARE_API_TOKEN;
+          const zoneName = "lkuich.com";
+
+          if (!token) {
+            console.error("CLOUDFLARE_API_TOKEN is not set.");
+            process.exit(1);
+          }
+
+          const headers = {
+            authorization: `Bearer ${token}`,
+            "content-type": "application/json",
+          };
+
+          const getJson = async (url) => {
+            const response = await fetch(url, { headers });
+            return response.json();
+          };
+
+          const zones = await getJson(
+            `https://api.cloudflare.com/client/v4/zones?name=${zoneName}`,
+          );
+          const zone = zones.result?.[0];
+
+          if (!zones.success || !zone) {
+            console.error(
+              `Cloudflare token cannot read the ${zoneName} zone. Add Zone Read for ${zoneName}.`,
+            );
+            process.exit(1);
+          }
+
+          const routes = await getJson(
+            `https://api.cloudflare.com/client/v4/zones/${zone.id}/workers/routes`,
+          );
+
+          if (!routes.success) {
+            const errors = routes.errors
+              ?.map((error) => `${error.code}: ${error.message}`)
+              .join(", ");
+            console.error(
+              `Cloudflare token cannot read Workers routes for ${zoneName}. Add Zone > Workers Routes Read and Edit/Write for ${zoneName}.`,
+            );
+            if (errors) console.error(errors);
+            process.exit(1);
+          }
+          NODE
+
       - name: Deploy Worker
         working-directory: apps/worker
         env:

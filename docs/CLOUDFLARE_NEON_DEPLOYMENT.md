@@ -27,7 +27,28 @@ CLOUDFLARE_ACCOUNT_ID
 NEON_DATABASE_URL
 ```
 
-The Cloudflare token needs permission to deploy Workers and manage Worker secrets for the target account.
+The Cloudflare token needs permission to deploy Workers, manage Worker secrets, and manage Worker routes for `lkuich.com`.
+
+Minimum Cloudflare token permissions:
+
+```text
+Account > Workers Scripts > Read
+Account > Workers Scripts > Edit or Write
+Zone > Zone > Read
+Zone > Workers Routes > Read
+Zone > Workers Routes > Edit or Write
+```
+
+Scope the account permissions to `Loren.jk3@gmail.com's Account` and the zone permissions to `lkuich.com`.
+
+Cloudflare's docs list both Dashboard and API permission names. In the dashboard, some permissions are labeled `Edit`; in the API list, the same permission may be labeled `Write`.
+
+When creating the token, add separate policies:
+
+1. Account policy scoped to `Loren.jk3@gmail.com's Account`.
+2. Zone policy scoped to `lkuich.com`.
+
+If you only edit an `Entire Account` policy, Cloudflare will not show zone-only permissions like `Workers Routes`.
 
 ## Worker Configuration
 

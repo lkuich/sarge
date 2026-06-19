@@ -1,0 +1,20 @@
+{
+  "name": "sarge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm --filter @sarge/api dev",
+    "test": "vitest run",
+    "typecheck": "pnpm -r typecheck",
+    "prisma:generate": "pnpm --filter @sarge/api prisma:generate",
+    "prisma:migrate": "pnpm --filter @sarge/api prisma:migrate"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  },
+  "packageManager": "pnpm@10.15.0"
+}

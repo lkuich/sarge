@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sarge_dev
+      POSTGRES_USER: sarge
+      POSTGRES_PASSWORD: sarge
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sarge -d sarge_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    image: node:24-alpine
+    working_dir: /workspace
+    command: sh -c "corepack enable && pnpm install && pnpm --filter @sarge/api dev"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://sarge:sarge@postgres:5432/sarge_dev?schema=public
+      PORT: 49828
+      NODE_ENV: development
+    ports:
+      - "49828:49828"
+    volumes:
+      - .:/workspace
+      - pnpm-store:/root/.local/share/pnpm/store
+      - api-node-modules:/workspace/node_modules
+
+volumes:
+  postgres-data:
+  pnpm-store:
+  api-node-modules:

@@ -1,0 +1,15 @@
+{
+  "name": "@sarge/pixel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.global.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup src/index.ts --format iife --global-name SargePixel --minify --sourcemap --dts --out-dir dist",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.0"
+  }
+}

@@ -1,0 +1,47 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Client {
+  id        String   @id
+  name      String
+  url       String?
+  createdAt DateTime @default(now())
+  events    Event[]
+}
+
+model Affiliate {
+  id        String   @id
+  name      String
+  rate      Decimal?
+  createdAt DateTime @default(now())
+}
+
+model Event {
+  id                   String   @id @default(cuid())
+  siteId               String
+  name                 String
+  occurredAt           DateTime
+  sessionId            String
+  userId               String
+  ref                  String?
+  affiliate            String?
+  attributionExpiresAt DateTime?
+  url                  String?
+  referrer             String?
+  title                String?
+  properties           Json     @default("{}")
+  receivedAt           DateTime @default(now())
+
+  client Client @relation(fields: [siteId], references: [id])
+
+  @@index([siteId, occurredAt])
+  @@index([name, occurredAt])
+  @@index([sessionId])
+  @@index([userId])
+}

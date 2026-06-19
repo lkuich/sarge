@@ -1,0 +1,96 @@
+---
+import { UserButton } from "@clerk/astro/components";
+import type { SargeAccount } from "@/lib/sarge-demo";
+import "../styles/global.css";
+
+interface Props {
+  account: SargeAccount;
+  title?: string;
+  eyebrow?: string;
+  heading: string;
+  description?: string;
+  active: "overview" | "projects" | "account" | "admin";
+}
+
+const { account, title = "Sarge", eyebrow = account.name, heading, description, active } = Astro.props;
+
+const navItems = [
+  { id: "overview", href: "/app", label: "Overview" },
+  { id: "projects", href: "/app/projects", label: "Projects" },
+  { id: "account", href: "/app/account", label: "Account" },
+  ...(account.role === "admin" ? [{ id: "admin", href: "/admin", label: "Admin" }] : []),
+];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{title}</title>
+  </head>
+  <body>
+    <div class="min-h-screen bg-background/80">
+      <aside class="fixed inset-y-0 left-0 hidden w-64 border-r bg-card/90 px-4 py-5 backdrop-blur lg:block">
+        <a class="flex items-center gap-3 px-2 font-semibold tracking-tight" href="/app">
+          <span class="grid size-9 place-items-center rounded-md bg-primary text-sm font-black text-primary-foreground">S</span>
+          <span>Sarge</span>
+        </a>
+
+        <div class="mt-8 rounded-lg border bg-secondary/50 p-3">
+          <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Account</p>
+          <p class="mt-1 truncate text-sm font-semibold">{account.name}</p>
+          <p class="mt-1 text-xs text-muted-foreground">{account.role} · {account.plan}</p>
+        </div>
+
+        <nav class="mt-6 grid gap-1" aria-label="Application">
+          {
+            navItems.map((item) => (
+              <a
+                href={item.href}
+                class:list={[
+                  "rounded-md px-3 py-2 text-sm font-medium transition",
+                  active === item.id
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                ]}
+              >
+                {item.label}
+              </a>
+            ))
+          }
+        </nav>
+      </aside>
+
+      <div class="lg:pl-64">
+        <header class="sticky top-0 z-10 border-b bg-background/90 backdrop-blur">
+          <div class="flex min-h-16 items-center justify-between gap-4 px-4 md:px-6">
+            <div class="min-w-0">
+              <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">{eyebrow}</p>
+              <p class="truncate text-sm font-semibold lg:hidden">{heading}</p>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="hidden rounded-full border bg-card px-3 py-1 text-xs font-medium text-muted-foreground sm:inline-flex">
+                {account.role}
+              </span>
+              <UserButton />
+            </div>
+          </div>
+        </header>
+
+        <main class="mx-auto w-full max-w-6xl px-4 py-6 md:px-6 md:py-8">
+          <header class="mb-6">
+            <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">{eyebrow}</p>
+            <h1 class="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">{heading}</h1>
+            {description && <p class="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p>}
+          </header>
+
+          <slot />
+        </main>
+      </div>
+    </div>
+  </body>
+</html>

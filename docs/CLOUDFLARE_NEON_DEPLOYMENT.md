@@ -67,8 +67,10 @@ apps/worker/wrangler.jsonc
 Default route:
 
 ```text
-*.sarge.lkuich.com/*
+sarge.lkuich.com/*
 ```
+
+The initial shared-host deployment uses the exact `sarge.lkuich.com` hostname for smoke testing. Tenant subdomains such as `demo.sarge.lkuich.com` need a certificate strategy before they can be used in production, because Cloudflare's default universal certificate usually covers `*.lkuich.com`, not `*.sarge.lkuich.com`.
 
 Default Worker name:
 

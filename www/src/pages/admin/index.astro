@@ -1,0 +1,68 @@
+---
+import { AlertCircle, Database, ServerCog } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import AppLayout from "@/layouts/AppLayout.astro";
+import { canAdministerAccount, getViewerAccount } from "@/lib/sarge-demo";
+
+const { userId } = Astro.locals.auth();
+if (!userId) return Astro.redirect("/sign-in");
+
+const account = getViewerAccount(userId);
+if (!canAdministerAccount(account)) return Astro.redirect("/app");
+---
+
+<AppLayout
+  account={account}
+  title="Admin | Sarge"
+  heading="Admin console"
+  description="Provision projects, inspect infrastructure state, and prepare account-level controls."
+  active="admin"
+>
+  <Alert className="mb-4">
+    <AlertCircle className="size-4" />
+    <AlertTitle>Scaffold mode</AlertTitle>
+    <AlertDescription>
+      Admin access is currently resolved from `SARGE_ADMIN_USER_IDS`. When unset, signed-in users are treated as admins for local setup.
+    </AlertDescription>
+  </Alert>
+
+  <section class="grid gap-4 md:grid-cols-2">
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><ServerCog className="size-4" /> Provisioning</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        <div class="flex items-center justify-between rounded-md border p-3">
+          <span>Cloudflare Worker route</span>
+          <Badge>live</Badge>
+        </div>
+        <div class="flex items-center justify-between rounded-md border p-3">
+          <span>Hosted endpoint DNS</span>
+          <Badge>live</Badge>
+        </div>
+        <div class="flex items-center justify-between rounded-md border p-3">
+          <span>Tenant subdomain certificates</span>
+          <Badge variant="secondary">pending</Badge>
+        </div>
+      </CardContent>
+    </Card>
+
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><Database className="size-4" /> Data model</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        <div class="rounded-md border p-3">
+          <p class="font-medium">Account</p>
+          <p class="text-muted-foreground">Groups projects, members, roles, and billing.</p>
+        </div>
+        <div class="rounded-md border p-3">
+          <p class="font-medium">Project</p>
+          <p class="text-muted-foreground">Owns endpoint host, pixel config, and event streams.</p>
+        </div>
+      </CardContent>
+    </Card>
+  </section>
+</AppLayout>

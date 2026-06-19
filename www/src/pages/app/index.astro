@@ -1,0 +1,90 @@
+---
+import { Activity, AlertTriangle, Boxes, Radio } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import AppLayout from "@/layouts/AppLayout.astro";
+import { formatCount, getViewerAccount } from "@/lib/sarge-demo";
+
+const { userId } = Astro.locals.auth();
+if (!userId) return Astro.redirect("/sign-in");
+
+const account = getViewerAccount(userId);
+const activeProjects = account.projects.filter((project) => project.status === "active").length;
+const totalEvents = account.projects.reduce((sum, project) => sum + project.eventCount24h, 0);
+const failedEvents = account.projects.reduce((sum, project) => sum + project.failedEvents24h, 0);
+---
+
+<AppLayout
+  account={account}
+  title="Dashboard | Sarge"
+  heading="Account overview"
+  description="Projects are grouped under your account. Admins manage access and provisioning; users inspect assigned projects and event flow."
+  active="overview"
+>
+  <section class="grid gap-4 md:grid-cols-3">
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-sm font-medium">Projects</CardTitle>
+        <Boxes className="size-4 text-muted-foreground" />
+      </CardHeader>
+      <CardContent>
+        <p class="text-3xl font-semibold">{activeProjects}/{account.projects.length}</p>
+        <p class="text-xs text-muted-foreground">active projects</p>
+      </CardContent>
+    </Card>
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-sm font-medium">Events</CardTitle>
+        <Radio className="size-4 text-muted-foreground" />
+      </CardHeader>
+      <CardContent>
+        <p class="text-3xl font-semibold">{formatCount(totalEvents)}</p>
+        <p class="text-xs text-muted-foreground">accepted in 24h</p>
+      </CardContent>
+    </Card>
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-sm font-medium">Failures</CardTitle>
+        <AlertTriangle className="size-4 text-muted-foreground" />
+      </CardHeader>
+      <CardContent>
+        <p class="text-3xl font-semibold">{failedEvents}</p>
+        <p class="text-xs text-muted-foreground">needs inspection</p>
+      </CardContent>
+    </Card>
+  </section>
+
+  <Card className="mt-6">
+    <CardHeader>
+      <CardTitle>Recent project activity</CardTitle>
+    </CardHeader>
+    <CardContent>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Project</TableHead>
+            <TableHead>Endpoint</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead className="text-right">24h Events</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {
+            account.projects.map((project) => (
+              <TableRow>
+                <TableCell>
+                  <a class="font-medium hover:underline" href={`/app/projects/${project.slug}`}>{project.name}</a>
+                  <p class="text-xs text-muted-foreground">{project.lastEventAt}</p>
+                </TableCell>
+                <TableCell className="font-mono text-xs">{project.endpointHost}</TableCell>
+                <TableCell><Badge variant="outline">{project.status}</Badge></TableCell>
+                <TableCell className="text-right">{formatCount(project.eventCount24h)}</TableCell>
+              </TableRow>
+            ))
+          }
+        </TableBody>
+      </Table>
+    </CardContent>
+  </Card>
+</AppLayout>

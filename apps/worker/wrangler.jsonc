@@ -13,7 +13,7 @@
   },
   "routes": [
     {
-      "pattern": "*.sarge.lkuich.com/*",
+      "pattern": "sarge.lkuich.com/*",
       "zone_name": "lkuich.com"
     }
   ]

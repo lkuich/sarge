@@ -1,0 +1,50 @@
+---
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import AppLayout from "@/layouts/AppLayout.astro";
+import { getViewerAccount } from "@/lib/sarge-demo";
+
+const { userId } = Astro.locals.auth();
+if (!userId) return Astro.redirect("/sign-in");
+
+const account = getViewerAccount(userId);
+---
+
+<AppLayout
+  account={account}
+  title="Account | Sarge"
+  heading="Account settings"
+  description="Account-level users, roles, and project ownership live here."
+  active="account"
+>
+  <Card>
+    <CardHeader>
+      <CardTitle>Members</CardTitle>
+    </CardHeader>
+    <CardContent>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Name</TableHead>
+            <TableHead>Email</TableHead>
+            <TableHead>Role</TableHead>
+            <TableHead>Last active</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {
+            account.members.map((member) => (
+              <TableRow>
+                <TableCell className="font-medium">{member.name}</TableCell>
+                <TableCell>{member.email}</TableCell>
+                <TableCell><Badge variant={member.role === "admin" ? "default" : "secondary"}>{member.role}</Badge></TableCell>
+                <TableCell>{member.lastActive}</TableCell>
+              </TableRow>
+            ))
+          }
+        </TableBody>
+      </Table>
+    </CardContent>
+  </Card>
+</AppLayout>

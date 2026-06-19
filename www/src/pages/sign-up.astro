@@ -1,0 +1,19 @@
+---
+import { SignUp } from "@clerk/astro/components";
+import SiteLayout from "@/layouts/SiteLayout.astro";
+---
+
+<SiteLayout title="Sign up | Sarge">
+  <section class="auth-page">
+    <SignUp />
+  </section>
+</SiteLayout>
+
+<style>
+  .auth-page {
+    display: grid;
+    min-height: calc(100vh - 72px);
+    place-items: center;
+    padding: 2rem 0 4rem;
+  }
+</style>

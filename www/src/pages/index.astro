@@ -1,17 +1,67 @@
 ---
-
+import { Show, SignInButton, SignUpButton } from "@clerk/astro/components";
+import { ArrowRight, Activity, ShieldCheck, TerminalSquare } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import SiteLayout from "@/layouts/SiteLayout.astro";
 ---
 
-<html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<link rel="icon" href="/favicon.ico" />
-		<meta name="viewport" content="width=device-width" />
-		<meta name="generator" content={Astro.generator} />
-		<title>Astro</title>
-	</head>
-	<body>
-		<h1>Astro</h1>
-	</body>
-</html>
+<SiteLayout title="Sarge">
+  <section class="mx-auto grid min-h-[calc(100vh-4rem)] w-full max-w-6xl items-center gap-8 px-4 py-12 md:px-6 lg:grid-cols-[1fr_380px]">
+    <div>
+      <p class="mb-4 inline-flex rounded-full border bg-card px-3 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Debug pixels without the analytics tax
+      </p>
+      <h1 class="max-w-3xl text-5xl font-semibold tracking-tight md:text-7xl">
+        Tiny event tracking for messy media stacks.
+      </h1>
+      <p class="mt-5 max-w-2xl text-base leading-7 text-muted-foreground">
+        Sarge gives teams a dead-simple pixel, project-scoped endpoints, and a place to inspect what actually fired.
+      </p>
+
+      <div class="mt-8 flex flex-wrap gap-3">
+        <Show when="signed-out">
+          <SignUpButton mode="modal">
+            <Button>
+              Create account <ArrowRight className="ml-2 size-4" />
+            </Button>
+          </SignUpButton>
+          <SignInButton mode="modal">
+            <Button variant="outline">Sign in</Button>
+          </SignInButton>
+        </Show>
+        <Show when="signed-in">
+          <a href="/app">
+            <Button>
+              Open dashboard <ArrowRight className="ml-2 size-4" />
+            </Button>
+          </a>
+        </Show>
+      </div>
+    </div>
+
+    <Card className="overflow-hidden">
+      <CardContent className="p-0">
+        <div class="border-b bg-muted/50 p-4 font-mono text-xs text-muted-foreground">live event stream</div>
+        <div class="grid gap-0">
+          {
+            [
+              ["purchase.completed", "accepted", Activity],
+              ["meta.pixel.fire", "observed", TerminalSquare],
+              ["checkout.error", "flagged", ShieldCheck],
+            ].map(([name, status, Icon]) => (
+              <div class="grid grid-cols-[auto_1fr_auto] items-center gap-3 border-b p-4 last:border-b-0">
+                <Icon className="size-4 text-primary" />
+                <div>
+                  <p class="font-mono text-sm">{name}</p>
+                  <p class="text-xs text-muted-foreground">project: Demo Site</p>
+                </div>
+                <span class="rounded-full border px-2 py-1 text-xs text-muted-foreground">{status}</span>
+              </div>
+            ))
+          }
+        </div>
+      </CardContent>
+    </Card>
+  </section>
+</SiteLayout>

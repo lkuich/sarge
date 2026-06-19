@@ -1,0 +1,102 @@
+---
+import { Copy, Radio, ShieldAlert } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import AppLayout from "@/layouts/AppLayout.astro";
+import { getProject, getViewerAccount } from "@/lib/sarge-demo";
+
+export const prerender = false;
+
+const { userId } = Astro.locals.auth();
+if (!userId) return Astro.redirect("/sign-in");
+
+const account = getViewerAccount(userId);
+const project = getProject(account, Astro.params.projectId ?? "");
+if (!project) return Astro.redirect("/app/projects");
+
+const snippet = `<script>
+  window._sarge = { queue: [["track", "page.view"]] };
+</script>
+<script async src="https://${project.endpointHost}/pixel.js"></script>`;
+---
+
+<AppLayout
+  account={account}
+  title={`${project.name} | Sarge`}
+  eyebrow="Project"
+  heading={project.name}
+  description="Inspect endpoint health, copy install snippets, and watch for media/debug events."
+  active="projects"
+>
+  <section class="grid gap-4 lg:grid-cols-[1fr_340px]">
+    <div class="grid gap-4">
+      <Card>
+        <CardHeader>
+          <div class="flex items-start justify-between gap-3">
+            <CardTitle>Install pixel</CardTitle>
+            <Badge>{project.status}</Badge>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <pre class="overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{snippet}</code></pre>
+          <div class="mt-4 flex flex-wrap gap-2">
+            <Button><Copy className="mr-2 size-4" /> Copy snippet</Button>
+            <Button variant="outline">Open endpoint</Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Debug stream</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3">
+          {["page.view", "purchase.completed", "meta.pixel.fire"].map((name) => (
+            <div class="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-md border p-3">
+              <Radio className="size-4 text-primary" />
+              <div>
+                <p class="font-mono text-sm">{name}</p>
+                <p class="text-xs text-muted-foreground">received from {project.endpointHost}</p>
+              </div>
+              <Badge variant="outline">accepted</Badge>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    </div>
+
+    <aside class="grid gap-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>Endpoint</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <div>
+            <p class="text-xs text-muted-foreground">Host</p>
+            <p class="font-mono">{project.endpointHost}</p>
+          </div>
+          <Separator />
+          <div>
+            <p class="text-xs text-muted-foreground">Environment</p>
+            <p>{project.environment}</p>
+          </div>
+          <div>
+            <p class="text-xs text-muted-foreground">Pixel version</p>
+            <p>{project.pixelVersion}</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><ShieldAlert className="size-4" /> Watchlist</CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground">
+          Future checks will flag missing purchase events, duplicate third-party pixels, blocked scripts, and schema drift.
+        </CardContent>
+      </Card>
+    </aside>
+  </section>
+</AppLayout>

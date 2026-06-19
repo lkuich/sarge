@@ -32,6 +32,7 @@ export class NeonEventStore implements EventStore {
   async createEvent(event: EventPayload): Promise<void> {
     await this.sql`
       INSERT INTO "Event" (
+        "id",
         "siteId",
         "name",
         "occurredAt",
@@ -46,6 +47,7 @@ export class NeonEventStore implements EventStore {
         "properties"
       )
       VALUES (
+        ${crypto.randomUUID()},
         ${event.siteId},
         ${event.name},
         ${new Date(event.occurredAt).toISOString()},

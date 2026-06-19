@@ -53,6 +53,36 @@ const createBrowser = (overrides: Partial<BrowserLike> = {}) => {
 };
 
 describe("Sarge pixel", () => {
+  it("auto-initializes hosted pixels from embedded config before replaying queued calls", async () => {
+    vi.resetModules();
+    const { browser, sendBeacon } = createBrowser({
+      __SARGE_CONFIG__: {
+        siteId: "site_hosted",
+        endpoint: "https://sarge.example.com",
+        attributionTtlDays: 28
+      },
+      _sarge: {
+        queue: [["track", "Page View", { path: "/" }]]
+      }
+    } as Partial<BrowserLike>);
+
+    vi.stubGlobal("window", browser);
+    await import("./index.js");
+
+    expect(sendBeacon).toHaveBeenCalledTimes(1);
+    const [url, body] = sendBeacon.mock.calls[0];
+    expect(url).toBe("https://sarge.example.com/v2/events");
+    expect(JSON.parse(String(body))).toMatchObject({
+      siteId: "site_hosted",
+      name: "Page View",
+      properties: {
+        path: "/"
+      }
+    });
+
+    vi.unstubAllGlobals();
+  });
+
   it("stores attribution and sends events with sendBeacon first", () => {
     const { browser, sendBeacon, storage } = createBrowser();
     const client = createSargeClient(browser);

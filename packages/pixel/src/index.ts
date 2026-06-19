@@ -8,6 +8,10 @@ const install = () => {
   const client = createSargeClient(browser);
   const queued = Array.isArray(window._sarge?.queue) ? window._sarge.queue : [];
 
+  if (window.__SARGE_CONFIG__) {
+    client.init();
+  }
+
   window.sarge = (method: string, ...args: unknown[]) => {
     if (method === "init") {
       client.init(args[0] as InitOptions);

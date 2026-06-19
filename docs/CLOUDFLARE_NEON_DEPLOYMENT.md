@@ -105,9 +105,7 @@ The CI pipeline:
 Deploy manually from local machine:
 
 ```bash
-pnpm --filter @sarge/core build
-pnpm --filter @sarge/pixel build
-pnpm --filter @sarge/worker deploy
+pnpm --filter @sarge/worker run deploy
 ```
 
 Set or update the Worker database secret manually:

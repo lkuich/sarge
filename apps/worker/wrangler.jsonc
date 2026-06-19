@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sarge-hosted",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-19",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "SARGE_BASE_DOMAIN": "sarge.lkuich.com",
+    "DEFAULT_ATTRIBUTION_TTL_DAYS": "28"
+  },
+  "routes": [
+    {
+      "pattern": "*.sarge.lkuich.com/*",
+      "zone_name": "lkuich.com"
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 import type { Prisma } from "@prisma/client";
-import type { EventPayload } from "./event-schema.js";
+import type { EventPayload } from "@sarge/core";
 import type { EventRepository } from "./event-repository.js";
 import { prisma } from "./prisma.js";
 

@@ -14,11 +14,16 @@ export const createSargeClient = (browser: BrowserLike): SargeClient => {
     remove: (name: string) => browser.localStorage.removeItem(name)
   };
 
-  const init = (initOptions: InitOptions) => {
+  const init = (initOptions?: InitOptions) => {
+    const resolvedOptions = initOptions ?? getGlobalConfig(browser);
+    if (!resolvedOptions?.siteId) {
+      throw new Error("Sarge init requires a siteId");
+    }
+
     options = {
-      siteId: initOptions.siteId,
-      endpoint: trimTrailingSlash(initOptions.endpoint ?? DEFAULT_ENDPOINT),
-      attributionTtlDays: initOptions.attributionTtlDays ?? DEFAULT_ATTRIBUTION_TTL_DAYS
+      siteId: resolvedOptions.siteId,
+      endpoint: trimTrailingSlash(resolvedOptions.endpoint ?? DEFAULT_ENDPOINT),
+      attributionTtlDays: resolvedOptions.attributionTtlDays ?? DEFAULT_ATTRIBUTION_TTL_DAYS
     };
 
     refreshAttribution(options.attributionTtlDays);
@@ -152,3 +157,6 @@ const addDays = (date: Date, days: number) => {
 };
 
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/, "");
+
+const getGlobalConfig = (browser: BrowserLike): InitOptions | undefined =>
+  "__SARGE_CONFIG__" in browser ? (browser.__SARGE_CONFIG__ as InitOptions | undefined) : undefined;

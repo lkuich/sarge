@@ -1,7 +1,7 @@
 import cors from "cors";
 import express, { type Express } from "express";
+import { eventPayloadSchema, parseCompactEventQuery } from "@sarge/core";
 import { ZodError } from "zod";
-import { eventPayloadSchema, parseCompactEventQuery } from "./event-schema.js";
 import type { EventRepository } from "./event-repository.js";
 
 export interface AppDependencies {

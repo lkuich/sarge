@@ -1,4 +1,4 @@
-import type { EventPayload } from "./event-schema.js";
+import type { EventPayload } from "@sarge/core";
 
 export interface EventRepository {
   createEvent(event: EventPayload): Promise<void>;

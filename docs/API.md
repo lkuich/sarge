@@ -36,7 +36,8 @@ apps/api/prisma/schema.prisma
 
 Core models:
 
-- `Client`
+- `Workspace`
+- `Site`
 - `Affiliate`
 - `Event`
 

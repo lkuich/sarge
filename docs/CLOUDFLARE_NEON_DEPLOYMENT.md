@@ -1,0 +1,129 @@
+# Cloudflare + Neon Hosted Deployment
+
+This is the primary hosted shared deployment path for Sarge.
+
+## Architecture
+
+```text
+Customer site
+  -> https://{site}.sarge.lkuich.com/pixel.js
+  -> Cloudflare Worker
+  -> Neon Postgres
+```
+
+Cloudflare owns the hosted edge, routing, TLS, CDN, and future custom-hostname path. Neon remains the Postgres source of truth.
+
+## Required Accounts
+
+- Cloudflare account with the `lkuich.com` zone
+- Neon project/database
+- GitHub repository with Actions enabled
+
+## Required GitHub Secrets
+
+```text
+CLOUDFLARE_API_TOKEN
+CLOUDFLARE_ACCOUNT_ID
+NEON_DATABASE_URL
+```
+
+The Cloudflare token needs permission to deploy Workers and manage Worker secrets for the target account.
+
+## Worker Configuration
+
+Worker package:
+
+```text
+apps/worker/
+```
+
+Wrangler config:
+
+```text
+apps/worker/wrangler.jsonc
+```
+
+Default route:
+
+```text
+*.sarge.lkuich.com/*
+```
+
+Default Worker name:
+
+```text
+sarge-hosted
+```
+
+## Neon Setup
+
+1. Create a Neon project.
+2. Create the production database.
+3. Copy the pooled or serverless-compatible connection string.
+4. Add it to GitHub as `NEON_DATABASE_URL`.
+5. Run Prisma migrations against the Neon database.
+
+Migration command:
+
+```bash
+DATABASE_URL="postgresql://..." pnpm prisma:migrate
+```
+
+## Cloudflare Setup
+
+1. Confirm `lkuich.com` is active in Cloudflare.
+2. Confirm Cloudflare manages DNS for the zone.
+3. Create a Cloudflare API token for Worker deploys.
+4. Add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` to GitHub secrets.
+5. Confirm `apps/worker/wrangler.jsonc` has the right route and zone.
+
+## Deployment
+
+Deploy from CI:
+
+```text
+push to main
+```
+
+Deploy manually from local machine:
+
+```bash
+pnpm --filter @sarge/core build
+pnpm --filter @sarge/pixel build
+pnpm --filter @sarge/worker deploy
+```
+
+Set or update the Worker database secret manually:
+
+```bash
+cd apps/worker
+printf '%s' "$NEON_DATABASE_URL" | pnpm wrangler secret put DATABASE_URL
+```
+
+## Hosted Endpoints
+
+Health:
+
+```http
+GET https://acme.sarge.lkuich.com/healthz
+```
+
+Pixel:
+
+```http
+GET https://acme.sarge.lkuich.com/pixel.js
+```
+
+Event ingestion:
+
+```http
+POST https://acme.sarge.lkuich.com/v2/events
+GET  https://acme.sarge.lkuich.com/v2/e
+```
+
+## Current Limitations
+
+- Provisioning `Workspace`/`Site` records is not automated yet.
+- Custom customer domains are not implemented yet.
+- Cloudflare Hyperdrive is documented as a future Neon connectivity optimization, not enabled yet.
+- The Worker expects the hosted schema shape described in `docs/HOSTED_SHARED_TECHNICAL_SPEC.md`.

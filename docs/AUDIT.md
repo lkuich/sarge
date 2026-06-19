@@ -45,7 +45,7 @@ Current v2 flow:
 - No auth, billing, rate limiting, or tenant management exists yet.
 - No third-party pixel watchdog exists yet.
 - No LLM event-query interface exists yet.
-- Prisma migrations require a seeded `Client` record before events for a `siteId` can be stored.
+- Prisma migrations require a seeded `Workspace` and `Site` record before events for a `siteId` can be stored.
 
 ## Verification Targets
 

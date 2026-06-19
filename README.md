@@ -97,6 +97,21 @@ GET /v2/e?sid=site_123&n=Lead&ts=2026-06-19T12:00:00.000Z&ss=sess_123&u=user_123
 
 See `docs/API.md` and `docs/TRACKING_CLIENT.md` for more detail.
 
+## Distribution
+
+Sarge has three planned distribution paths:
+
+- self-hosted: customer runs the API/database and hosts the pixel
+- hosted shared: Sarge provisions a custom endpoint and customized pixel on shared infrastructure
+- dedicated hosted: "Contact us" managed infrastructure for teams that need isolation or custom requirements
+
+See:
+
+- `docs/SELF_HOSTED.md`
+- `docs/HOSTED_SHARED_TECHNICAL_SPEC.md`
+- `docs/CLOUDFLARE_NEON_DEPLOYMENT.md`
+- `docs/DEDICATED_HOSTING.md`
+
 ## Product Direction
 
 Sarge is being repositioned as a cheap, dead-simple event recorder for teams that need to debug tracking implementations. The future product direction includes real-time event streams, a third-party pixel watchdog, custom script deployment, and an LLM query layer over structured event data.

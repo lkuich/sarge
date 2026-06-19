@@ -31,6 +31,7 @@ const install = () => {
 
 declare global {
   interface Window {
+    __SARGE_CONFIG__?: InitOptions;
     sarge: ((method: string, ...args: unknown[]) => void) & { queue?: QueuedCall[] };
     _sarge?: ((method: string, ...args: unknown[]) => void) & { queue?: QueuedCall[] };
   }

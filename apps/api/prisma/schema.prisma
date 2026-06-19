@@ -7,12 +7,26 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Client {
-  id        String   @id
+model Workspace {
+  id        String   @id @default(cuid())
+  slug      String   @unique
   name      String
-  url       String?
   createdAt DateTime @default(now())
-  events    Event[]
+  sites     Site[]
+}
+
+model Site {
+  id                 String   @id @default(cuid())
+  workspaceId        String
+  slug               String   @unique
+  name               String
+  endpointHost       String   @unique
+  attributionTtlDays Int      @default(28)
+  pixelEnabled       Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  events             Event[]
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
 }
 
 model Affiliate {
@@ -38,7 +52,7 @@ model Event {
   properties           Json     @default("{}")
   receivedAt           DateTime @default(now())
 
-  client Client @relation(fields: [siteId], references: [id])
+  site Site @relation(fields: [siteId], references: [id])
 
   @@index([siteId, occurredAt])
   @@index([name, occurredAt])

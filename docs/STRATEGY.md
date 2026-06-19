@@ -81,6 +81,16 @@ Keep pricing aggressive:
 
 The strongest paid wedge is continuous event QA and monitoring, not generic analytics.
 
+## Distribution Direction
+
+Sarge should support three distribution paths:
+
+- Self-hosted for technical teams that want control and trust.
+- Hosted shared infrastructure as the default commercial path.
+- Dedicated hosted infrastructure as a higher-touch "Contact us" option.
+
+The hosted shared path should use Cloudflare for the hosted edge/domain layer and Neon for Postgres. Each customer should get a custom endpoint and customized pixel without provisioning separate infrastructure per customer.
+
 ## Current Modernization Boundary
 
 This modernization phase only builds the foundation:

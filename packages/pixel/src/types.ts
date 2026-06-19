@@ -7,6 +7,7 @@ export interface InitOptions {
 export type EventProperties = Record<string, unknown>;
 
 export interface BrowserLike {
+  __SARGE_CONFIG__?: InitOptions;
   location: {
     href: string;
     search: string;
@@ -51,6 +52,6 @@ export interface EventPayload {
 }
 
 export interface SargeClient {
-  init(options: InitOptions): void;
+  init(options?: InitOptions): void;
   track(name: string, properties?: EventProperties): void;
 }

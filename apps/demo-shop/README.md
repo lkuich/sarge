@@ -22,7 +22,11 @@ It emits:
 - `cart.opened`
 - `checkout.started`
 - `purchase.completed`
+- `data_layer.push` from Sarge's automatic `dataLayer.push` watchdog
+- `google.tag.fire` from Sarge's automatic `gtag` watchdog
 - `meta.pixel.fire` from Sarge's automatic `fbq` watchdog
+
+The GTM, Google tag, and Facebook Pixel IDs in the demo page are placeholders. They are intentionally local browser stubs that exercise the same APIs real marketing tags use without connecting to an ad account.
 
 Deploy manually:
 

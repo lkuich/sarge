@@ -1,4 +1,5 @@
 import { neon } from '@neondatabase/serverless';
+import { summarizeEventHosts, type EventHostSummary } from './event-hosts';
 import { analyzeProjectEvents, type ProjectDiagnostic } from './project-diagnostics';
 
 export type AccountRole = 'admin' | 'user';
@@ -20,6 +21,7 @@ export interface SargeEvent {
   sessionId: string;
   userId: string;
   url?: string;
+  referrer?: string;
   title?: string;
   properties: Record<string, unknown>;
 }
@@ -38,6 +40,7 @@ export interface SargeProject {
   lastEventAt: string;
   pixelVersion: string;
   recentEvents: SargeEvent[];
+  eventHosts: EventHostSummary[];
   diagnostics: ProjectDiagnostic[];
   diagnosticSummary: string | null;
   diagnosticRunAt: string | null;
@@ -140,6 +143,7 @@ export const getViewerAccount = async (userId: string, databaseUrl?: string): Pr
         e."sessionId",
         e."userId",
         e.url,
+        e.referrer,
         e.title,
         e.properties
       FROM "Event" e
@@ -211,6 +215,7 @@ export const getViewerAccount = async (userId: string, databaseUrl?: string): Pr
           lastEventAt: formatRelativeTime(site.lastOccurredAt),
           pixelVersion: '0.1.0',
           recentEvents,
+          eventHosts: summarizeEventHosts(recentEvents),
           diagnostics: persistedDiagnostics ?? analyzeProjectEvents(recentEvents),
           diagnosticSummary: latestRun?.aiSummary ?? null,
           diagnosticRunAt: latestRun?.createdAt.toISOString() ?? null,
@@ -280,6 +285,7 @@ export const createProject = async (
         lastEventAt: 'No events yet',
         pixelVersion: '0.1.0',
         recentEvents: [],
+        eventHosts: [],
         diagnostics: [],
         diagnosticSummary: null,
         diagnosticRunAt: null,
@@ -322,6 +328,7 @@ const getFallbackAccount = (role: AccountRole): SargeAccount => ({
       lastEventAt: '2 minutes ago',
       pixelVersion: '0.1.0',
       recentEvents: [],
+      eventHosts: [],
       diagnostics: [],
       diagnosticSummary: null,
       diagnosticRunAt: null,
@@ -340,6 +347,7 @@ const getFallbackAccount = (role: AccountRole): SargeAccount => ({
       lastEventAt: 'No events yet',
       pixelVersion: '0.1.0',
       recentEvents: [],
+      eventHosts: [],
       diagnostics: [],
       diagnosticSummary: null,
       diagnosticRunAt: null,
@@ -356,6 +364,7 @@ const mapEvent = (event: EventRow): SargeEvent => ({
   sessionId: event.sessionId,
   userId: event.userId,
   url: event.url ?? undefined,
+  referrer: event.referrer ?? undefined,
   title: event.title ?? undefined,
   properties: (event.properties ?? {}) as Record<string, unknown>,
 });
@@ -423,6 +432,7 @@ interface EventRow {
   sessionId: string;
   userId: string;
   url: string | null;
+  referrer: string | null;
   title: string | null;
   properties: unknown;
 }

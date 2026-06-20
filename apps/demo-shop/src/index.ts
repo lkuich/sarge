@@ -23,9 +23,13 @@ const renderShop = (url: URL) => `<!doctype html>
   <title>Northline Supply Co.</title>
   <meta name="description" content="A tiny ecommerce demo store wired to Sarge event tracking.">
   <script>
+    window.SARGE_DEMO_GTM_ID = "GTM-SARGEDEMO";
+    window.SARGE_DEMO_META_PIXEL_ID = "123456789012345";
     window.dataLayer = window.dataLayer || [];
+    window.dataLayer.push({ "gtm.start": Date.now(), event: "gtm.js", container_id: window.SARGE_DEMO_GTM_ID });
     window.gtag = window.gtag || function(){ window.dataLayer.push(arguments); };
     window.fbq = window.fbq || function(){ (window.fbq.queue = window.fbq.queue || []).push(arguments); };
+    window.fbq.version = "demo";
     window._sarge = {
       queue: [
         ["track", "page.view", { page_type: "collection", demo: "northline-supply", path: "${escapeHtml(url.pathname)}" }]
@@ -351,7 +355,7 @@ const renderShop = (url: URL) => `<!doctype html>
       </div>
       <div class="hero-card" aria-label="Illustration of Northline Supply packaging">
         <div class="pack"></div>
-        <div class="caption">Live demo: product views, add-to-cart, checkout, purchase, and third-party media-pixel debug events are sent to Sarge.</div>
+        <div class="caption">Live demo: product views, add-to-cart, checkout, purchase, dataLayer/GTM, and Facebook Pixel debug events are sent to Sarge.</div>
       </div>
     </section>
 
@@ -388,6 +392,9 @@ const renderShop = (url: URL) => `<!doctype html>
     };
     const cart = [];
     const send = (name, properties) => window.sarge?.("track", name, properties);
+    const pushDataLayer = (payload) => window.dataLayer.push({ demo: "northline-supply", ...payload });
+    const trackGoogleEvent = (eventName, payload) => window.gtag("event", eventName, { demo: "northline-supply", ...payload });
+    const trackMeta = (eventName, payload) => window.fbq("track", eventName, { demo: "northline-supply", ...payload });
     const updateCart = () => {
       const total = cart.reduce((sum, item) => sum + item.price, 0);
       document.querySelector("[data-cart-count]").textContent = String(cart.length);
@@ -396,10 +403,21 @@ const renderShop = (url: URL) => `<!doctype html>
         : "Cart is empty";
     };
 
+    window.setTimeout(() => {
+      pushDataLayer({ event: "page_view", page_type: "collection", path: window.location.pathname });
+      window.gtag("js", new Date());
+      window.gtag("config", "G-SARGEDEMO", { page_path: window.location.pathname, send_page_view: true });
+      window.fbq("init", window.SARGE_DEMO_META_PIXEL_ID);
+      trackMeta("PageView", { page_type: "collection" });
+    }, 250);
+
     document.querySelectorAll("[data-view]").forEach((button) => {
       button.addEventListener("click", () => {
         const product = products[button.dataset.view];
         send("product.viewed", { product_id: product.id, product_name: product.name, price: product.price });
+        pushDataLayer({ event: "view_item", ecommerce: { items: [{ item_id: product.id, item_name: product.name, price: product.price }] } });
+        trackGoogleEvent("view_item", { currency: "USD", value: product.price, items: [{ item_id: product.id, item_name: product.name }] });
+        trackMeta("ViewContent", { content_ids: [product.id], content_name: product.name, value: product.price, currency: "USD" });
       });
     });
 
@@ -409,21 +427,28 @@ const renderShop = (url: URL) => `<!doctype html>
         cart.push(product);
         updateCart();
         send("cart.added", { product_id: product.id, product_name: product.name, price: product.price, cart_size: cart.length });
-        window.fbq("track", "AddToCart", { content_ids: [product.id], value: product.price, currency: "USD" });
+        pushDataLayer({ event: "add_to_cart", ecommerce: { currency: "USD", value: product.price, items: [{ item_id: product.id, item_name: product.name, price: product.price }] } });
+        trackGoogleEvent("add_to_cart", { currency: "USD", value: product.price, items: [{ item_id: product.id, item_name: product.name }] });
+        trackMeta("AddToCart", { content_ids: [product.id], value: product.price, currency: "USD" });
       });
     });
 
     document.querySelector("[data-media-test]").addEventListener("click", () => {
-      window.fbq("track", "PurchaseDebug", { source: "manual-test-button", value: 123, currency: "USD" });
+      pushDataLayer({ event: "media_pixel_test", source: "manual-test-button" });
+      trackGoogleEvent("media_pixel_test", { source: "manual-test-button", value: 123 });
+      trackMeta("PurchaseDebug", { source: "manual-test-button", value: 123, currency: "USD" });
     });
 
     document.querySelector("[data-cart]").addEventListener("click", () => {
       send("cart.opened", { cart_size: cart.length });
+      pushDataLayer({ event: "view_cart", cart_size: cart.length });
     });
 
     document.querySelector("[data-checkout]").addEventListener("click", () => {
       const total = cart.reduce((sum, item) => sum + item.price, 0);
       send("checkout.started", { cart_size: cart.length, value: total, currency: "USD" });
+      pushDataLayer({ event: "begin_checkout", ecommerce: { currency: "USD", value: total, items: cart.map((item) => ({ item_id: item.id, item_name: item.name, price: item.price })) } });
+      trackGoogleEvent("begin_checkout", { currency: "USD", value: total, items: cart.map((item) => ({ item_id: item.id, item_name: item.name })) });
       send("purchase.completed", {
         order_id: "demo-" + Date.now(),
         value: total,
@@ -431,7 +456,9 @@ const renderShop = (url: URL) => `<!doctype html>
         item_count: cart.length,
         products: cart.map((item) => item.id)
       });
-      window.fbq("track", "Purchase", { value: total, currency: "USD" });
+      pushDataLayer({ event: "purchase", ecommerce: { transaction_id: "demo-datalayer-" + Date.now(), currency: "USD", value: total } });
+      trackGoogleEvent("purchase", { transaction_id: "demo-gtag-" + Date.now(), currency: "USD", value: total });
+      trackMeta("Purchase", { value: total, currency: "USD" });
     });
   </script>
 </body>

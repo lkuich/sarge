@@ -1,6 +1,6 @@
 ---
 import { env } from "cloudflare:workers";
-import { Bot, Copy, ExternalLink, Radio, Search, ShieldAlert, Sparkles } from "lucide-react";
+import { Bot, Copy, ExternalLink, Globe2, Radio, Search, ShieldAlert, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,6 +25,7 @@ const endpointHealthUrl = project.endpointHealthUrl;
 const pixelUrl = project.pixelUrl;
 
 const recentEvents = project.recentEvents.slice(0, 12);
+const eventHosts = project.eventHosts;
 const diagnostics = project.diagnostics;
 const endpointHealth = project.status === "active" ? "healthy" : "pending";
 const criticalFindings = diagnostics.filter((finding) => finding.severity === "critical").length;
@@ -290,17 +291,26 @@ const formatEventPayload = (value: Record<string, unknown>) => JSON.stringify(va
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Sparkles className="size-4" /> Agent readiness</CardTitle>
+          <CardTitle className="flex items-center gap-2"><Globe2 className="size-4" /> Event hosts</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3 text-sm text-muted-foreground">
-          <div class="flex items-start gap-2">
-            <ShieldAlert className="mt-0.5 size-4 text-foreground" />
-            <p>Watchdog events are compared against first-party tracking to catch pixel drift.</p>
-          </div>
-          <div class="flex items-start gap-2">
-            <Bot className="mt-0.5 size-4 text-foreground" />
-            <p>Each finding includes a prompt that can be handed to an agentic coding tool.</p>
-          </div>
+        <CardContent className="grid gap-3 text-sm">
+          {
+            eventHosts.length > 0 ? (
+              eventHosts.map((eventHost) => (
+                <div class="grid grid-cols-[1fr_auto] items-center gap-3 rounded-md border p-3">
+                  <div class="min-w-0">
+                    <p class="truncate font-mono text-xs">{eventHost.host}</p>
+                    <p class="mt-1 text-xs text-muted-foreground">{formatEventTime(eventHost.lastEventAt)}</p>
+                  </div>
+                  <Badge variant="outline">{eventHost.count}</Badge>
+                </div>
+              ))
+            ) : (
+              <div class="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                No event hosts recorded in the 10 most recent events.
+              </div>
+            )
+          }
         </CardContent>
       </Card>
     </aside>

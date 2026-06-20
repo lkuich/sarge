@@ -3,10 +3,10 @@ import { Show, SignInButton, SignUpButton } from "@clerk/astro/components";
 import {
   ArrowRight,
   Bot,
+  CircleX,
   Cloud,
   Code2,
   Database,
-  FileWarning,
   Radio,
   ShieldCheck,
   Sparkles,
@@ -15,18 +15,19 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import InstallPanel from "@/components/InstallPanel";
 import SiteLayout from "@/layouts/SiteLayout.astro";
 
 const events = [
   { name: "checkout.started", state: "accepted", tone: "border-emerald-400/40 text-emerald-200", icon: Radio },
   { name: "meta.pixel.fire", state: "observed", tone: "border-cyan-400/40 text-cyan-200", icon: TerminalSquare },
-  { name: "purchase.completed", state: "missing", tone: "border-amber-300/50 text-amber-100", icon: FileWarning },
-  { name: "agent.fix_prompt", state: "ready", tone: "border-lime-300/40 text-lime-100", icon: Bot },
+  { name: "purchase.completed", state: "missing", tone: "border-red-500/50 text-red-400", icon: CircleX, failed: true },
+  { name: "agent.fix_ready", state: "ready", tone: "border-lime-300/40 text-lime-100", icon: Bot, succeeded: true },
 ];
 
 const loop = [
   {
-    title: "Install the tiny pixel",
+    title: "Install the (tiny) pixel",
     description: "Drop in one hosted script or let an agent use the Sarge install skill to wire events across your app.",
     icon: Code2,
   },
@@ -42,7 +43,7 @@ const loop = [
   },
   {
     title: "Hand off the fix",
-    description: "Every finding includes evidence, a recommendation, and a copyable prompt for agentic coding tools.",
+    description: "Context enriched from the pixel, the watchdog, and historical evidence is fed directly to your coding agent to get it fixed.",
     icon: Bot,
   },
 ];
@@ -70,23 +71,17 @@ const features = [
   },
 ];
 
-const installSnippet = `<script>
-  window._sarge = { queue: [["track", "page.view"]] };
-</script>
-<script async src="https://sarge.lkuich.com/pixel.js?site=site_123"></script>`;
 ---
 
 <SiteLayout title="Sarge | Agent-ready tracking diagnostics" shader>
   <section class="relative mx-auto flex min-h-[calc(100svh-5rem)] w-full max-w-6xl flex-col justify-center px-4 pb-8 pt-12 md:px-6 md:pt-20">
     <div class="max-w-4xl">
-      <p class="mb-4 inline-flex rounded-full border border-white/15 bg-background/55 px-3 py-1 text-xs font-semibold uppercase text-muted-foreground backdrop-blur">
-        The idiot's pixel, with an AI review loop
-      </p>
       <h1 class="max-w-5xl text-5xl font-semibold leading-[0.95] md:text-7xl lg:text-8xl">
-        Sarge catches tracking bugs before your ad platforms lie to you.
+        Do you trust your ad platform?
+        <!-- Catch tracking bugs before your ad platforms lie to you. -->
       </h1>
-      <p class="mt-6 max-w-2xl text-base leading-7 text-muted-foreground md:text-lg">
-        A tiny event pixel, a watchdog for messy media scripts, and automatic diagnostics that turn broken tracking into agent-ready fix prompts.
+      <p class="mt-6 max-w-2xl text-base leading-7 text-white md:text-lg">
+        A tiny event pixel, a watchdog for messy media scripts, and deep agent integration to proactively find and fix tracking issues before they cost you ad spend.
       </p>
 
       <div class="mt-8 flex flex-wrap gap-3">
@@ -112,12 +107,12 @@ const installSnippet = `<script>
 
     <div class="mt-10 grid overflow-hidden rounded-lg border border-white/10 bg-background/70 backdrop-blur md:grid-cols-4">
       {
-        events.map(({ name, state, tone, icon: Icon }) => (
-          <div class="grid grid-cols-[auto_1fr] gap-3 border-b border-white/10 p-4 last:border-b-0 md:border-b-0 md:border-r md:last:border-r-0">
+        events.map(({ name, state, tone, icon: Icon, failed, succeeded }) => (
+          <div class={`grid grid-cols-[auto_1fr] gap-3 border-b border-white/10 p-4 last:border-b-0 md:border-b-0 md:border-r md:last:border-r-0 ${failed ? "bg-destructive/10" : succeeded ? "bg-success/10" : ""}`}>
             <Icon className={`mt-0.5 size-4 ${tone}`} />
             <div class="min-w-0">
               <p class="truncate font-mono text-sm">{name}</p>
-              <p class="mt-1 text-xs text-muted-foreground">{state}</p>
+              <p class={`mt-1 text-xs ${failed ? "font-semibold text-red-400" : succeeded ? "font-semibold text-green-400" : "text-muted-foreground"}`}>{state}</p>
             </div>
           </div>
         ))
@@ -152,37 +147,20 @@ const installSnippet = `<script>
     </div>
   </section>
 
-  <section class="bg-background px-4 py-14 md:px-6">
-    <div class="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1fr_420px]">
-      <div class="min-w-0">
-        <Badge variant="secondary">Agent-native install</Badge>
-        <h2 class="mt-4 text-3xl font-semibold md:text-5xl">Let your coding agent install it for you.</h2>
-        <p class="mt-4 max-w-2xl text-sm leading-6 text-muted-foreground">
-          Sarge ships with a repo-local skill that tells an agent how to install the SDK, where to place the script, which ecommerce events to wire, and how to verify the data stream.
-        </p>
-        <div class="mt-6 grid gap-3 sm:grid-cols-2">
-          <div class="rounded-lg border bg-card p-4">
-            <p class="font-mono text-xs text-muted-foreground">skill</p>
-            <p class="mt-2 font-mono text-sm">.agents/skills/sarge-install</p>
-          </div>
-          <div class="rounded-lg border bg-card p-4">
-            <p class="font-mono text-xs text-muted-foreground">prompt output</p>
-            <p class="mt-2 text-sm">Evidence-backed implementation brief</p>
-          </div>
-        </div>
-      </div>
-
-      <div class="min-w-0 rounded-lg border bg-card">
-        <div class="flex items-center justify-between border-b px-4 py-3">
-          <p class="font-mono text-xs text-muted-foreground">hosted install</p>
-          <Badge variant="outline">copy once</Badge>
-        </div>
-        <pre class="overflow-x-auto p-4 text-xs leading-6"><code>{installSnippet}</code></pre>
+  <section id="setup" class="scroll-mt-20 bg-background px-4 py-14 md:px-6">
+    <div class="mx-auto max-w-3xl">
+      <Badge variant="secondary">Setup</Badge>
+      <h2 class="mt-4 text-3xl font-semibold md:text-4xl">Two commands and you're tracking.</h2>
+      <p class="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
+        Install the skill so your agent knows which events to wire, then add the MCP so it can read your live stream and findings. Pick your tool:
+      </p>
+      <div class="mt-6 min-h-54">
+        <InstallPanel client:only="react" />
       </div>
     </div>
   </section>
 
-  <section class="border-y bg-muted/35 px-4 py-14 md:px-6">
+  <section id="features" class="scroll-mt-20 border-y bg-muted/35 px-4 py-14 md:px-6">
     <div class="mx-auto max-w-6xl">
       <div class="max-w-2xl">
         <Badge variant="outline">What makes it different</Badge>
@@ -203,11 +181,11 @@ const installSnippet = `<script>
     </div>
   </section>
 
-  <section class="bg-background px-4 py-14 md:px-6">
+  <section id="pricing" class="scroll-mt-20 bg-background px-4 py-14 md:px-6">
     <div class="mx-auto max-w-6xl">
       <div class="max-w-2xl">
         <Badge variant="secondary">Deploy how you want</Badge>
-        <h2 class="mt-4 text-3xl font-semibold md:text-5xl">Simple, aggressive pricing.</h2>
+        <h2 class="mt-4 text-3xl font-semibold md:text-5xl">Simple pricing.</h2>
       </div>
 
       <div class="mt-8 grid gap-3 md:grid-cols-3">
@@ -218,24 +196,86 @@ const installSnippet = `<script>
           <p class="mt-3 text-sm leading-6 text-muted-foreground">
             The pixel, the watchdog, and on-demand diagnostics for a single site.
           </p>
+          <div class="mt-auto pt-5">
+            <SignUpButton mode="modal">
+              <Button variant="outline" className="w-full">Sign up free</Button>
+            </SignUpButton>
+          </div>
         </article>
         <article class="flex flex-col rounded-lg border bg-card p-5">
           <Cloud className="size-5 text-primary" />
           <h3 class="mt-5 font-semibold">Hosted</h3>
-          <p class="mt-1 text-2xl font-semibold">$—<span class="text-sm font-normal text-muted-foreground"> /mo</span></p>
+          <p class="mt-1 text-2xl font-semibold"><span class="text-sm font-normal text-muted-foreground">from </span>$20<span class="text-sm font-normal text-muted-foreground"> /mo</span></p>
           <p class="mt-3 text-sm leading-6 text-muted-foreground">
             We host everything: your pixel, endpoint, and scheduled diagnostics. Drop in the snippet and go.
           </p>
+          <div class="mt-auto pt-5">
+            <SignUpButton mode="modal">
+              <Button className="w-full">Sign up</Button>
+            </SignUpButton>
+          </div>
         </article>
         <article class="flex flex-col rounded-lg border bg-card p-5">
           <TerminalSquare className="size-5 text-primary" />
           <h3 class="mt-5 font-semibold">Self-hosted</h3>
           <p class="mt-1 text-2xl font-semibold">BYO</p>
           <p class="mt-3 text-sm leading-6 text-muted-foreground">
-            Run the API and database yourself when you need the debug loop inside your own infrastructure.
+            Host the scripts, run the API and database yourself when you need the debug loop inside your own infrastructure.
           </p>
+          <div class="mt-auto pt-5">
+            <a href="/docs/self-hosting">
+              <Button variant="outline" className="w-full">Read how <ArrowRight className="ml-1 size-3.5" /></Button>
+            </a>
+          </div>
         </article>
       </div>
     </div>
   </section>
+
+  <footer class="border-t bg-background/80 px-4 py-12 backdrop-blur md:px-6">
+    <div class="mx-auto grid max-w-6xl gap-8 sm:grid-cols-2 md:grid-cols-[1.5fr_1fr_1fr]">
+      <div>
+        <img class="h-7 w-auto dark:hidden" src="/sarge-logo-light.svg" alt="Sarge" width="196" height="48" />
+        <img class="hidden h-7 w-auto dark:block" src="/sarge-logo-dark.svg" alt="Sarge" width="196" height="48" />
+        <p class="mt-3 max-w-xs text-sm leading-6 text-muted-foreground">
+          Catch tracking bugs before your ad platforms lie to you.
+        </p>
+      </div>
+
+      <nav aria-label="Product">
+        <p class="text-sm font-semibold">Product</p>
+        <ul class="mt-3 space-y-2 text-sm text-muted-foreground">
+          <li><a class="transition hover:text-foreground" href="#setup">Setup</a></li>
+          <li><a class="transition hover:text-foreground" href="#features">Features</a></li>
+          <li><a class="transition hover:text-foreground" href="#pricing">Pricing</a></li>
+        </ul>
+      </nav>
+
+      <nav aria-label="Account">
+        <p class="text-sm font-semibold">Account</p>
+        <ul class="mt-3 space-y-2 text-sm text-muted-foreground">
+          <Show when="signed-out">
+            <li>
+              <SignInButton mode="modal">
+                <button class="transition hover:text-foreground">Sign in</button>
+              </SignInButton>
+            </li>
+            <li>
+              <SignUpButton mode="modal">
+                <button class="transition hover:text-foreground">Create account</button>
+              </SignUpButton>
+            </li>
+          </Show>
+          <Show when="signed-in">
+            <li><a class="transition hover:text-foreground" href="/app">Dashboard</a></li>
+          </Show>
+        </ul>
+      </nav>
+    </div>
+
+    <div class="mx-auto mt-10 flex max-w-6xl flex-col items-center justify-between gap-2 border-t pt-6 text-xs text-muted-foreground sm:flex-row">
+      <p>© 2026 Sarge. All rights reserved.</p>
+      <p>The idiot's pixel, with an AI review loop.</p>
+    </div>
+  </footer>
 </SiteLayout>

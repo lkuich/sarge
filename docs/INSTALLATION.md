@@ -122,6 +122,16 @@ You can also open these project URLs directly from the portal:
 - `https://sarge.lkuich.com/healthz` checks the endpoint Worker.
 - `https://sarge.lkuich.com/pixel.js?site={siteId}` checks script delivery.
 
+## Agentic Install
+
+If you use an agentic coding tool, point it at the bundled Sarge install skill:
+
+```text
+.agents/skills/sarge-install/SKILL.md
+```
+
+Give the agent the exact pixel URL from the project detail screen and ask it to wire the ecommerce events you care about. The skill includes framework placement notes and verification steps.
+
 ## Troubleshooting
 
 | Symptom | Check |

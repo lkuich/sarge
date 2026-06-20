@@ -25,6 +25,8 @@ model Site {
   pixelEnabled       Boolean  @default(true)
   createdAt          DateTime @default(now())
   events             Event[]
+  diagnosticRuns     DiagnosticRun[]
+  diagnosticFindings DiagnosticFinding[]
 
   workspace Workspace @relation(fields: [workspaceId], references: [id])
 }
@@ -58,4 +60,44 @@ model Event {
   @@index([name, occurredAt])
   @@index([sessionId])
   @@index([userId])
+}
+
+model DiagnosticRun {
+  id               String              @id
+  siteId           String
+  status           String
+  eventWindowStart DateTime
+  eventWindowEnd   DateTime
+  findingCount     Int                 @default(0)
+  aiSummary        String?
+  startedAt        DateTime
+  completedAt      DateTime
+  createdAt        DateTime            @default(now())
+  findings         DiagnosticFinding[]
+
+  site Site @relation(fields: [siteId], references: [id])
+
+  @@index([siteId, createdAt])
+  @@index([status, createdAt])
+}
+
+model DiagnosticFinding {
+  id             String   @id
+  runId          String
+  siteId         String
+  ruleId         String
+  severity       String
+  title          String
+  summary        String
+  evidence       Json     @default("[]")
+  recommendation String
+  agentPrompt    String
+  createdAt      DateTime @default(now())
+
+  run  DiagnosticRun @relation(fields: [runId], references: [id])
+  site Site          @relation(fields: [siteId], references: [id])
+
+  @@index([siteId, createdAt])
+  @@index([runId])
+  @@index([ruleId, severity])
 }

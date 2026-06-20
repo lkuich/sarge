@@ -1,4 +1,5 @@
 import { neon } from '@neondatabase/serverless';
+import { analyzeProjectEvents, type ProjectDiagnostic } from './project-diagnostics';
 
 export type AccountRole = 'admin' | 'user';
 export type ProjectStatus = 'active' | 'paused' | 'draft';
@@ -37,6 +38,9 @@ export interface SargeProject {
   lastEventAt: string;
   pixelVersion: string;
   recentEvents: SargeEvent[];
+  diagnostics: ProjectDiagnostic[];
+  diagnosticSummary: string | null;
+  diagnosticRunAt: string | null;
 }
 
 export interface SargeAccount {
@@ -144,6 +148,43 @@ export const getViewerAccount = async (userId: string, databaseUrl?: string): Pr
       ORDER BY e."occurredAt" DESC
       LIMIT 30
     `) as EventRow[];
+    const diagnosticRuns = (await sql`
+      SELECT DISTINCT ON (dr."siteId")
+        dr.id,
+        dr."siteId",
+        dr."aiSummary",
+        dr."createdAt",
+        dr."findingCount"
+      FROM "DiagnosticRun" dr
+      JOIN "Site" s ON s.id = dr."siteId"
+      WHERE s."workspaceId" = ${workspace.id}
+      ORDER BY dr."siteId", dr."createdAt" DESC
+    `) as DiagnosticRunRow[];
+    const diagnosticFindings = (await sql`
+      SELECT
+        df.id,
+        df."runId",
+        df."ruleId",
+        df.severity,
+        df.title,
+        df.summary,
+        df.evidence,
+        df.recommendation,
+        df."agentPrompt"
+      FROM "DiagnosticFinding" df
+      JOIN "DiagnosticRun" dr ON dr.id = df."runId"
+      JOIN "Site" s ON s.id = df."siteId"
+      WHERE s."workspaceId" = ${workspace.id}
+      ORDER BY df."createdAt" DESC
+      LIMIT 100
+    `) as DiagnosticFindingRow[];
+    const latestRunBySite = new Map(diagnosticRuns.map((run) => [run.siteId, run]));
+    const findingsByRun = new Map<string, ProjectDiagnostic[]>();
+    for (const finding of diagnosticFindings) {
+      const existingFindings = findingsByRun.get(finding.runId) ?? [];
+      existingFindings.push(mapDiagnosticFinding(finding));
+      findingsByRun.set(finding.runId, existingFindings);
+    }
 
     return {
       id: workspace.id,
@@ -151,21 +192,30 @@ export const getViewerAccount = async (userId: string, databaseUrl?: string): Pr
       slug: workspace.slug,
       role,
       plan: 'Hosted shared',
-      projects: sites.map((site) => ({
-        id: site.id,
-        slug: site.slug,
-        name: site.name,
-        endpointHost: site.endpointHost,
-        pixelUrl: buildPixelUrl(site.id),
-        endpointHealthUrl: buildHealthUrl(),
-        status: site.pixelEnabled ? 'active' : 'paused',
-        environment: 'production',
-        eventCount24h: site.eventCount24h ?? 0,
-        failedEvents24h: 0,
-        lastEventAt: formatRelativeTime(site.lastOccurredAt),
-        pixelVersion: '0.1.0',
-        recentEvents: events.filter((event) => event.siteId === site.id).map(mapEvent),
-      })),
+      projects: sites.map((site) => {
+        const recentEvents = events.filter((event) => event.siteId === site.id).map(mapEvent);
+        const latestRun = latestRunBySite.get(site.id);
+        const persistedDiagnostics = latestRun ? findingsByRun.get(latestRun.id) ?? [] : null;
+
+        return {
+          id: site.id,
+          slug: site.slug,
+          name: site.name,
+          endpointHost: site.endpointHost,
+          pixelUrl: buildPixelUrl(site.id),
+          endpointHealthUrl: buildHealthUrl(),
+          status: site.pixelEnabled ? 'active' : 'paused',
+          environment: 'production',
+          eventCount24h: site.eventCount24h ?? 0,
+          failedEvents24h: 0,
+          lastEventAt: formatRelativeTime(site.lastOccurredAt),
+          pixelVersion: '0.1.0',
+          recentEvents,
+          diagnostics: persistedDiagnostics ?? analyzeProjectEvents(recentEvents),
+          diagnosticSummary: latestRun?.aiSummary ?? null,
+          diagnosticRunAt: latestRun?.createdAt.toISOString() ?? null,
+        };
+      }),
       members,
     };
   } catch (error) {
@@ -230,6 +280,9 @@ export const createProject = async (
         lastEventAt: 'No events yet',
         pixelVersion: '0.1.0',
         recentEvents: [],
+        diagnostics: [],
+        diagnosticSummary: null,
+        diagnosticRunAt: null,
       },
     };
   } catch (error) {
@@ -269,6 +322,9 @@ const getFallbackAccount = (role: AccountRole): SargeAccount => ({
       lastEventAt: '2 minutes ago',
       pixelVersion: '0.1.0',
       recentEvents: [],
+      diagnostics: [],
+      diagnosticSummary: null,
+      diagnosticRunAt: null,
     },
     {
       id: 'site_checkout',
@@ -284,6 +340,9 @@ const getFallbackAccount = (role: AccountRole): SargeAccount => ({
       lastEventAt: 'No events yet',
       pixelVersion: '0.1.0',
       recentEvents: [],
+      diagnostics: [],
+      diagnosticSummary: null,
+      diagnosticRunAt: null,
     },
   ],
   members,
@@ -299,6 +358,16 @@ const mapEvent = (event: EventRow): SargeEvent => ({
   url: event.url ?? undefined,
   title: event.title ?? undefined,
   properties: (event.properties ?? {}) as Record<string, unknown>,
+});
+
+const mapDiagnosticFinding = (finding: DiagnosticFindingRow): ProjectDiagnostic => ({
+  id: finding.ruleId,
+  title: finding.title,
+  severity: finding.severity,
+  summary: finding.summary,
+  evidence: Array.isArray(finding.evidence) ? finding.evidence.filter((item): item is string => typeof item === 'string') : [],
+  recommendation: finding.recommendation,
+  agentPrompt: finding.agentPrompt,
 });
 
 const formatRelativeTime = (date: Date | null) => {
@@ -356,4 +425,24 @@ interface EventRow {
   url: string | null;
   title: string | null;
   properties: unknown;
+}
+
+interface DiagnosticRunRow {
+  id: string;
+  siteId: string;
+  aiSummary: string | null;
+  createdAt: Date;
+  findingCount: number;
+}
+
+interface DiagnosticFindingRow {
+  id: string;
+  runId: string;
+  ruleId: string;
+  severity: ProjectDiagnostic['severity'];
+  title: string;
+  summary: string;
+  evidence: unknown;
+  recommendation: string;
+  agentPrompt: string;
 }

@@ -1,5 +1,6 @@
 import { eventPayloadSchema, parseCompactEventQuery } from "@sarge/core";
 import { ZodError } from "zod";
+import { runScheduledDiagnostics } from "./diagnostic-runner.js";
 import { NeonEventStore } from "./neon-event-store.js";
 import { createPixelResponse } from "./pixel-response.js";
 import type { EventStore, SiteRecord, WorkerEnv } from "./types.js";
@@ -12,6 +13,10 @@ export const createWorkerHandler = (dependencies: WorkerDependencies = {}) => ({
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
     const store = dependencies.store ?? new NeonEventStore(env.DATABASE_URL);
     return handleRequest(request, env, store);
+  },
+  async scheduled(controller: ScheduledController, env: WorkerEnv, ctx: ExecutionContext): Promise<void> {
+    const store = dependencies.store ?? new NeonEventStore(env.DATABASE_URL);
+    ctx.waitUntil(runScheduledDiagnostics(store, env, controller.scheduledTime));
   }
 });
 

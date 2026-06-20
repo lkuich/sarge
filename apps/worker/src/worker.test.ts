@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createWorkerHandler } from "./index.js";
-import type { EventStore, WorkerEnv } from "./types.js";
+import type { EventStore, StoredDiagnosticRun, StoredEvent, WorkerEnv } from "./types.js";
 
 const createEnv = (overrides: Partial<WorkerEnv> = {}): WorkerEnv => ({
   DATABASE_URL: "postgresql://example",
@@ -11,6 +11,8 @@ const createEnv = (overrides: Partial<WorkerEnv> = {}): WorkerEnv => ({
 
 const createMemoryStore = () => {
   const events: unknown[] = [];
+  const diagnosticRuns: StoredDiagnosticRun[] = [];
+  const diagnosticEvents: StoredEvent[] = [];
   const store: EventStore = {
     async createEvent(event) {
       events.push(event);
@@ -38,10 +40,45 @@ const createMemoryStore = () => {
       }
 
       return null;
+    },
+    async listActiveSitesForDiagnostics() {
+      return [
+        {
+          id: "site_shared",
+          endpointHost: "shared.sarge.events",
+          attributionTtlDays: 28,
+          pixelEnabled: true
+        }
+      ];
+    },
+    async listRecentEventsForSite(siteId) {
+      return diagnosticEvents.filter((event) => event.siteId === siteId);
+    },
+    async saveDiagnosticRun(run) {
+      diagnosticRuns.push(run);
     }
   };
 
-  return { events, store };
+  return { diagnosticEvents, diagnosticRuns, events, store };
+};
+
+const createScheduledController = (): ScheduledController =>
+  ({
+    cron: "*/30 * * * *",
+    scheduledTime: Date.parse("2026-06-19T12:30:00.000Z"),
+    noRetry() {}
+  }) as ScheduledController;
+
+const createExecutionContext = () => {
+  const promises: Promise<unknown>[] = [];
+  const ctx = {
+    waitUntil(promise: Promise<unknown>) {
+      promises.push(promise);
+    },
+    passThroughOnException() {}
+  } as unknown as ExecutionContext;
+
+  return { ctx, promises };
 };
 
 describe("Cloudflare Worker hosted API", () => {
@@ -167,5 +204,121 @@ describe("Cloudflare Worker hosted API", () => {
     const response = await handler.fetch(new Request("https://missing.sarge.events/pixel.js"), createEnv());
 
     expect(response.status).toBe(404);
+  });
+
+  it("runs scheduled diagnostics and stores an AI summary for findings", async () => {
+    const { ctx, promises } = createExecutionContext();
+    const { diagnosticEvents, diagnosticRuns, store } = createMemoryStore();
+    const aiCalls: unknown[] = [];
+    const handler = createWorkerHandler({ store });
+    diagnosticEvents.push(
+      {
+        id: "evt_page",
+        siteId: "site_shared",
+        name: "page.view",
+        occurredAt: "2026-06-19T12:00:00.000Z",
+        sessionId: "sess_checkout",
+        userId: "user_123",
+        properties: {},
+        url: "https://shop.example.com/checkout",
+        title: "Checkout"
+      },
+      {
+        id: "evt_checkout",
+        siteId: "site_shared",
+        name: "checkout.started",
+        occurredAt: "2026-06-19T12:01:00.000Z",
+        sessionId: "sess_checkout",
+        userId: "user_123",
+        properties: { value: 84, currency: "USD" },
+        url: "https://shop.example.com/checkout",
+        title: "Checkout"
+      }
+    );
+
+    await handler.scheduled(createScheduledController(), createEnv({
+      AI: {
+        async run(model, input) {
+          aiCalls.push({ model, input });
+          return { response: "Checkout started but no purchase event arrived. Ask an agent to wire purchase.completed." };
+        }
+      }
+    }), ctx);
+    await Promise.all(promises);
+
+    expect(aiCalls).toHaveLength(1);
+    expect(diagnosticRuns).toHaveLength(1);
+    expect(diagnosticRuns[0]).toMatchObject({
+      siteId: "site_shared",
+      status: "completed",
+      findingCount: 1,
+      aiSummary: "Checkout started but no purchase event arrived. Ask an agent to wire purchase.completed."
+    });
+    expect(diagnosticRuns[0].findings[0]).toMatchObject({
+      ruleId: "checkout-without-purchase",
+      severity: "critical"
+    });
+  });
+
+  it("stores diagnostics without calling AI when there are no findings", async () => {
+    const { ctx, promises } = createExecutionContext();
+    const { diagnosticEvents, diagnosticRuns, store } = createMemoryStore();
+    const aiCalls: unknown[] = [];
+    const handler = createWorkerHandler({ store });
+    diagnosticEvents.push(
+      {
+        id: "evt_page",
+        siteId: "site_shared",
+        name: "page.view",
+        occurredAt: "2026-06-19T12:00:00.000Z",
+        sessionId: "sess_purchase",
+        userId: "user_123",
+        properties: {},
+        url: "https://shop.example.com",
+        title: "Shop"
+      },
+      {
+        id: "evt_purchase",
+        siteId: "site_shared",
+        name: "purchase.completed",
+        occurredAt: "2026-06-19T12:03:00.000Z",
+        sessionId: "sess_purchase",
+        userId: "user_123",
+        properties: { order_id: "ord_123", value: 84, currency: "USD" },
+        url: "https://shop.example.com/thanks",
+        title: "Thanks"
+      },
+      {
+        id: "evt_meta",
+        siteId: "site_shared",
+        name: "meta.pixel.fire",
+        occurredAt: "2026-06-19T12:03:01.000Z",
+        sessionId: "sess_purchase",
+        userId: "user_123",
+        properties: { event_name: "Purchase" },
+        url: "https://shop.example.com/thanks",
+        title: "Thanks"
+      }
+    );
+
+    await handler.scheduled(createScheduledController(), createEnv({
+      AI: {
+        async run(model, input) {
+          aiCalls.push({ model, input });
+          return { response: "Should not be called" };
+        }
+      }
+    }), ctx);
+    await Promise.all(promises);
+
+    expect(aiCalls).toHaveLength(0);
+    expect(diagnosticRuns).toHaveLength(1);
+    expect(diagnosticRuns[0]).toMatchObject({
+      siteId: "site_shared",
+      status: "completed",
+      findingCount: 0,
+      aiSummary: null,
+      findings: []
+    });
   });
 });

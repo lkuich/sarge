@@ -9,6 +9,7 @@ Sarge is a lightweight event pixel and ingestion API for debugging media and pro
 | `apps/api/` | TypeScript Express API for v2 event ingestion |
 | `packages/pixel/` | TypeScript browser pixel bundled with `tsup` |
 | `apps/api/prisma/` | Prisma schema and migrations |
+| `.agents/skills/` | Agent skills for installing and operating Sarge |
 | `docs/` | Audit, API, pixel, and product strategy docs |
 
 ## Quick Start
@@ -109,6 +110,7 @@ Sarge has three planned distribution paths:
 See:
 
 - `docs/INSTALLATION.md`
+- `docs/AI_FEATURES.md`
 - `docs/SELF_HOSTED.md`
 - `docs/HOSTED_SHARED_TECHNICAL_SPEC.md`
 - `docs/CLOUDFLARE_NEON_DEPLOYMENT.md`
@@ -116,6 +118,6 @@ See:
 
 ## Product Direction
 
-Sarge is being repositioned as a cheap, dead-simple event recorder for teams that need to debug tracking implementations. The future product direction includes real-time event streams, a third-party pixel watchdog, custom script deployment, and an LLM query layer over structured event data.
+Sarge is being repositioned as a cheap, dead-simple event recorder for teams that need to debug tracking implementations. The future product direction includes real-time event streams, a third-party pixel watchdog, custom script deployment, deterministic AI reviews, and an LLM query layer over structured event data.
 
 See `docs/STRATEGY.md`.

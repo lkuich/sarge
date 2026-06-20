@@ -13,7 +13,6 @@ export default function ThemeToggle() {
       className="inline-flex size-9 items-center justify-center rounded-md border text-muted-foreground transition hover:bg-accent hover:text-accent-foreground"
     >
       {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
-      <span className="sr-only">Toggle theme</span>
     </button>
   );
 }

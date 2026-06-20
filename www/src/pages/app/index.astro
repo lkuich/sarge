@@ -1,6 +1,6 @@
 ---
 import { env } from "cloudflare:workers";
-import { Activity, AlertTriangle, Boxes, Radio } from "lucide-react";
+import { AlertTriangle, Radio } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -11,7 +11,6 @@ const { userId } = Astro.locals.auth();
 if (!userId) return Astro.redirect("/sign-in");
 
 const account = await getViewerAccount(userId, env.DATABASE_URL);
-const activeProjects = account.projects.filter((project) => project.status === "active").length;
 const totalEvents = account.projects.reduce((sum, project) => sum + project.eventCount24h, 0);
 const failedEvents = account.projects.reduce((sum, project) => sum + project.failedEvents24h, 0);
 ---
@@ -24,17 +23,7 @@ const failedEvents = account.projects.reduce((sum, project) => sum + project.fai
   active="overview"
   breadcrumbs={[{ label: "Overview" }]}
 >
-  <section class="grid gap-4 md:grid-cols-3">
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium">Projects</CardTitle>
-        <Boxes className="size-4 text-muted-foreground" />
-      </CardHeader>
-      <CardContent>
-        <p class="text-3xl font-semibold">{activeProjects}/{account.projects.length}</p>
-        <p class="text-xs text-muted-foreground">active projects</p>
-      </CardContent>
-    </Card>
+  <section class="grid gap-4 md:grid-cols-2">
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium">Events</CardTitle>

@@ -798,55 +798,41 @@ git commit -m "feat(www): default to dark theme with init script, toggle, and ho
 
 ---
 
-## Task 7: Clerk dark baseTheme
+## Task 7: Clerk dark theme
 
 **Files:**
 - Modify: `www/astro.config.mjs`
-- Modify: `www/package.json` (add `@clerk/themes`)
+
+> **Revised during verification.** The original plan used `clerk({ appearance: { baseTheme: dark } })` with `@clerk/themes`. Visual verification found Clerk still rendered light: `@clerk/astro@3.4.6` ships clerk-js v6 (Core 3), but the only stable `@clerk/themes` (2.4.57) targets Core 2, so its `dark` baseTheme is silently ignored (and the object doesn't survive @clerk/astro's server→client prop serialization). Replaced with a serializable `appearance.variables` dark palette; `@clerk/themes` is not used.
 
 **Interfaces:**
-- Consumes: `dark` from `@clerk/themes`; the `clerk()` integration's `appearance` option.
+- Consumes: the `clerk()` integration's `appearance` option.
 - Produces: Clerk-rendered UI (sign-in/up pages, `UserButton`) renders dark.
 
-- [ ] **Step 1: Install `@clerk/themes`**
+- [ ] **Step 1: Configure the Clerk integration with dark `appearance.variables`**
 
-Run:
-```bash
-cd www && npm install @clerk/themes
-```
-Expected: installs succeed; `@clerk/themes` appears under `dependencies`.
-
-- [ ] **Step 2: Configure the Clerk integration**
-
-In `www/astro.config.mjs`, add the import and pass `appearance` to `clerk()`:
+In `www/astro.config.mjs`, define a serializable dark appearance (CSS colors matching the `.dark` palette) and pass it to `clerk()`. Do NOT import `@clerk/themes`. Core 3 variable keys: `colorBackground`, `colorForeground`, `colorPrimary`, `colorPrimaryForeground`, `colorInput`, `colorInputForeground`, `colorMuted`, `colorMutedForeground`, `colorBorder`, `colorRing`, `colorNeutral` (white, for correct dark-mode neutral derivation), `colorDanger`:
 ```js
-// @ts-check
-import { defineConfig } from 'astro/config';
-import cloudflare from '@astrojs/cloudflare';
-import clerk from '@clerk/astro';
-import { dark } from '@clerk/themes';
-import tailwindcss from '@tailwindcss/vite';
-import react from '@astrojs/react';
-
-// https://astro.build/config
-export default defineConfig({
-  integrations: [clerk({ appearance: { baseTheme: dark } }), react()],
-  vite: {
-    plugins: [tailwindcss()],
+const clerkDarkAppearance = {
+  variables: {
+    colorBackground: '#1b1a23',
+    colorForeground: '#f4f3f1',
+    colorPrimary: '#5571f0',
+    colorPrimaryForeground: '#fafafa',
+    colorInput: '#26252f',
+    colorInputForeground: '#f4f3f1',
+    colorMuted: '#26252f',
+    colorMutedForeground: '#a7a6b3',
+    colorBorder: 'rgba(255, 255, 255, 0.12)',
+    colorRing: '#5571f0',
+    colorNeutral: '#ffffff',
+    colorDanger: '#e5484d',
   },
-  adapter: cloudflare({
-    imageService: 'passthrough',
-  }),
-  session: {
-    driver: {
-      entrypoint: 'unstorage/drivers/null',
-    },
-  },
-  output: 'server',
-});
+};
+// integrations: [clerk({ appearance: clerkDarkAppearance }), react()]
 ```
 
-- [ ] **Step 3: Build**
+- [ ] **Step 2: Build**
 
 Run:
 ```bash
@@ -854,19 +840,15 @@ cd www && npm run build
 ```
 Expected: build succeeds.
 
-- [ ] **Step 4: Manual render check for Clerk**
+- [ ] **Step 3: Render check for Clerk (controller-handled)**
 
-Run:
-```bash
-cd www && npm run dev
-```
-Open `/sign-in` and `/sign-up` and confirm the Clerk forms render dark; signed in, open the `UserButton` dropdown and confirm it renders dark. Stop the dev server when done.
+Open `/sign-in` and `/sign-up`; confirm the Clerk forms render dark (dark card, light text, dark inputs, brand-blue primary button). Signed in, the `UserButton` dropdown uses the same global appearance.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add www/astro.config.mjs www/package.json www/package-lock.json
-git commit -m "feat(www): render Clerk widgets with the dark base theme"
+git commit -m "feat(www): render Clerk widgets dark via appearance variables"
 ```
 
 ---

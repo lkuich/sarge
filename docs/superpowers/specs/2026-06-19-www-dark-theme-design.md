@@ -175,14 +175,20 @@ Both `SiteLayout.astro` and `AppLayout.astro`:
 
 ## Clerk
 
-Configure `clerk()` in `astro.config.mjs` with `appearance: { baseTheme: dark }` from
-`@clerk/themes` (add the dependency). This makes the sign-in/up pages and `UserButton`
-dropdown render dark to match the default.
+Configure `clerk()` in `astro.config.mjs` with a dark `appearance.variables` object
+(serializable CSS-color values matching the `.dark` palette: `colorBackground`,
+`colorForeground`, `colorPrimary`, `colorInput`, `colorInputForeground`, `colorMuted`,
+`colorMutedForeground`, `colorBorder`, `colorRing`, `colorNeutral`, `colorDanger`). This
+makes the sign-in/up pages and `UserButton` dropdown render dark to match the default.
+
+**Why not `baseTheme: dark`?** (Discovered during verification.) `@clerk/astro@3.4.6`
+ships clerk-js v6 (Core 3), but the only stable `@clerk/themes` (2.4.57) targets Core 2, so
+its `dark` baseTheme object is silently ignored at runtime (and the object also doesn't
+survive @clerk/astro's server→client prop boundary). The serializable `variables` approach
+is version-stable and needs no `@clerk/themes` dependency.
 
 **Trade-off (accepted for v1):** Clerk appearance is set server-side, so Clerk's own
-widgets stay dark even if a user toggles to light. Everything else re-themes live. If the
-integration option does not accept `appearance`, fall back to passing an `appearance` prop
-to each Clerk component.
+widgets stay dark even if a user toggles to light. Everything else re-themes live.
 
 ## Testing
 
@@ -206,6 +212,6 @@ to each Clerk component.
 - `www/src/layouts/SiteLayout.astro` (edit — dark default, init script, toggle, optional `shader` prop)
 - `www/src/layouts/AppLayout.astro` (edit — dark default, init script, toggle)
 - `www/src/pages/index.astro` (edit — opt into the shader via `<SiteLayout shader>`)
-- `www/astro.config.mjs` (edit — Clerk dark baseTheme)
-- `www/package.json` (add `@clerk/themes`, Vitest dev deps)
+- `www/astro.config.mjs` (edit — Clerk dark `appearance.variables`)
+- `www/package.json` (add Vitest dev deps)
 - `www/src/lib/theme.test.ts` (new)

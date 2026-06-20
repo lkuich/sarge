@@ -1,5 +1,5 @@
 ---
-import { Show, SignInButton, SignUpButton, UserButton } from "@clerk/astro/components";
+import { Show, UserButton } from "@clerk/astro/components";
 import ThemeToggle from "@/components/ThemeToggle";
 import ShaderEffect from "@/components/shaderBackground";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
@@ -43,8 +43,12 @@ const { title = "Sarge", shader = false } = Astro.props;
         </a>
         <Show when="signed-out">
           <div class="flex items-center gap-2">
-            <SignInButton mode="modal" />
-            <SignUpButton mode="modal" />
+            <a class="rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground" href="/sign-in">
+              Sign in
+            </a>
+            <a class="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/80" href="/sign-up">
+              Sign up
+            </a>
           </div>
         </Show>
         <Show when="signed-in">

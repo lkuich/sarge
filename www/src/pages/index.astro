@@ -1,9 +1,11 @@
 ---
-import { Show, SignInButton, SignUpButton } from "@clerk/astro/components";
+import { Show } from "@clerk/astro/components";
 import {
   ArrowRight,
   Bot,
   Bell,
+  BookOpen,
+  CheckCircle2,
   CircleX,
   Cloud,
   Code2,
@@ -95,6 +97,41 @@ const useCases = [
   },
 ];
 
+const plans = [
+  {
+    name: "Free",
+    price: "$0",
+    description: "The pixel, the watchdog, and on-demand diagnostics for a single site.",
+    icon: Zap,
+    cta: "Sign up free",
+    href: "/sign-up",
+    variant: "outline" as const,
+    features: ["One tracked site", "Hosted pixel snippet", "Debug stream", "Meta, Google, and dataLayer watchdog"],
+  },
+  {
+    name: "Hosted",
+    price: "$20",
+    pricePrefix: "from ",
+    priceSuffix: " /mo",
+    description: "We host everything: your pixel, endpoint, and scheduled diagnostics. Drop in the snippet and go.",
+    icon: Cloud,
+    cta: "Sign up",
+    href: "/sign-up",
+    variant: "default" as const,
+    features: ["Shared Cloudflare endpoint", "Scheduled AI reviews", "Neon-backed findings", "Agent-ready fix prompts"],
+  },
+  {
+    name: "Self-hosted",
+    price: "BYO",
+    description: "Host the scripts, run the API and database yourself when you need the debug loop inside your own infrastructure.",
+    icon: TerminalSquare,
+    cta: "Read how",
+    href: "/docs/self-hosting",
+    variant: "outline" as const,
+    features: ["Run your own Postgres", "Deploy on Cloudflare, Fly.io, or Vercel", "Keep data in your account", "Use the same event model"],
+  },
+];
+
 ---
 
 <SiteLayout title="Sarge | Agent-ready tracking diagnostics" shader>
@@ -110,14 +147,14 @@ const useCases = [
 
       <div class="mt-8 flex flex-wrap gap-3">
         <Show when="signed-out">
-          <SignUpButton mode="modal">
+          <a href="/sign-up">
             <Button size="lg">
               Create account <ArrowRight className="ml-1 size-4" />
             </Button>
-          </SignUpButton>
-          <SignInButton mode="modal">
+          </a>
+          <a href="/sign-in">
             <Button size="lg" variant="outline">Sign in</Button>
-          </SignInButton>
+          </a>
         </Show>
         <Show when="signed-in">
           <a href="/app">
@@ -126,6 +163,11 @@ const useCases = [
             </Button>
           </a>
         </Show>
+        <a href="/docs">
+          <Button size="lg" variant="outline">
+            Read docs <BookOpen className="ml-1 size-4" />
+          </Button>
+        </a>
       </div>
     </div>
 
@@ -178,6 +220,14 @@ const useCases = [
       <p class="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
         Install the skill so your agent knows which events to wire, then add the MCP so it can read your live stream and findings. Pick your tool:
       </p>
+      <div class="mt-4 flex flex-wrap gap-3 text-sm">
+        <a class="inline-flex items-center font-medium text-primary hover:underline" href="/docs/events">
+          Event reference <ArrowRight className="ml-1 size-3.5" />
+        </a>
+        <a class="inline-flex items-center font-medium text-primary hover:underline" href="/docs/self-hosting">
+          Self-hosting docs <ArrowRight className="ml-1 size-3.5" />
+        </a>
+      </div>
       <div class="mt-6 min-h-54">
         <InstallPanel client:only="react" />
       </div>
@@ -216,45 +266,35 @@ const useCases = [
       </div>
 
       <div class="mt-8 grid gap-3 md:grid-cols-3">
-        <article class="flex flex-col rounded-lg border bg-card p-5">
-          <Zap className="size-5 text-primary" />
-          <h3 class="mt-5 font-semibold">Free</h3>
-          <p class="mt-1 text-2xl font-semibold">$0</p>
-          <p class="mt-3 text-sm leading-6 text-muted-foreground">
-            The pixel, the watchdog, and on-demand diagnostics for a single site.
-          </p>
-          <div class="mt-auto pt-5">
-            <SignUpButton mode="modal">
-              <Button variant="outline" className="w-full">Sign up free</Button>
-            </SignUpButton>
-          </div>
-        </article>
-        <article class="flex flex-col rounded-lg border bg-card p-5">
-          <Cloud className="size-5 text-primary" />
-          <h3 class="mt-5 font-semibold">Hosted</h3>
-          <p class="mt-1 text-2xl font-semibold"><span class="text-sm font-normal text-muted-foreground">from </span>$20<span class="text-sm font-normal text-muted-foreground"> /mo</span></p>
-          <p class="mt-3 text-sm leading-6 text-muted-foreground">
-            We host everything: your pixel, endpoint, and scheduled diagnostics. Drop in the snippet and go.
-          </p>
-          <div class="mt-auto pt-5">
-            <SignUpButton mode="modal">
-              <Button className="w-full">Sign up</Button>
-            </SignUpButton>
-          </div>
-        </article>
-        <article class="flex flex-col rounded-lg border bg-card p-5">
-          <TerminalSquare className="size-5 text-primary" />
-          <h3 class="mt-5 font-semibold">Self-hosted</h3>
-          <p class="mt-1 text-2xl font-semibold">BYO</p>
-          <p class="mt-3 text-sm leading-6 text-muted-foreground">
-            Host the scripts, run the API and database yourself when you need the debug loop inside your own infrastructure.
-          </p>
-          <div class="mt-auto pt-5">
-            <a href="/docs/self-hosting">
-              <Button variant="outline" className="w-full">Read how <ArrowRight className="ml-1 size-3.5" /></Button>
-            </a>
-          </div>
-        </article>
+        {
+          plans.map(({ name, price, pricePrefix, priceSuffix, description, icon: Icon, cta, href, variant, features }) => (
+            <article class="flex flex-col rounded-lg border bg-card p-5">
+              <Icon className="size-5 text-primary" />
+              <h3 class="mt-5 font-semibold">{name}</h3>
+              <p class="mt-1 text-2xl font-semibold">
+                {pricePrefix && <span class="text-sm font-normal text-muted-foreground">{pricePrefix}</span>}
+                {price}
+                {priceSuffix && <span class="text-sm font-normal text-muted-foreground">{priceSuffix}</span>}
+              </p>
+              <p class="mt-3 text-sm leading-6 text-muted-foreground">{description}</p>
+              <ul class="mt-5 space-y-2 text-sm text-muted-foreground">
+                {features.map((feature) => (
+                  <li class="flex gap-2">
+                    <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
+                    <span>{feature}</span>
+                  </li>
+                ))}
+              </ul>
+              <div class="mt-auto pt-5">
+                <a href={href}>
+                  <Button variant={variant} className="w-full">
+                    {cta} <ArrowRight className="ml-1 size-3.5" />
+                  </Button>
+                </a>
+              </div>
+            </article>
+          ))
+        }
       </div>
     </div>
   </section>
@@ -283,14 +323,10 @@ const useCases = [
         <ul class="mt-3 space-y-2 text-sm text-muted-foreground">
           <Show when="signed-out">
             <li>
-              <SignInButton mode="modal">
-                <button class="transition hover:text-foreground">Sign in</button>
-              </SignInButton>
+              <a class="transition hover:text-foreground" href="/sign-in">Sign in</a>
             </li>
             <li>
-              <SignUpButton mode="modal">
-                <button class="transition hover:text-foreground">Create account</button>
-              </SignUpButton>
+              <a class="transition hover:text-foreground" href="/sign-up">Create account</a>
             </li>
           </Show>
           <Show when="signed-in">

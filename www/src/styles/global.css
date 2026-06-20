@@ -83,6 +83,13 @@
     background: transparent;
   }
 
+  /* The Astro hydration wrapper is height:auto by default, which breaks the
+     shader canvas's height:100% chain. Collapse it so the canvas can fill the
+     fixed full-height layer. */
+  .shader-layer astro-island {
+    display: contents;
+  }
+
   a {
     color: inherit;
     text-decoration: none;

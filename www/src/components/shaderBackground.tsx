@@ -4,6 +4,8 @@ import {
   Plasma,
   SineWave,
   SolidColor,
+  Dither,
+  WaveDistortion,
 } from "shaders/react";
 import { SHADER_PALETTES } from "@/lib/theme";
 import { useTheme } from "@/hooks/useTheme";
@@ -13,7 +15,58 @@ export default function ShaderEffect() {
   const palette = SHADER_PALETTES[theme];
 
   return (
-    <Shader>
+    <Shader style={{ width: "100%", height: "100%" }}>
+      <Dither
+
+        colorA="#210388"
+
+        colorB="#c24da7"
+
+        pattern="bayer8"
+
+        pixelSize={7}
+
+        threshold={0.41}>
+
+        <Plasma
+
+          colorA="#ffffff"
+
+          contrast={0.9}
+
+          density={0.3}
+
+          intensity={1.3}
+
+          speed={1} />
+
+        <WaveDistortion
+
+          angle={138}
+
+          edges="mirror"
+
+          frequency={1.8}
+
+          strength={1}
+
+          visible={true}
+
+          waveType="square" />
+
+      </Dither>
+
+
+    </Shader>
+  );
+}
+
+export function ShaderEffect2() {
+  const { theme } = useTheme();
+  const palette = SHADER_PALETTES[theme];
+
+  return (
+    <Shader style={{ width: "100%", height: "100%" }}>
       <SolidColor color={palette.base} />
       <Pixelate
         gap={{

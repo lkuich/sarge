@@ -160,9 +160,13 @@ Both `SiteLayout.astro` and `AppLayout.astro`:
 
 ## Shader background
 
-- Render as a **fixed, full-bleed layer behind content on `SiteLayout` only** (landing +
-  sign-in/up). The app dashboard keeps its subtle grid background for readability.
-  (Decision: SiteLayout-only, confirmed.)
+- Render as a **fixed, full-bleed layer behind content on the homepage only**
+  (`index.astro`). `SiteLayout` takes a `shader?: boolean` prop (default false); when true
+  it renders the shader and applies `.site-shell` (transparent body). Only `index.astro`
+  passes the prop. The auth pages (`sign-in.astro`, `sign-up.astro`) also use `SiteLayout`
+  but omit the prop, so they keep the normal grid background. The app dashboard
+  (`AppLayout`) likewise keeps the grid background.
+  (Decision: homepage-only, confirmed by user during execution.)
 - Palettes:
   - `dark`: `{ base: "#09060f", colorA: "#0073b5", colorB: "#1f0761" }` (keep the look the
     user authored).
@@ -199,8 +203,9 @@ to each Clerk component.
 - `www/src/components/ThemeToggle.tsx` (new)
 - `www/src/components/shaderBackground.tsx` (edit — theme-aware + placement)
 - `www/src/styles/global.css` (edit — rewire tokens + branded light/dark palettes)
-- `www/src/layouts/SiteLayout.astro` (edit — dark default, init script, toggle, shader)
+- `www/src/layouts/SiteLayout.astro` (edit — dark default, init script, toggle, optional `shader` prop)
 - `www/src/layouts/AppLayout.astro` (edit — dark default, init script, toggle)
+- `www/src/pages/index.astro` (edit — opt into the shader via `<SiteLayout shader>`)
 - `www/astro.config.mjs` (edit — Clerk dark baseTheme)
 - `www/package.json` (add `@clerk/themes`, Vitest dev deps)
 - `www/src/lib/theme.test.ts` (new)

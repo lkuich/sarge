@@ -627,19 +627,20 @@ git commit -m "feat(www): drive shader palette from active theme"
 
 ---
 
-## Task 6: Wire layouts — dark default, init script, toggle, shader
+## Task 6: Wire layouts — dark default, init script, toggle; homepage shader
 
 **Files:**
 - Modify: `www/src/layouts/SiteLayout.astro`
 - Modify: `www/src/layouts/AppLayout.astro`
+- Modify: `www/src/pages/index.astro`
 
 **Interfaces:**
 - Consumes: `THEME_INIT_SCRIPT` from `@/lib/theme`; `ThemeToggle` from `@/components/ThemeToggle`; `ShaderEffect` from `@/components/shaderBackground`; the `.dark` palette and `.site-shell` rule from Task 2.
-- Produces: both layouts render dark by default with a live toggle; SiteLayout shows the shader background.
+- Produces: both layouts render dark by default with a live toggle. `SiteLayout` accepts a `shader?: boolean` prop; when true it renders the shader background and makes the body transparent. Only the **homepage** (`index.astro`) opts in — the auth pages (`sign-in.astro`, `sign-up.astro`) also use `SiteLayout` but do NOT pass the prop, so they keep the normal grid background.
 
-This task's deliverable is the visible dark theme — verified by a manual render (Steps below) plus build.
+This task's deliverable is the visible dark theme — verified by a manual render (controller-handled) plus build.
 
-- [ ] **Step 1: Update `SiteLayout.astro` frontmatter imports**
+- [ ] **Step 1: Update `SiteLayout.astro` frontmatter imports and add the `shader` prop**
 
 In `www/src/layouts/SiteLayout.astro`, change the import block at the top so it reads:
 ```astro
@@ -652,9 +653,10 @@ import "../styles/global.css";
 
 interface Props {
   title?: string;
+  shader?: boolean;
 }
 
-const { title = "Sarge" } = Astro.props;
+const { title = "Sarge", shader = false } = Astro.props;
 ---
 ```
 
@@ -674,14 +676,16 @@ In `SiteLayout.astro`, change `<html lang="en">` to `<html lang="en" class="dark
   </head>
 ```
 
-- [ ] **Step 3: Add the shell class + shader background + toggle to `SiteLayout` body**
+- [ ] **Step 3: Conditionally render the shell class + shader, and add the toggle to the nav**
 
-In `SiteLayout.astro`, change `<body>` to `<body class="site-shell">`, add the shader layer as the first child of `<body>`, and add `<ThemeToggle />` to the nav. The body should read:
+In `SiteLayout.astro`, gate the `site-shell` body class and the shader layer on the `shader` prop (so only the homepage gets them), and add `<ThemeToggle />` to the nav unconditionally (the toggle should appear on every SiteLayout page). The body should read:
 ```astro
-  <body class="site-shell">
-    <div class="pointer-events-none fixed inset-0 -z-10 overflow-hidden" aria-hidden="true">
-      <ShaderEffect client:load />
-    </div>
+  <body class:list={[{ "site-shell": shader }]}>
+    {shader && (
+      <div class="pointer-events-none fixed inset-0 -z-10 overflow-hidden" aria-hidden="true">
+        <ShaderEffect client:load />
+      </div>
+    )}
 
     <header class="mx-auto flex min-h-16 w-full max-w-6xl items-center justify-between gap-4 px-4 py-3 md:px-6">
       <a class="flex items-center gap-3 font-semibold tracking-tight" href="/" aria-label="Sarge home">
@@ -714,7 +718,19 @@ In `SiteLayout.astro`, change `<body>` to `<body class="site-shell">`, add the s
   </body>
 ```
 
-- [ ] **Step 4: Update `AppLayout.astro` frontmatter imports**
+- [ ] **Step 4: Opt the homepage into the shader**
+
+In `www/src/pages/index.astro`, change the opening layout tag to pass the `shader` prop. Change:
+```astro
+<SiteLayout title="Sarge">
+```
+to:
+```astro
+<SiteLayout title="Sarge" shader>
+```
+(Leave `sign-in.astro` and `sign-up.astro` unchanged — they keep using `<SiteLayout>` with no `shader` prop, so no shader and the normal grid background.)
+
+- [ ] **Step 5: Update `AppLayout.astro` frontmatter imports**
 
 In `www/src/layouts/AppLayout.astro`, add to the existing import block (keep the existing imports), so the top includes:
 ```astro
@@ -726,7 +742,7 @@ import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import "../styles/global.css";
 ```
 
-- [ ] **Step 5: Set the dark default + init script on `AppLayout`**
+- [ ] **Step 6: Set the dark default + init script on `AppLayout`**
 
 In `AppLayout.astro`, change `<html lang="en">` to `<html lang="en" class="dark">` and add the init script as the first child of `<head>`:
 ```astro
@@ -742,7 +758,7 @@ In `AppLayout.astro`, change `<html lang="en">` to `<html lang="en" class="dark"
   </head>
 ```
 
-- [ ] **Step 6: Add the toggle to the `AppLayout` header**
+- [ ] **Step 7: Add the toggle to the `AppLayout` header**
 
 In `AppLayout.astro`, in the header's right-side `<div class="flex items-center gap-3">`, add `<ThemeToggle />` before `<UserButton />`:
 ```astro
@@ -755,7 +771,7 @@ In `AppLayout.astro`, in the header's right-side `<div class="flex items-center 
             </div>
 ```
 
-- [ ] **Step 7: Build**
+- [ ] **Step 8: Build**
 
 Run:
 ```bash
@@ -763,25 +779,21 @@ cd www && npm run build
 ```
 Expected: build succeeds.
 
-- [ ] **Step 8: Manual render check**
+- [ ] **Step 9: Manual render check (controller-handled)**
 
-Run:
-```bash
-cd www && npm run dev
-```
-Then open the app and verify:
+The interactive visual verification is done by the controller (not this implementer), via a dev server / browser. The intended outcome to confirm later:
 - The landing page (`/`) loads **dark** with no light flash, and the shader background is visible behind the content.
-- Clicking the toggle flips light/dark; the shader palette changes with it.
-- Reload after switching to light → it stays light (persisted). Switch back to dark.
+- The toggle flips light/dark; the shader palette changes with it; the choice persists across reload.
+- The auth pages (`/sign-in`, `/sign-up`) load dark with the **grid** background and **no shader**.
 - A dashboard route (e.g. `/app`) loads dark with the grid background (no shader) and the toggle works there too.
 
-Stop the dev server when done (Ctrl+C).
+The implementer should run `npm run build` (Step 8) and stop there; do not start a dev server.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
-git add www/src/layouts/SiteLayout.astro www/src/layouts/AppLayout.astro
-git commit -m "feat(www): default to dark theme with init script, toggle, and shader background"
+git add www/src/layouts/SiteLayout.astro www/src/layouts/AppLayout.astro www/src/pages/index.astro
+git commit -m "feat(www): default to dark theme with init script, toggle, and homepage shader"
 ```
 
 ---

@@ -39,6 +39,10 @@ const formatEventTime = (value: string) =>
   heading={project.name}
   description="Inspect endpoint health, copy install snippets, and watch for media/debug events."
   active="projects"
+  breadcrumbs={[
+    { label: "Projects", href: "/app/projects" },
+    { label: project.name },
+  ]}
 >
   <section class="grid gap-4 lg:grid-cols-[1fr_340px]">
     <div class="grid gap-4">

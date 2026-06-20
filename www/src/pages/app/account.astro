@@ -18,6 +18,7 @@ const account = await getViewerAccount(userId, env.DATABASE_URL);
   heading="Account settings"
   description="Account-level users, roles, and project ownership live here."
   active="account"
+  breadcrumbs={[{ label: "Account" }]}
 >
   <Card>
     <CardHeader>

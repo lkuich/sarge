@@ -19,6 +19,7 @@ const account = await getViewerAccount(userId, env.DATABASE_URL);
   heading="Projects"
   description="Each project gets its own install details, endpoint host, event stream, and debugging surface."
   active="projects"
+  breadcrumbs={[{ label: "Projects" }]}
 >
   <div class="mb-4 flex items-center justify-between gap-3">
     <p class="text-sm text-muted-foreground">{account.projects.length} projects under {account.name}</p>

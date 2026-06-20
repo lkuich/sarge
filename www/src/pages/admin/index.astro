@@ -1,9 +1,10 @@
 ---
 import { env } from "cloudflare:workers";
-import { AlertCircle, Database, ServerCog } from "lucide-react";
+import { AlertCircle, CheckCircle2, ClipboardList, Database, ServerCog } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import AppLayout from "@/layouts/AppLayout.astro";
 import { canAdministerAccount, getViewerAccount } from "@/lib/sarge-demo";
 
@@ -12,6 +13,104 @@ if (!userId) return Astro.redirect("/sign-in");
 
 const account = await getViewerAccount(userId, env.DATABASE_URL);
 if (!canAdministerAccount(account)) return Astro.redirect("/app");
+
+const currentCapabilities = [
+  "Clerk sign-in and protected dashboard routes",
+  "Live project/event reads from Neon for the demo workspace",
+  "Hosted pixel endpoint and Cloudflare Worker deployment",
+  "Sample ecommerce site producing real debug and purchase events",
+];
+
+const missingCapabilities = [
+  {
+    area: "Project provisioning",
+    priority: "P0",
+    status: "Missing",
+    gap: "The New project button has no create flow, endpoint allocation, DNS setup, or pixel config screen.",
+    next: "Build a project creation flow that writes Site rows and provisions/validates endpoint hosts.",
+  },
+  {
+    area: "Account membership",
+    priority: "P0",
+    status: "Stubbed",
+    gap: "Members and roles are static; Clerk users are not mapped to workspaces or permissions in Neon.",
+    next: "Add workspace membership tables, admin/user role checks, and invite management.",
+  },
+  {
+    area: "Event explorer",
+    priority: "P0",
+    status: "Partial",
+    gap: "Project detail shows recent events only; there is no search, filtering, payload drill-in, or session timeline.",
+    next: "Add an event list with event detail drawers, date filters, event-name filters, and session/user grouping.",
+  },
+  {
+    area: "Pixel diagnostics",
+    priority: "P1",
+    status: "Partial",
+    gap: "The watchlist copy describes future checks, but no automated checks exist for missing purchases or duplicate media pixels.",
+    next: "Store diagnostic findings and run rules against incoming event streams.",
+  },
+  {
+    area: "Script customization",
+    priority: "P1",
+    status: "Missing",
+    gap: "Projects cannot configure pixel behavior, custom event aliases, consent mode, or script versions from the portal.",
+    next: "Add project-level script settings and expose generated install snippets per environment.",
+  },
+  {
+    area: "Environment management",
+    priority: "P1",
+    status: "Missing",
+    gap: "Production and staging are display labels only; there is no environment model, token separation, or endpoint lifecycle.",
+    next: "Model environments under projects and scope events, endpoint hosts, and script config to each environment.",
+  },
+  {
+    area: "Operational health",
+    priority: "P1",
+    status: "Missing",
+    gap: "The admin surface does not show ingestion errors, route health, database migration state, or Worker secret checks.",
+    next: "Add health probes for Cloudflare route, pixel endpoint, Neon connectivity, and recent ingest failures.",
+  },
+  {
+    area: "Billing and plan controls",
+    priority: "P2",
+    status: "Missing",
+    gap: "Plans are labels only; there is no Stripe/billing state, usage caps, retention policy, or overage handling.",
+    next: "Add usage rollups and billing states after project/member workflows are real.",
+  },
+  {
+    area: "Audit logs",
+    priority: "P2",
+    status: "Missing",
+    gap: "Admin actions are not recorded, so provisioning, role changes, and script edits cannot be reviewed later.",
+    next: "Add append-only account audit events for all admin mutations.",
+  },
+];
+
+const buildOrder = [
+  {
+    title: "Provision real projects",
+    detail: "Make account admins create projects, allocate endpoint hosts, and copy the correct install snippet.",
+  },
+  {
+    title: "Persist memberships",
+    detail: "Replace static role/member data with workspace-scoped users, invites, and permission checks.",
+  },
+  {
+    title: "Upgrade event inspection",
+    detail: "Turn the debug stream into a searchable event explorer with payload and session detail.",
+  },
+  {
+    title: "Add health checks",
+    detail: "Show whether endpoint DNS, Worker route, Neon, and script delivery are healthy for each project.",
+  },
+];
+
+const statusVariant = (status: string) => {
+  if (status === "Missing") return "destructive";
+  if (status === "Partial" || status === "Stubbed") return "secondary";
+  return "outline";
+};
 ---
 
 <AppLayout
@@ -20,12 +119,13 @@ if (!canAdministerAccount(account)) return Astro.redirect("/app");
   heading="Admin console"
   description="Provision projects, inspect infrastructure state, and prepare account-level controls."
   active="admin"
+  breadcrumbs={[{ label: "Admin" }]}
 >
   <Alert className="mb-4">
     <AlertCircle className="size-4" />
-    <AlertTitle>Scaffold mode</AlertTitle>
+    <AlertTitle>Admin audit</AlertTitle>
     <AlertDescription>
-      Admin access is currently resolved from `SARGE_ADMIN_USER_IDS`. When unset, signed-in users are treated as admins for local setup.
+      This screen now tracks the gap between the current demo portal and the admin functionality needed for a usable hosted product.
     </AlertDescription>
   </Alert>
 
@@ -65,5 +165,77 @@ if (!canAdministerAccount(account)) return Astro.redirect("/app");
         </div>
       </CardContent>
     </Card>
+  </section>
+
+  <section class="mt-4 grid gap-4 lg:grid-cols-[1fr_360px]">
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><ClipboardList className="size-4" /> Missing functionality</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Area</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Gap</TableHead>
+              <TableHead>Next step</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {
+              missingCapabilities.map((item) => (
+                <TableRow>
+                  <TableCell className="min-w-36 whitespace-normal">
+                    <p class="font-medium">{item.area}</p>
+                    <p class="mt-1 text-xs text-muted-foreground">{item.priority}</p>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={statusVariant(item.status)}>{item.status}</Badge>
+                  </TableCell>
+                  <TableCell className="min-w-72 whitespace-normal text-muted-foreground">{item.gap}</TableCell>
+                  <TableCell className="min-w-72 whitespace-normal">{item.next}</TableCell>
+                </TableRow>
+              ))
+            }
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+
+    <aside class="grid content-start gap-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><CheckCircle2 className="size-4" /> Working now</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 text-sm">
+          {
+            currentCapabilities.map((capability) => (
+              <div class="flex gap-2 rounded-md border p-3">
+                <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
+                <span>{capability}</span>
+              </div>
+            ))
+          }
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Recommended build order</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3">
+          {
+            buildOrder.map((item, index) => (
+              <div class="rounded-md border p-3">
+                <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Step {index + 1}</p>
+                <p class="mt-1 font-medium">{item.title}</p>
+                <p class="mt-1 text-sm leading-6 text-muted-foreground">{item.detail}</p>
+              </div>
+            ))
+          }
+        </CardContent>
+      </Card>
+    </aside>
   </section>
 </AppLayout>

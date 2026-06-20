@@ -22,6 +22,7 @@ const failedEvents = account.projects.reduce((sum, project) => sum + project.fai
   heading="Account overview"
   description="Projects are grouped under your account. Admins manage access and provisioning; users inspect assigned projects and event flow."
   active="overview"
+  breadcrumbs={[{ label: "Overview" }]}
 >
   <section class="grid gap-4 md:grid-cols-3">
     <Card>

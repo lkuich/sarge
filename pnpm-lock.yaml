@@ -58,6 +58,18 @@ importers:
         specifier: ^4.20.3
         version: 4.22.4
 
+  apps/demo-shop:
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^4.20260617.1
+        version: 4.20260619.1
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      wrangler:
+        specifier: ^4.103.0
+        version: 4.103.0(@cloudflare/workers-types@4.20260619.1)
+
   apps/worker:
     dependencies:
       '@neondatabase/serverless':

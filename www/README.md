@@ -1,43 +1,64 @@
-# Astro Starter Kit: Minimal
+# Sarge WWW
 
-```sh
-pnpm create astro@latest -- --template minimal
-```
+Astro application for the Sarge web dashboard and public app shell. It uses Clerk for auth, shadcn/ui for interface components, and deploys to Cloudflare Workers through the Astro Cloudflare adapter.
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
-
-## 🚀 Project Structure
-
-Inside of your Astro project, you'll see the following folders and files:
+Production URL:
 
 ```text
-/
-├── public/
-├── src/
-│   └── pages/
-│       └── index.astro
-└── package.json
+https://app.lkuich.com
 ```
 
-Astro looks for `.astro` or `.md` files in the `src/pages/` directory. Each page is exposed as a route based on its file name.
+## Local Development
 
-There's nothing special about `src/components/`, but that's where we like to put any Astro/React/Vue/Svelte/Preact components.
+Install dependencies:
 
-Any static assets, like images, can be placed in the `public/` directory.
+```sh
+npm install
+```
 
-## 🧞 Commands
+Create `www/.env`:
 
-All commands are run from the root of the project, from a terminal:
+```sh
+PUBLIC_CLERK_PUBLISHABLE_KEY=...
+CLERK_SECRET_KEY=...
+PUBLIC_CLERK_SIGN_IN_URL=/sign-in
+PUBLIC_CLERK_SIGN_UP_URL=/sign-up
+DATABASE_URL=...
+```
 
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `pnpm install`             | Installs dependencies                            |
-| `pnpm dev`             | Starts local dev server at `localhost:4321`      |
-| `pnpm build`           | Build your production site to `./dist/`          |
-| `pnpm preview`         | Preview your build locally, before deploying     |
-| `pnpm astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `pnpm astro -- --help` | Get help using the Astro CLI                     |
+Run the app:
 
-## 👀 Want to learn more?
+```sh
+npm run dev
+```
 
-Feel free to check [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
+## Cloudflare Deployment
+
+The app is configured in `wrangler.jsonc` as the `sarge-www` Worker and is routed through Cloudflare DNS at `app.lkuich.com/*`.
+
+Required GitHub Actions secrets:
+
+```sh
+CLOUDFLARE_API_TOKEN
+CLOUDFLARE_ACCOUNT_ID
+PUBLIC_CLERK_PUBLISHABLE_KEY
+CLERK_SECRET_KEY
+NEON_DATABASE_URL
+```
+
+The Cloudflare token needs access to the `lkuich.com` zone and permission to deploy Workers, edit Worker routes, and edit DNS records. `NEON_DATABASE_URL` is installed on the Cloudflare Worker as the runtime `DATABASE_URL` secret so the portal can read live project and event data.
+
+Manual deploy:
+
+```sh
+npm run deploy
+```
+
+After the first deploy, set the Clerk secret on the remote Worker:
+
+```sh
+printf '%s' "$CLERK_SECRET_KEY" | npx wrangler secret put CLERK_SECRET_KEY
+printf '%s' "$NEON_DATABASE_URL" | npx wrangler secret put DATABASE_URL
+```
+
+GitHub Actions deploys from `.github/workflows/cloudflare-www.yml` on pushes that touch `www/**` or the workflow file.

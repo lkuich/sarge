@@ -89,12 +89,12 @@ export const createSargeClient = (browser: BrowserLike): SargeClient => {
               ref,
               aff,
               expiresAt
-            }
-          : undefined,
+          }
+        : undefined,
       context: {
-        url: browser.location.href,
-        referrer: browser.document.referrer,
-        title: browser.document.title
+        url: optionalString(browser.location.href),
+        referrer: optionalString(browser.document.referrer),
+        title: optionalString(browser.document.title)
       },
       properties
     };
@@ -157,6 +157,11 @@ const addDays = (date: Date, days: number) => {
 };
 
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/, "");
+
+const optionalString = (value: string | undefined) => {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+};
 
 const getGlobalConfig = (browser: BrowserLike): InitOptions | undefined =>
   "__SARGE_CONFIG__" in browser ? (browser.__SARGE_CONFIG__ as InitOptions | undefined) : undefined;

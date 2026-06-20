@@ -9,7 +9,7 @@ import { formatCount, getViewerAccount } from "@/lib/sarge-demo";
 const { userId } = Astro.locals.auth();
 if (!userId) return Astro.redirect("/sign-in");
 
-const account = getViewerAccount(userId);
+const account = await getViewerAccount(userId, Astro.locals.runtime?.env?.DATABASE_URL);
 const activeProjects = account.projects.filter((project) => project.status === "active").length;
 const totalEvents = account.projects.reduce((sum, project) => sum + project.eventCount24h, 0);
 const failedEvents = account.projects.reduce((sum, project) => sum + project.failedEvents24h, 0);

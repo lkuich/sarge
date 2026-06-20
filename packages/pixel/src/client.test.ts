@@ -119,6 +119,25 @@ describe("Sarge pixel", () => {
     });
   });
 
+  it("omits empty context fields from outgoing events", () => {
+    const { browser, sendBeacon } = createBrowser({
+      document: {
+        referrer: "",
+        title: ""
+      }
+    });
+    const client = createSargeClient(browser);
+
+    client.init({ siteId: "site_123", endpoint: "https://events.example.com" });
+    client.track("Page View");
+
+    const [, body] = sendBeacon.mock.calls[0];
+    const payload = JSON.parse(String(body));
+    expect(payload.context).toEqual({
+      url: "https://example.com/?sarge_ref=campaign-a&sarge_aff=affiliate-1"
+    });
+  });
+
   it("falls back to fetch when sendBeacon is unavailable", () => {
     const { browser, fetch } = createBrowser({
       navigator: {}

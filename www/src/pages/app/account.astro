@@ -8,7 +8,7 @@ import { getViewerAccount } from "@/lib/sarge-demo";
 const { userId } = Astro.locals.auth();
 if (!userId) return Astro.redirect("/sign-in");
 
-const account = getViewerAccount(userId);
+const account = await getViewerAccount(userId, Astro.locals.runtime?.env?.DATABASE_URL);
 ---
 
 <AppLayout

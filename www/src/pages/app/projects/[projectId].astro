@@ -12,7 +12,7 @@ export const prerender = false;
 const { userId } = Astro.locals.auth();
 if (!userId) return Astro.redirect("/sign-in");
 
-const account = getViewerAccount(userId);
+const account = await getViewerAccount(userId, Astro.locals.runtime?.env?.DATABASE_URL);
 const project = getProject(account, Astro.params.projectId ?? "");
 if (!project) return Astro.redirect("/app/projects");
 
@@ -20,6 +20,15 @@ const snippet = `<script>
   window._sarge = { queue: [["track", "page.view"]] };
 </script>
 <script async src="https://${project.endpointHost}/pixel.js"></script>`;
+
+const recentEvents = project.recentEvents.slice(0, 12);
+
+const formatEventTime = (value: string) =>
+  new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(new Date(value));
 ---
 
 <AppLayout
@@ -53,16 +62,26 @@ const snippet = `<script>
           <CardTitle>Debug stream</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-3">
-          {["page.view", "purchase.completed", "meta.pixel.fire"].map((name) => (
-            <div class="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-md border p-3">
-              <Radio className="size-4 text-primary" />
-              <div>
-                <p class="font-mono text-sm">{name}</p>
-                <p class="text-xs text-muted-foreground">received from {project.endpointHost}</p>
+          {
+            recentEvents.length > 0 ? (
+              recentEvents.map((event) => (
+                <div class="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-md border p-3">
+                  <Radio className="size-4 text-primary" />
+                  <div class="min-w-0">
+                    <p class="font-mono text-sm">{event.name}</p>
+                    <p class="truncate text-xs text-muted-foreground">
+                      {event.title ?? event.url ?? "Untitled event"} · {formatEventTime(event.occurredAt)}
+                    </p>
+                  </div>
+                  <Badge variant="outline">accepted</Badge>
+                </div>
+              ))
+            ) : (
+              <div class="rounded-md border border-dashed p-6 text-sm text-muted-foreground">
+                No live events yet. Open the sample shop and click around to populate this stream.
               </div>
-              <Badge variant="outline">accepted</Badge>
-            </div>
-          ))}
+            )
+          }
         </CardContent>
       </Card>
     </div>

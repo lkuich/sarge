@@ -1,6 +1,6 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
-import node from '@astrojs/node';
+import cloudflare from '@astrojs/cloudflare';
 import clerk from '@clerk/astro';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@astrojs/react';
@@ -11,8 +11,13 @@ export default defineConfig({
   vite: {
     plugins: [tailwindcss()],
   },
-  adapter: node({
-    mode: 'standalone',
+  adapter: cloudflare({
+    imageService: 'passthrough',
   }),
+  session: {
+    driver: {
+      entrypoint: 'unstorage/drivers/null',
+    },
+  },
   output: 'server',
 });

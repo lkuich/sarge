@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sarge-demo-shop",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-19",
+  "observability": {
+    "enabled": true
+  },
+  "routes": [
+    {
+      "pattern": "shop.lkuich.com/*",
+      "zone_name": "lkuich.com"
+    }
+  ]
+}

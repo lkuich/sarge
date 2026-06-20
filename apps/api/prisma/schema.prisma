@@ -27,6 +27,7 @@ model Site {
   events             Event[]
   diagnosticRuns     DiagnosticRun[]
   diagnosticFindings DiagnosticFinding[]
+  webhookEndpoints   WebhookEndpoint[]
 
   workspace Workspace @relation(fields: [workspaceId], references: [id])
 }
@@ -100,4 +101,20 @@ model DiagnosticFinding {
   @@index([siteId, createdAt])
   @@index([runId])
   @@index([ruleId, severity])
+}
+
+model WebhookEndpoint {
+  id            String   @id
+  siteId        String
+  name          String
+  url           String
+  eventNames    Json     @default("[]")
+  signingSecret String
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  site Site @relation(fields: [siteId], references: [id])
+
+  @@index([siteId, createdAt])
+  @@index([isActive])
 }

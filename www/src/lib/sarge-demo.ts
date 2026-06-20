@@ -26,6 +26,15 @@ export interface SargeEvent {
   properties: Record<string, unknown>;
 }
 
+export interface WebhookEndpoint {
+  id: string;
+  name: string;
+  url: string;
+  eventNames: string[];
+  isActive: boolean;
+  createdAt: string;
+}
+
 export interface SargeProject {
   id: string;
   slug: string;
@@ -44,6 +53,7 @@ export interface SargeProject {
   diagnostics: ProjectDiagnostic[];
   diagnosticSummary: string | null;
   diagnosticRunAt: string | null;
+  webhookEndpoints: WebhookEndpoint[];
 }
 
 export interface SargeAccount {
@@ -61,8 +71,18 @@ export interface CreateProjectInput {
   slug?: string;
 }
 
+export interface CreateWebhookInput {
+  name: string;
+  url: string;
+  eventNames?: string;
+}
+
 export type CreateProjectResult =
   | { success: true; project: SargeProject }
+  | { success: false; error: string };
+
+export type CreateWebhookResult =
+  | { success: true; webhook: WebhookEndpoint; signingSecret: string }
   | { success: false; error: string };
 
 export const hostedEndpointHost = 'sarge.lkuich.com';
@@ -182,12 +202,38 @@ export const getViewerAccount = async (userId: string, databaseUrl?: string): Pr
       ORDER BY df."createdAt" DESC
       LIMIT 100
     `) as DiagnosticFindingRow[];
+    let webhookEndpoints: WebhookEndpointRow[] = [];
+    try {
+      webhookEndpoints = (await sql`
+        SELECT
+          wh.id,
+          wh."siteId",
+          wh.name,
+          wh.url,
+          wh."eventNames",
+          wh."isActive",
+          wh."createdAt"
+        FROM "WebhookEndpoint" wh
+        JOIN "Site" s ON s.id = wh."siteId"
+        WHERE s."workspaceId" = ${workspace.id}
+        ORDER BY wh."createdAt" DESC
+        LIMIT 100
+      `) as WebhookEndpointRow[];
+    } catch (error) {
+      console.error('Unable to load webhook endpoints', error);
+    }
     const latestRunBySite = new Map(diagnosticRuns.map((run) => [run.siteId, run]));
     const findingsByRun = new Map<string, ProjectDiagnostic[]>();
     for (const finding of diagnosticFindings) {
       const existingFindings = findingsByRun.get(finding.runId) ?? [];
       existingFindings.push(mapDiagnosticFinding(finding));
       findingsByRun.set(finding.runId, existingFindings);
+    }
+    const webhookEndpointsBySite = new Map<string, WebhookEndpoint[]>();
+    for (const webhookEndpoint of webhookEndpoints) {
+      const existingWebhookEndpoints = webhookEndpointsBySite.get(webhookEndpoint.siteId) ?? [];
+      existingWebhookEndpoints.push(mapWebhookEndpoint(webhookEndpoint));
+      webhookEndpointsBySite.set(webhookEndpoint.siteId, existingWebhookEndpoints);
     }
 
     return {
@@ -219,6 +265,7 @@ export const getViewerAccount = async (userId: string, databaseUrl?: string): Pr
           diagnostics: persistedDiagnostics ?? analyzeProjectEvents(recentEvents),
           diagnosticSummary: latestRun?.aiSummary ?? null,
           diagnosticRunAt: latestRun?.createdAt.toISOString() ?? null,
+          webhookEndpoints: webhookEndpointsBySite.get(site.id) ?? [],
         };
       }),
       members,
@@ -289,6 +336,7 @@ export const createProject = async (
         diagnostics: [],
         diagnosticSummary: null,
         diagnosticRunAt: null,
+        webhookEndpoints: [],
       },
     };
   } catch (error) {
@@ -306,6 +354,73 @@ export const getProject = (account: SargeAccount, slug: string) =>
 export const canAdministerAccount = (account: SargeAccount) => account.role === 'admin';
 
 export const formatCount = (value: number) => new Intl.NumberFormat('en-US').format(value);
+
+export const createWebhookEndpoint = async (
+  userId: string,
+  databaseUrl: string | undefined,
+  siteId: string,
+  input: CreateWebhookInput,
+): Promise<CreateWebhookResult> => {
+  const role = resolveRole(userId);
+  if (role !== 'admin') return { success: false, error: 'Only admins can create webhooks.' };
+  if (!databaseUrl) return { success: false, error: 'DATABASE_URL is not configured.' };
+
+  const name = input.name.trim();
+  const url = input.url.trim();
+  const eventNames = parseEventNames(input.eventNames ?? '');
+
+  if (!name) return { success: false, error: 'Webhook name is required.' };
+  if (!url) return { success: false, error: 'Destination URL is required.' };
+  if (!isHttpsUrl(url)) return { success: false, error: 'Destination URL must be a valid HTTPS URL.' };
+
+  try {
+    const sql = neon(databaseUrl);
+    const sites = (await sql`
+      SELECT id
+      FROM "Site"
+      WHERE id = ${siteId}
+      LIMIT 1
+    `) as { id: string }[];
+    if (!sites.at(0)) return { success: false, error: 'Project was not found.' };
+
+    const signingSecret = createSigningSecret();
+    const insertedRows = (await sql`
+      INSERT INTO "WebhookEndpoint" (
+        id,
+        "siteId",
+        name,
+        url,
+        "eventNames",
+        "signingSecret",
+        "isActive"
+      )
+      VALUES (
+        ${crypto.randomUUID()},
+        ${siteId},
+        ${name},
+        ${url},
+        ${JSON.stringify(eventNames)},
+        ${signingSecret},
+        true
+      )
+      RETURNING id, name, url, "eventNames", "isActive", "createdAt"
+    `) as Omit<WebhookEndpointRow, 'siteId'>[];
+    const webhook = insertedRows.at(0);
+    if (!webhook) return { success: false, error: 'Webhook could not be created.' };
+
+    return {
+      success: true,
+      webhook: mapWebhookEndpoint({ ...webhook, siteId }),
+      signingSecret,
+    };
+  } catch (error) {
+    console.error('Unable to create webhook endpoint', error);
+    return {
+      success: false,
+      error: 'Webhook could not be created. Confirm the database migration has been deployed.',
+    };
+  }
+};
 
 const getFallbackAccount = (role: AccountRole): SargeAccount => ({
   id: 'acct_demo',
@@ -332,6 +447,7 @@ const getFallbackAccount = (role: AccountRole): SargeAccount => ({
       diagnostics: [],
       diagnosticSummary: null,
       diagnosticRunAt: null,
+      webhookEndpoints: [],
     },
     {
       id: 'site_checkout',
@@ -351,6 +467,7 @@ const getFallbackAccount = (role: AccountRole): SargeAccount => ({
       diagnostics: [],
       diagnosticSummary: null,
       diagnosticRunAt: null,
+      webhookEndpoints: [],
     },
   ],
   members,
@@ -377,6 +494,17 @@ const mapDiagnosticFinding = (finding: DiagnosticFindingRow): ProjectDiagnostic 
   evidence: Array.isArray(finding.evidence) ? finding.evidence.filter((item): item is string => typeof item === 'string') : [],
   recommendation: finding.recommendation,
   agentPrompt: finding.agentPrompt,
+});
+
+const mapWebhookEndpoint = (webhookEndpoint: WebhookEndpointRow): WebhookEndpoint => ({
+  id: webhookEndpoint.id,
+  name: webhookEndpoint.name,
+  url: webhookEndpoint.url,
+  eventNames: Array.isArray(webhookEndpoint.eventNames)
+    ? webhookEndpoint.eventNames.filter((eventName): eventName is string => typeof eventName === 'string')
+    : [],
+  isActive: webhookEndpoint.isActive,
+  createdAt: webhookEndpoint.createdAt.toISOString(),
 });
 
 const formatRelativeTime = (date: Date | null) => {
@@ -406,6 +534,36 @@ const normalizeSlug = (value: string) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 48);
+
+const parseEventNames = (value: string) =>
+  Array.from(
+    new Set(
+      value
+        .split(/[,\n]/)
+        .map((eventName) => eventName.trim())
+        .filter(Boolean),
+    ),
+  );
+
+const isHttpsUrl = (value: string) => {
+  try {
+    const parsedUrl = new URL(value);
+    return parsedUrl.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+
+const createSigningSecret = () => {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  const encoded = btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
+
+  return `whsec_${encoded}`;
+};
 
 interface WorkspaceRow {
   id: string;
@@ -455,4 +613,14 @@ interface DiagnosticFindingRow {
   evidence: unknown;
   recommendation: string;
   agentPrompt: string;
+}
+
+interface WebhookEndpointRow {
+  id: string;
+  siteId: string;
+  name: string;
+  url: string;
+  eventNames: unknown;
+  isActive: boolean;
+  createdAt: Date;
 }

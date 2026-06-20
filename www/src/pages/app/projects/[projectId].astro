@@ -1,13 +1,16 @@
 ---
 import { env } from "cloudflare:workers";
-import { Bot, Copy, ExternalLink, Globe2, Radio, Search, ShieldAlert, Sparkles, TerminalSquare } from "lucide-react";
+import { Bot, Copy, ExternalLink, Globe2, Plus, Radio, Search, TerminalSquare, Webhook } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { SessionFlowExplorer } from "@/components/SessionFlowExplorer";
 import { Separator } from "@/components/ui/separator";
 import AppLayout from "@/layouts/AppLayout.astro";
-import { getProject, getViewerAccount } from "@/lib/sarge-demo";
+import { canAdministerAccount, createWebhookEndpoint, getProject, getViewerAccount } from "@/lib/sarge-demo";
 
 export const prerender = false;
 
@@ -17,6 +20,44 @@ if (!userId) return Astro.redirect("/sign-in");
 const account = await getViewerAccount(userId, env.DATABASE_URL);
 const project = getProject(account, Astro.params.projectId ?? "");
 if (!project) return Astro.redirect("/app/projects");
+
+const canCreateWebhooks = canAdministerAccount(account);
+let webhookError = "";
+let createdWebhookSecret = "";
+let createdWebhookName = "";
+let webhookValues = {
+  name: "",
+  url: "",
+  eventNames: "",
+};
+
+if (Astro.request.method === "POST") {
+  const formData = await Astro.request.formData();
+  const intent = String(formData.get("intent") ?? "");
+
+  if (intent === "create-webhook") {
+    webhookValues = {
+      name: String(formData.get("webhookName") ?? ""),
+      url: String(formData.get("webhookUrl") ?? ""),
+      eventNames: String(formData.get("webhookEventNames") ?? ""),
+    };
+
+    if (!canCreateWebhooks) {
+      webhookError = "Only admins can create webhooks.";
+    } else {
+      const result = await createWebhookEndpoint(userId, env.DATABASE_URL, project.id, webhookValues);
+
+      if (result.success) {
+        project.webhookEndpoints = [result.webhook, ...project.webhookEndpoints];
+        createdWebhookSecret = result.signingSecret;
+        createdWebhookName = result.webhook.name;
+        webhookValues = { name: "", url: "", eventNames: "" };
+      } else {
+        webhookError = result.error;
+      }
+    }
+  }
+}
 
 const snippet = `<script>
   window._sarge = { queue: [["track", "page.view"]] };
@@ -28,6 +69,7 @@ const pixelUrl = project.pixelUrl;
 const recentEvents = project.recentEvents.slice(0, 12);
 const flowEvents = project.recentEvents;
 const eventHosts = project.eventHosts;
+const webhookEndpoints = project.webhookEndpoints;
 const diagnostics = project.diagnostics;
 const endpointHealth = project.status === "active" ? "healthy" : "pending";
 const criticalFindings = diagnostics.filter((finding) => finding.severity === "critical").length;
@@ -318,6 +360,110 @@ const formatEventPayload = (value: Record<string, unknown>) => JSON.stringify(va
 
       <Card>
         <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Webhook className="size-4" /> Webhooks</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 text-sm">
+          {
+            createdWebhookSecret && (
+              <Alert>
+                <AlertTitle>{createdWebhookName} created</AlertTitle>
+                <AlertDescription>
+                  <p>Copy this signing secret now. It will not be shown again.</p>
+                  <div class="mt-2 flex min-w-0 items-center gap-2 rounded-md border bg-muted p-2">
+                    <code class="min-w-0 flex-1 truncate font-mono text-xs">{createdWebhookSecret}</code>
+                    <button
+                      class="inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md border bg-background px-2 text-xs font-medium hover:bg-muted"
+                      type="button"
+                      data-copy-webhook-secret
+                      data-secret={createdWebhookSecret}
+                    >
+                      <Copy className="size-3" /> <span data-webhook-secret-label>Copy</span>
+                    </button>
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )
+          }
+          {
+            webhookError && (
+              <Alert variant="destructive">
+                <AlertTitle>Webhook was not created</AlertTitle>
+                <AlertDescription>{webhookError}</AlertDescription>
+              </Alert>
+            )
+          }
+
+          {
+            canCreateWebhooks ? (
+              <form method="post" class="grid gap-3">
+                <input type="hidden" name="intent" value="create-webhook" />
+                <div class="grid gap-2">
+                  <Label htmlFor="webhookName">Name</Label>
+                  <Input id="webhookName" name="webhookName" value={webhookValues.name} placeholder="n8n purchase trigger" required />
+                </div>
+                <div class="grid gap-2">
+                  <Label htmlFor="webhookUrl">Destination URL</Label>
+                  <Input id="webhookUrl" name="webhookUrl" type="url" value={webhookValues.url} placeholder="https://hooks.example.com/sarge" required />
+                </div>
+                <div class="grid gap-2">
+                  <Label htmlFor="webhookEventNames">Event filters</Label>
+                  <textarea
+                    id="webhookEventNames"
+                    name="webhookEventNames"
+                    class="min-h-20 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                    placeholder="purchase.completed, checkout.started"
+                  >{webhookValues.eventNames}</textarea>
+                  <p class="text-xs text-muted-foreground">Optional. Leave blank to receive all events.</p>
+                </div>
+                <Button type="submit"><Plus className="mr-2 size-4" /> Create webhook</Button>
+              </form>
+            ) : (
+              <div class="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                Ask an account admin to create webhook destinations.
+              </div>
+            )
+          }
+
+          <Separator />
+
+          <div class="grid gap-2">
+            {
+              webhookEndpoints.length > 0 ? (
+                webhookEndpoints.map((webhookEndpoint) => (
+                  <div class="grid gap-2 rounded-md border p-3">
+                    <div class="flex min-w-0 items-start justify-between gap-2">
+                      <div class="min-w-0">
+                        <p class="truncate font-medium">{webhookEndpoint.name}</p>
+                        <p class="mt-1 truncate font-mono text-xs text-muted-foreground">{webhookEndpoint.url}</p>
+                      </div>
+                      <Badge variant={webhookEndpoint.isActive ? "default" : "secondary"}>
+                        {webhookEndpoint.isActive ? "active" : "paused"}
+                      </Badge>
+                    </div>
+                    <div class="flex flex-wrap gap-1">
+                      {
+                        webhookEndpoint.eventNames.length > 0 ? (
+                          webhookEndpoint.eventNames.map((eventName) => <Badge variant="outline">{eventName}</Badge>)
+                        ) : (
+                          <Badge variant="outline">All events</Badge>
+                        )
+                      }
+                    </div>
+                    <p class="text-xs text-muted-foreground">Created {new Date(webhookEndpoint.createdAt).toLocaleDateString()}</p>
+                  </div>
+                ))
+              ) : (
+                <div class="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                  No webhook destinations yet.
+                </div>
+              )
+            }
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle className="flex items-center gap-2"><Globe2 className="size-4" /> Event hosts</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-3 text-sm">
@@ -386,6 +532,25 @@ const formatEventPayload = (value: Record<string, unknown>) => JSON.stringify(va
         try {
           await navigator.clipboard.writeText(prompt);
           const originalText = label?.textContent ?? "Copy prompt";
+          if (label) label.textContent = "Copied";
+          window.setTimeout(() => {
+            if (label) label.textContent = originalText;
+          }, 1600);
+        } catch {
+          if (label) label.textContent = "Copy failed";
+        }
+      });
+    });
+
+    document.querySelectorAll<HTMLButtonElement>("[data-copy-webhook-secret]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const secret = button.dataset.secret;
+        if (!secret) return;
+
+        const label = button.querySelector("[data-webhook-secret-label]");
+        try {
+          await navigator.clipboard.writeText(secret);
+          const originalText = label?.textContent ?? "Copy";
           if (label) label.textContent = "Copied";
           window.setTimeout(() => {
             if (label) label.textContent = originalText;

@@ -150,7 +150,7 @@ export const getViewerAccount = async (userId: string, databaseUrl?: string): Pr
       JOIN "Site" s ON s.id = e."siteId"
       WHERE s."workspaceId" = ${workspace.id}
       ORDER BY e."occurredAt" DESC
-      LIMIT 30
+      LIMIT 200
     `) as EventRow[];
     const diagnosticRuns = (await sql`
       SELECT DISTINCT ON (dr."siteId")

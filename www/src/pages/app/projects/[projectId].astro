@@ -26,6 +26,7 @@ const endpointHealthUrl = project.endpointHealthUrl;
 const pixelUrl = project.pixelUrl;
 
 const recentEvents = project.recentEvents.slice(0, 12);
+const flowEvents = project.recentEvents;
 const eventHosts = project.eventHosts;
 const diagnostics = project.diagnostics;
 const endpointHealth = project.status === "active" ? "healthy" : "pending";
@@ -204,7 +205,7 @@ const formatEventPayload = (value: Record<string, unknown>) => JSON.stringify(va
           <CardTitle>User and session flows</CardTitle>
         </CardHeader>
         <CardContent>
-          <SessionFlowExplorer events={recentEvents} client:visible />
+          <SessionFlowExplorer events={flowEvents} client:visible />
         </CardContent>
       </Card>
 

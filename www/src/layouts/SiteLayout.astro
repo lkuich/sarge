@@ -37,7 +37,10 @@ const { title = "Sarge", shader = false } = Astro.props;
         <img class="hidden h-9 w-auto dark:block" src="/sarge-logo-dark.svg" alt="Sarge" width="196" height="48" />
       </a>
 
-      <nav class="flex items-center justify-end gap-2" aria-label="Account">
+      <nav class="flex items-center justify-end gap-2" aria-label="Site">
+        <a class="hidden rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground sm:inline-flex" href="/docs">
+          Docs
+        </a>
         <Show when="signed-out">
           <div class="flex items-center gap-2">
             <SignInButton mode="modal" />

@@ -1,0 +1,46 @@
+---
+import { ArrowRight, BookOpen, Server, TerminalSquare } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import SiteLayout from "@/layouts/SiteLayout.astro";
+
+const docs = [
+  {
+    title: "Self-hosting",
+    description: "Run the event API, database, and pixel infrastructure in your own cloud or VPS.",
+    href: "/docs/self-hosting",
+    icon: Server,
+  },
+  {
+    title: "Hosted install",
+    description: "Install the hosted Sarge pixel and wire ecommerce events into an existing site.",
+    href: "/#setup",
+    icon: TerminalSquare,
+  },
+];
+---
+
+<SiteLayout title="Docs | Sarge">
+  <section class="mx-auto max-w-6xl px-4 py-14 md:px-6">
+    <Badge variant="outline">Docs</Badge>
+    <h1 class="mt-4 max-w-3xl text-4xl font-semibold md:text-6xl">Install, host, and operate Sarge.</h1>
+    <p class="mt-4 max-w-2xl text-sm leading-6 text-muted-foreground">
+      Start with the hosted pixel for speed, or run the API and database yourself when you need infrastructure control.
+    </p>
+
+    <div class="mt-8 grid gap-3 md:grid-cols-2">
+      {
+        docs.map(({ title, description, href, icon: Icon }) => (
+          <a class="rounded-lg border bg-card p-5 transition hover:bg-muted/50" href={href}>
+            <Icon className="size-5 text-primary" />
+            <h2 class="mt-5 text-lg font-semibold">{title}</h2>
+            <p class="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
+            <span class="mt-5 inline-flex items-center text-sm font-medium">
+              Read docs <ArrowRight className="ml-1 size-3.5" />
+            </span>
+          </a>
+        ))
+      }
+    </div>
+  </section>
+</SiteLayout>

@@ -1,0 +1,168 @@
+---
+import { ArrowRight, CheckCircle2, Database, Server, ShieldCheck, TerminalSquare } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import SiteLayout from "@/layouts/SiteLayout.astro";
+
+const requirements = [
+  "Postgres database",
+  "Sarge API container or Worker/API service",
+  "HTTPS endpoint for event ingestion",
+  "Static hosting or CDN for the pixel bundle",
+  "A Workspace and Site record for each tracked property",
+];
+
+const steps = [
+  "Provision Postgres.",
+  "Run Prisma migrations.",
+  "Start the Sarge API container.",
+  "Host the pixel bundle from your domain or CDN.",
+  "Create Workspace and Site records.",
+  "Install the pixel snippet on the target website.",
+  "Send a test event and confirm it lands in the database.",
+];
+
+const providers = [
+  {
+    name: "Cloudflare",
+    role: "Best for the pixel edge and hosted endpoint",
+    note: "Use Workers for ingestion, CDN/caching for the pixel, DNS for endpoint hosts, and Workers AI later if you want scheduled diagnostics close to the edge.",
+  },
+  {
+    name: "Neon",
+    role: "Preferred Postgres",
+    note: "Use Neon for the event store, branching, pooled connections, and a low-maintenance Postgres control plane.",
+  },
+  {
+    name: "Fly.io",
+    role: "Simple API container hosting",
+    note: "Good fit when you want to run the Sarge API as a normal container with regional placement and straightforward custom domains.",
+  },
+  {
+    name: "Vercel",
+    role: "Good for portal or docs surfaces",
+    note: "Use Vercel for the frontend/admin app if your team prefers its deploy workflow. Keep high-volume ingestion on Cloudflare or Fly unless you have a specific reason.",
+  },
+];
+---
+
+<SiteLayout title="Self-hosting | Sarge Docs">
+  <section class="mx-auto max-w-6xl px-4 py-14 md:px-6">
+    <a class="inline-flex items-center text-sm text-muted-foreground hover:text-foreground" href="/docs">
+      <ArrowRight className="mr-1 size-3.5 rotate-180" /> Docs
+    </a>
+
+    <div class="mt-8 grid gap-8 lg:grid-cols-[1fr_340px]">
+      <div>
+        <Badge variant="outline">Self-hosted</Badge>
+        <h1 class="mt-4 max-w-3xl text-4xl font-semibold md:text-6xl">Run Sarge in your own infrastructure.</h1>
+        <p class="mt-4 max-w-2xl text-sm leading-6 text-muted-foreground">
+          Self-hosted Sarge is for teams that want the event API and database in their own cloud while keeping the same lightweight browser pixel and tracking model.
+        </p>
+
+        <div class="mt-8 rounded-lg border bg-card p-5">
+          <h2 class="text-lg font-semibold">Deployment shape</h2>
+          <pre class="mt-4 overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{`Website/App
+  -> Sarge pixel
+  -> Sarge API container
+  -> Postgres`}</code></pre>
+        </div>
+
+        <div class="mt-6 rounded-lg border bg-card p-5">
+          <h2 class="text-lg font-semibold">Required environment variables</h2>
+          <pre class="mt-4 overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{`DATABASE_URL="postgresql://user:password@host:5432/sarge?schema=public"
+PORT="49828"
+NODE_ENV="production"`}</code></pre>
+        </div>
+
+        <div class="mt-6 rounded-lg border bg-card p-5">
+          <h2 class="text-lg font-semibold">Pixel snippet</h2>
+          <pre class="mt-4 overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{`<script src="https://events.example.com/index.global.js"></script>
+<script>
+  sarge('init', {
+    siteId: 'site_123',
+    endpoint: 'https://events.example.com',
+    attributionTtlDays: 28
+  });
+
+  sarge('track', 'PageView');
+</script>`}</code></pre>
+        </div>
+
+        <div class="mt-6 rounded-lg border bg-card p-5">
+          <h2 class="text-lg font-semibold">Test event</h2>
+          <pre class="mt-4 overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{`curl -X POST "https://events.example.com/v2/events" \\
+  -H "content-type: application/json" \\
+  -d '{
+    "siteId": "site_123",
+    "name": "TestEvent",
+    "occurredAt": "2026-06-19T12:00:00.000Z",
+    "sessionId": "manual_test_session",
+    "userId": "manual_test_user",
+    "properties": { "source": "curl" }
+  }'`}</code></pre>
+          <p class="mt-3 text-sm text-muted-foreground">Expected response: <code class="font-mono">{"{ \"success\": true }"}</code></p>
+        </div>
+
+        <div class="mt-6 rounded-lg border bg-card p-5">
+          <h2 class="text-lg font-semibold">Preferred provider suggestions</h2>
+          <p class="mt-2 text-sm leading-6 text-muted-foreground">
+            The cleanest self-hosted setup keeps the database boring, the ingest endpoint close to users, and the portal deploy flow familiar.
+          </p>
+          <div class="mt-5 grid gap-3 md:grid-cols-2">
+            {
+              providers.map((provider) => (
+                <article class="rounded-md border bg-background p-4">
+                  <p class="font-semibold">{provider.name}</p>
+                  <p class="mt-1 text-xs font-medium uppercase text-muted-foreground">{provider.role}</p>
+                  <p class="mt-3 text-sm leading-6 text-muted-foreground">{provider.note}</p>
+                </article>
+              ))
+            }
+          </div>
+        </div>
+      </div>
+
+      <aside class="grid content-start gap-4">
+        <div class="rounded-lg border bg-card p-5">
+          <Server className="size-5 text-primary" />
+          <h2 class="mt-5 font-semibold">Choose self-hosted when</h2>
+          <ul class="mt-3 space-y-2 text-sm text-muted-foreground">
+            <li>Event data must stay in your cloud.</li>
+            <li>You already run Postgres and containerized services.</li>
+            <li>You need private networking or regional control.</li>
+          </ul>
+        </div>
+
+        <div class="rounded-lg border bg-card p-5">
+          <Database className="size-5 text-primary" />
+          <h2 class="mt-5 font-semibold">Minimum services</h2>
+          <ul class="mt-3 space-y-2 text-sm text-muted-foreground">
+            {requirements.map((item) => <li class="flex gap-2"><CheckCircle2 className="mt-0.5 size-4 text-primary" /> {item}</li>)}
+          </ul>
+        </div>
+
+        <div class="rounded-lg border bg-card p-5">
+          <TerminalSquare className="size-5 text-primary" />
+          <h2 class="mt-5 font-semibold">Setup flow</h2>
+          <ol class="mt-3 list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
+            {steps.map((item) => <li>{item}</li>)}
+          </ol>
+        </div>
+
+        <div class="rounded-lg border bg-card p-5">
+          <ShieldCheck className="size-5 text-primary" />
+          <h2 class="mt-5 font-semibold">Support boundary</h2>
+          <p class="mt-2 text-sm leading-6 text-muted-foreground">
+            Self-hosted teams operate their own uptime, backups, retention, platform security, and access logs. Sarge can provide setup docs, upgrade notes, and paid support.
+          </p>
+        </div>
+      </aside>
+    </div>
+
+    <div class="mt-10 flex flex-wrap gap-3">
+      <a href="/#setup"><Button>Use hosted install <ArrowRight className="ml-1 size-3.5" /></Button></a>
+      <a href="/docs"><Button variant="outline">Back to docs</Button></a>
+    </div>
+  </section>
+</SiteLayout>

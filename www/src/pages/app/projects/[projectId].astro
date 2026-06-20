@@ -4,6 +4,7 @@ import { Bot, Copy, ExternalLink, Globe2, Radio, Search, ShieldAlert, Sparkles, 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SessionFlowExplorer } from "@/components/SessionFlowExplorer";
 import { Separator } from "@/components/ui/separator";
 import AppLayout from "@/layouts/AppLayout.astro";
 import { getProject, getViewerAccount } from "@/lib/sarge-demo";
@@ -195,6 +196,15 @@ const formatEventPayload = (value: Record<string, unknown>) => JSON.stringify(va
               </div>
             )
           }
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>User and session flows</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <SessionFlowExplorer events={recentEvents} client:visible />
         </CardContent>
       </Card>
 

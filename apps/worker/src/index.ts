@@ -17,9 +17,37 @@ export const createWorkerHandler = (dependencies: WorkerDependencies = {}) => ({
 
 const handleRequest = async (request: Request, _env: WorkerEnv, store: EventStore) => {
   const url = new URL(request.url);
+  const sharedHost = _env.SARGE_BASE_DOMAIN;
+  const isSharedHost = Boolean(sharedHost && url.host === sharedHost);
 
   if (url.pathname === "/healthz") {
     return new Response("ok", { status: 200 });
+  }
+
+  if (isSharedHost && url.pathname === "/pixel.js" && request.method === "GET") {
+    const siteId = url.searchParams.get("site");
+    if (!siteId) {
+      return json({ success: false, error: "Missing site" }, 400);
+    }
+
+    const site = await store.findSiteById(siteId);
+    if (!site) {
+      return json({ success: false, error: "Unknown site" }, 404);
+    }
+
+    if (!site.pixelEnabled) {
+      return json({ success: false, error: "Pixel disabled" }, 403);
+    }
+
+    return createPixelResponse(site, url.host);
+  }
+
+  if (isSharedHost && url.pathname === "/v2/events" && request.method === "POST") {
+    return handleSharedJsonEvent(request, store);
+  }
+
+  if (isSharedHost && url.pathname === "/v2/e" && request.method === "GET") {
+    return handleSharedCompactEvent(url, store);
   }
 
   const site = await store.findSiteByHost(url.host);
@@ -61,10 +89,41 @@ const handleJsonEvent = async (request: Request, store: EventStore, site: SiteRe
   }
 };
 
+const handleSharedJsonEvent = async (request: Request, store: EventStore) => {
+  try {
+    const body = await request.json();
+    const event = eventPayloadSchema.parse(body);
+    const site = await store.findSiteById(event.siteId);
+    if (!site) {
+      return json({ success: false, error: "Unknown site" }, 404);
+    }
+
+    await store.createEvent(event);
+    return json({ success: true }, 202);
+  } catch (error) {
+    return handleIngestError(error);
+  }
+};
+
 const handleCompactEvent = async (url: URL, store: EventStore, site: SiteRecord) => {
   try {
     const event = parseCompactEventQuery(Object.fromEntries(url.searchParams.entries()));
     await store.createEvent({ ...event, siteId: site.id });
+    return json({ success: true }, 202);
+  } catch (error) {
+    return handleIngestError(error);
+  }
+};
+
+const handleSharedCompactEvent = async (url: URL, store: EventStore) => {
+  try {
+    const event = parseCompactEventQuery(Object.fromEntries(url.searchParams.entries()));
+    const site = await store.findSiteById(event.siteId);
+    if (!site) {
+      return json({ success: false, error: "Unknown site" }, 404);
+    }
+
+    await store.createEvent(event);
     return json({ success: true }, 202);
   } catch (error) {
     return handleIngestError(error);

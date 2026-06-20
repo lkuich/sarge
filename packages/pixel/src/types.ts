@@ -24,6 +24,9 @@ export interface BrowserLike {
   navigator: {
     sendBeacon?: (url: string, data?: BodyInit | null) => boolean;
   };
+  fbq?: (...args: unknown[]) => unknown;
+  gtag?: (...args: unknown[]) => unknown;
+  dataLayer?: unknown[] & { push: (...items: unknown[]) => number };
   fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<unknown>;
   Image: new () => { src: string };
   crypto: {

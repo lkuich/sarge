@@ -28,6 +28,8 @@ export interface SargeProject {
   slug: string;
   name: string;
   endpointHost: string;
+  pixelUrl: string;
+  endpointHealthUrl: string;
   status: ProjectStatus;
   environment: 'production' | 'staging';
   eventCount24h: number;
@@ -46,6 +48,17 @@ export interface SargeAccount {
   projects: SargeProject[];
   members: AccountMember[];
 }
+
+export interface CreateProjectInput {
+  name: string;
+  slug?: string;
+}
+
+export type CreateProjectResult =
+  | { success: true; project: SargeProject }
+  | { success: false; error: string };
+
+export const hostedEndpointHost = 'sarge.lkuich.com';
 
 const adminIds = new Set(
   (import.meta.env.SARGE_ADMIN_USER_IDS ?? '')
@@ -143,6 +156,8 @@ export const getViewerAccount = async (userId: string, databaseUrl?: string): Pr
         slug: site.slug,
         name: site.name,
         endpointHost: site.endpointHost,
+        pixelUrl: buildPixelUrl(site.id),
+        endpointHealthUrl: buildHealthUrl(),
         status: site.pixelEnabled ? 'active' : 'paused',
         environment: 'production',
         eventCount24h: site.eventCount24h ?? 0,
@@ -156,6 +171,73 @@ export const getViewerAccount = async (userId: string, databaseUrl?: string): Pr
   } catch (error) {
     console.error('Unable to load live Sarge account data', error);
     return getFallbackAccount(role);
+  }
+};
+
+export const createProject = async (
+  userId: string,
+  databaseUrl: string | undefined,
+  input: CreateProjectInput,
+): Promise<CreateProjectResult> => {
+  const role = resolveRole(userId);
+  if (role !== 'admin') return { success: false, error: 'Only admins can create projects.' };
+  if (!databaseUrl) return { success: false, error: 'DATABASE_URL is not configured.' };
+
+  const name = input.name.trim();
+  const slug = normalizeSlug(input.slug || input.name);
+  if (!name) return { success: false, error: 'Project name is required.' };
+  if (!slug) return { success: false, error: 'Project slug is required.' };
+
+  try {
+    const sql = neon(databaseUrl);
+    await sql`
+      INSERT INTO "Workspace" (id, slug, name)
+      VALUES ('wrk_demo', 'demo', 'Demo Account')
+      ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
+    `;
+
+    const workspaces = (await sql`
+      SELECT id
+      FROM "Workspace"
+      WHERE slug = 'demo'
+      LIMIT 1
+    `) as { id: string }[];
+    const workspace = workspaces.at(0);
+    if (!workspace) return { success: false, error: 'Demo workspace is not available.' };
+
+    const id = `site_${crypto.randomUUID()}`;
+    const endpointHost = `${slug}.sarge.lkuich.com`;
+    const rows = (await sql`
+      INSERT INTO "Site" (id, "workspaceId", slug, name, "endpointHost", "attributionTtlDays", "pixelEnabled")
+      VALUES (${id}, ${workspace.id}, ${slug}, ${name}, ${endpointHost}, 28, true)
+      RETURNING id, slug, name, "endpointHost", "pixelEnabled"
+    `) as Pick<SiteSummaryRow, 'id' | 'slug' | 'name' | 'endpointHost' | 'pixelEnabled'>[];
+    const site = rows[0];
+
+    return {
+      success: true,
+      project: {
+        id: site.id,
+        slug: site.slug,
+        name: site.name,
+        endpointHost: site.endpointHost,
+        pixelUrl: buildPixelUrl(site.id),
+        endpointHealthUrl: buildHealthUrl(),
+        status: site.pixelEnabled ? 'active' : 'paused',
+        environment: 'production',
+        eventCount24h: 0,
+        failedEvents24h: 0,
+        lastEventAt: 'No events yet',
+        pixelVersion: '0.1.0',
+        recentEvents: [],
+      },
+    };
+  } catch (error) {
+    console.error('Unable to create Sarge project', error);
+    return {
+      success: false,
+      error: 'Project could not be created. The slug may already be in use.',
+    };
   }
 };
 
@@ -178,6 +260,8 @@ const getFallbackAccount = (role: AccountRole): SargeAccount => ({
       slug: 'demo-site',
       name: 'Demo Site',
       endpointHost: 'sarge.lkuich.com',
+      pixelUrl: buildPixelUrl('site_demo'),
+      endpointHealthUrl: buildHealthUrl(),
       status: 'active',
       environment: 'production',
       eventCount24h: 184,
@@ -191,6 +275,8 @@ const getFallbackAccount = (role: AccountRole): SargeAccount => ({
       slug: 'checkout-lab',
       name: 'Checkout Lab',
       endpointHost: 'checkout.sarge.local',
+      pixelUrl: buildPixelUrl('site_checkout'),
+      endpointHealthUrl: buildHealthUrl(),
       status: 'draft',
       environment: 'staging',
       eventCount24h: 0,
@@ -230,6 +316,18 @@ const formatRelativeTime = (date: Date | null) => {
   const days = Math.round(hours / 24);
   return `${days} days ago`;
 };
+
+const buildPixelUrl = (siteId: string) => `https://${hostedEndpointHost}/pixel.js?site=${encodeURIComponent(siteId)}`;
+
+const buildHealthUrl = () => `https://${hostedEndpointHost}/healthz`;
+
+const normalizeSlug = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48);
 
 interface WorkspaceRow {
   id: string;

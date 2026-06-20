@@ -83,6 +83,57 @@ describe("Sarge pixel", () => {
     vi.unstubAllGlobals();
   });
 
+  it("observes common third-party pixel calls", async () => {
+    vi.resetModules();
+    const { browser, sendBeacon } = createBrowser({
+      __SARGE_CONFIG__: {
+        siteId: "site_hosted",
+        endpoint: "https://sarge.example.com",
+        attributionTtlDays: 28
+      }
+    } as Partial<BrowserLike>);
+
+    vi.stubGlobal("window", browser);
+    await import("./index.js");
+
+    window.fbq!("track", "Purchase", { value: 129.99 });
+    window.gtag!("event", "conversion", { send_to: "AW-123" });
+    window.dataLayer!.push({ event: "checkout_started", value: 99 });
+
+    const payloads = sendBeacon.mock.calls.map(([, body]) => JSON.parse(String(body)));
+    expect(payloads).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "meta.pixel.fire",
+          properties: {
+            vendor: "meta",
+            command: "track",
+            event_name: "Purchase",
+            payload: { value: 129.99 }
+          }
+        }),
+        expect.objectContaining({
+          name: "google.tag.fire",
+          properties: {
+            vendor: "google",
+            command: "event",
+            event_name: "conversion",
+            payload: { send_to: "AW-123" }
+          }
+        }),
+        expect.objectContaining({
+          name: "data_layer.push",
+          properties: {
+            vendor: "google",
+            payload: { event: "checkout_started", value: 99 }
+          }
+        })
+      ])
+    );
+
+    vi.unstubAllGlobals();
+  });
+
   it("stores attribution and sends events with sendBeacon first", () => {
     const { browser, sendBeacon, storage } = createBrowser();
     const client = createSargeClient(browser);

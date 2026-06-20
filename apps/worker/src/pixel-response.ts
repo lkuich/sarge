@@ -1,10 +1,10 @@
 import { pixelScript } from "./generated-pixel.js";
 import type { SiteRecord } from "./types.js";
 
-export const createPixelResponse = (site: SiteRecord) => {
+export const createPixelResponse = (site: SiteRecord, endpointHost = site.endpointHost) => {
   const config = {
     siteId: site.id,
-    endpoint: `https://${site.endpointHost}`,
+    endpoint: `https://${endpointHost}`,
     attributionTtlDays: site.attributionTtlDays
   };
 

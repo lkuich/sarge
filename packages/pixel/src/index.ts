@@ -2,6 +2,7 @@ import { createSargeClient } from "./client.js";
 import type { InitOptions } from "./types.js";
 
 type QueuedCall = [method: string, ...args: unknown[]];
+type DataLayer = unknown[] & { push: (...items: unknown[]) => number };
 
 const install = () => {
   const browser = window;
@@ -27,10 +28,54 @@ const install = () => {
   };
 
   window._sarge = window.sarge;
+  installWatchdogs(client);
 
   for (const call of queued as QueuedCall[]) {
     window.sarge(...call);
   }
+};
+
+const installWatchdogs = (client: ReturnType<typeof createSargeClient>) => {
+  const originalFbq = window.fbq;
+  window.fbq = (...args: unknown[]) => {
+    client.track("meta.pixel.fire", {
+      vendor: "meta",
+      command: typeof args[0] === "string" ? args[0] : undefined,
+      event_name: typeof args[1] === "string" ? args[1] : undefined,
+      payload: args[2]
+    });
+
+    return originalFbq?.(...args);
+  };
+
+  const originalGtag = window.gtag;
+  window.gtag = (...args: unknown[]) => {
+    client.track("google.tag.fire", {
+      vendor: "google",
+      command: typeof args[0] === "string" ? args[0] : undefined,
+      event_name: typeof args[1] === "string" ? args[1] : undefined,
+      payload: args[2]
+    });
+
+    return originalGtag?.(...args);
+  };
+
+  if (!window.dataLayer) {
+    window.dataLayer = [] as unknown[] as DataLayer;
+  }
+
+  const dataLayer = window.dataLayer as DataLayer;
+  const originalPush = dataLayer.push.bind(dataLayer);
+  dataLayer.push = (...items: unknown[]) => {
+    for (const item of items) {
+      client.track("data_layer.push", {
+        vendor: "google",
+        payload: item
+      });
+    }
+
+    return originalPush(...items);
+  };
 };
 
 declare global {
@@ -38,6 +83,9 @@ declare global {
     __SARGE_CONFIG__?: InitOptions;
     sarge: ((method: string, ...args: unknown[]) => void) & { queue?: QueuedCall[] };
     _sarge?: ((method: string, ...args: unknown[]) => void) & { queue?: QueuedCall[] };
+    fbq?: (...args: unknown[]) => unknown;
+    gtag?: (...args: unknown[]) => unknown;
+    dataLayer?: DataLayer;
   }
 }
 

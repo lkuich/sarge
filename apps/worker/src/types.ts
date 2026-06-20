@@ -15,5 +15,6 @@ export interface SiteRecord {
 
 export interface EventStore {
   findSiteByHost(host: string): Promise<SiteRecord | null>;
+  findSiteById(id: string): Promise<SiteRecord | null>;
   createEvent(event: EventPayload): Promise<void>;
 }

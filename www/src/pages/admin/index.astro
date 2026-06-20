@@ -19,15 +19,16 @@ const currentCapabilities = [
   "Live project/event reads from Neon for the demo workspace",
   "Hosted pixel endpoint and Cloudflare Worker deployment",
   "Sample ecommerce site producing real debug and purchase events",
+  "Admin project creation flow backed by Neon Site records",
 ];
 
 const missingCapabilities = [
   {
     area: "Project provisioning",
     priority: "P0",
-    status: "Missing",
-    gap: "The New project button has no create flow, endpoint allocation, DNS setup, or pixel config screen.",
-    next: "Build a project creation flow that writes Site rows and provisions/validates endpoint hosts.",
+    status: "Partial",
+    gap: "Admins can create Neon-backed projects, but dedicated endpoint DNS and environment-specific provisioning are not automated yet.",
+    next: "Add domain validation and optional custom endpoint provisioning for projects that need dedicated hosts.",
   },
   {
     area: "Account membership",
@@ -89,12 +90,12 @@ const missingCapabilities = [
 
 const buildOrder = [
   {
-    title: "Provision real projects",
-    detail: "Make account admins create projects, allocate endpoint hosts, and copy the correct install snippet.",
-  },
-  {
     title: "Persist memberships",
     detail: "Replace static role/member data with workspace-scoped users, invites, and permission checks.",
+  },
+  {
+    title: "Automate dedicated endpoints",
+    detail: "Layer domain validation and DNS provisioning on top of the shared endpoint project model.",
   },
   {
     title: "Upgrade event inspection",

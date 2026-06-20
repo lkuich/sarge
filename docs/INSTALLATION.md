@@ -10,10 +10,10 @@ Use the snippet from the project detail screen in the portal:
 <script>
   window._sarge = { queue: [["track", "page.view"]] };
 </script>
-<script async src="https://sarge.lkuich.com/pixel.js"></script>
+<script async src="https://sarge.lkuich.com/pixel.js?site={siteId}"></script>
 ```
 
-For another project, replace `sarge.lkuich.com` with that project endpoint host.
+Use the exact snippet from the project detail screen. The `site` query parameter identifies the project while the shared hosted endpoint delivers the script.
 
 Place the snippet in the document `<head>` or as early as possible in the page body. The queued `page.view` call is replayed after `pixel.js` loads.
 
@@ -73,26 +73,15 @@ Properties must be JSON-serializable.
 
 ## Watch Other Pixels
 
-Until automatic observation is built, you can manually mirror other pixel calls into Sarge:
+Sarge automatically wraps common browser pixel APIs after it loads:
 
-```html
-<script>
-  const originalFbq = window.fbq;
-
-  window.fbq = function(command, eventName, payload) {
-    window.sarge("track", "meta.pixel.fire", {
-      vendor: "meta",
-      command,
-      event_name: eventName,
-      payload
-    });
-
-    if (typeof originalFbq === "function") {
-      return originalFbq.apply(this, arguments);
-    }
-  };
-</script>
+```text
+fbq(...)            -> meta.pixel.fire
+gtag(...)           -> google.tag.fire
+dataLayer.push(...) -> data_layer.push
 ```
+
+Load Sarge before the interactions you need to debug. If a third-party pixel is already installed, Sarge preserves the original function and observes calls before forwarding them.
 
 ## SPA Route Changes
 
@@ -130,8 +119,8 @@ https://shop.example.com/?sarge_ref=summer-campaign&sarge_aff=partner-42
 
 You can also open these project URLs directly from the portal:
 
-- `https://{endpointHost}/healthz` checks the endpoint Worker.
-- `https://{endpointHost}/pixel.js` checks script delivery.
+- `https://sarge.lkuich.com/healthz` checks the endpoint Worker.
+- `https://sarge.lkuich.com/pixel.js?site={siteId}` checks script delivery.
 
 ## Troubleshooting
 
@@ -141,4 +130,4 @@ You can also open these project URLs directly from the portal:
 | Script 404s | Confirm the endpoint host exists as a `Site.endpointHost` in Neon. |
 | Events reject | Confirm the payload properties are JSON-serializable and event names are non-empty. |
 | SPA page views missing | Emit `page.view` on route changes, not just initial page load. |
-| Other media pixels fire but Sarge does not show them | Mirror those calls into `meta.pixel.fire` until automatic observation is implemented. |
+| Other media pixels fire but Sarge does not show them | Confirm Sarge loads before the call you expect to observe. |

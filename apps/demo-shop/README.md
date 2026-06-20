@@ -11,7 +11,7 @@ https://shop.lkuich.com
 The page installs the hosted pixel from:
 
 ```html
-<script async src="https://sarge.lkuich.com/pixel.js"></script>
+<script async src="https://sarge.lkuich.com/pixel.js?site=site_demo"></script>
 ```
 
 It emits:
@@ -22,7 +22,7 @@ It emits:
 - `cart.opened`
 - `checkout.started`
 - `purchase.completed`
-- `meta.pixel.fire`
+- `meta.pixel.fire` from Sarge's automatic `fbq` watchdog
 
 Deploy manually:
 

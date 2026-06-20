@@ -29,6 +29,26 @@ export class NeonEventStore implements EventStore {
     return row ?? null;
   }
 
+  async findSiteById(id: string): Promise<SiteRecord | null> {
+    const rows = (await this.sql`
+      SELECT id, "endpointHost", "attributionTtlDays", "pixelEnabled"
+      FROM "Site"
+      WHERE id = ${id}
+      LIMIT 1
+    `) as unknown[];
+
+    const row = rows.at(0) as
+      | {
+          id: string;
+          endpointHost: string;
+          attributionTtlDays: number;
+          pixelEnabled: boolean;
+        }
+      | undefined;
+
+    return row ?? null;
+  }
+
   async createEvent(event: EventPayload): Promise<void> {
     await this.sql`
       INSERT INTO "Event" (

@@ -1,6 +1,6 @@
 ---
 import { env } from "cloudflare:workers";
-import { Copy, ExternalLink, Radio, ShieldAlert } from "lucide-react";
+import { Copy, ExternalLink, Radio, Search, ShieldAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,11 +20,12 @@ if (!project) return Astro.redirect("/app/projects");
 const snippet = `<script>
   window._sarge = { queue: [["track", "page.view"]] };
 </script>
-<script async src="https://${project.endpointHost}/pixel.js"></script>`;
-const endpointHealthUrl = `https://${project.endpointHost}/healthz`;
-const pixelUrl = `https://${project.endpointHost}/pixel.js`;
+<script async src="${project.pixelUrl}"></script>`;
+const endpointHealthUrl = project.endpointHealthUrl;
+const pixelUrl = project.pixelUrl;
 
 const recentEvents = project.recentEvents.slice(0, 12);
+const endpointHealth = project.status === "active" ? "healthy" : "pending";
 
 const formatEventTime = (value: string) =>
   new Intl.DateTimeFormat("en-US", {
@@ -32,6 +33,8 @@ const formatEventTime = (value: string) =>
     minute: "2-digit",
     second: "2-digit",
   }).format(new Date(value));
+
+const formatEventPayload = (value: Record<string, unknown>) => JSON.stringify(value, null, 2);
 ---
 
 <AppLayout
@@ -46,6 +49,14 @@ const formatEventTime = (value: string) =>
     { label: project.name },
   ]}
 >
+  <div class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-2">
+    <div class="inline-flex rounded-md bg-muted p-1">
+      <button class="h-7 rounded-md bg-background px-3 text-sm font-medium shadow-sm" type="button">Production</button>
+      <button class="h-7 rounded-md px-3 text-sm font-medium text-muted-foreground" type="button" disabled>Staging</button>
+    </div>
+    <p class="text-xs text-muted-foreground">Staging endpoints are planned; production is active for this project.</p>
+  </div>
+
   <section class="grid gap-4 lg:grid-cols-[1fr_340px]">
     <div class="grid gap-4">
       <Card>
@@ -98,16 +109,58 @@ const formatEventTime = (value: string) =>
           {
             recentEvents.length > 0 ? (
               recentEvents.map((event) => (
-                <div class="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-md border p-3">
-                  <Radio className="size-4 text-primary" />
-                  <div class="min-w-0">
-                    <p class="font-mono text-sm">{event.name}</p>
-                    <p class="truncate text-xs text-muted-foreground">
-                      {event.title ?? event.url ?? "Untitled event"} · {formatEventTime(event.occurredAt)}
-                    </p>
+                <>
+                  <div class="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-md border p-3">
+                    <Radio className="size-4 text-primary" />
+                    <div class="min-w-0">
+                      <p class="font-mono text-sm">{event.name}</p>
+                      <p class="truncate text-xs text-muted-foreground">
+                        {event.title ?? event.url ?? "Untitled event"} · {formatEventTime(event.occurredAt)}
+                      </p>
+                    </div>
+                    <button
+                      class="inline-flex h-7 items-center justify-center gap-1 rounded-md border px-2 text-xs font-medium hover:bg-muted"
+                      type="button"
+                      data-open-event
+                      data-event-dialog={`event-${event.id}`}
+                    >
+                      <Search className="size-3" /> Details
+                    </button>
                   </div>
-                  <Badge variant="outline">accepted</Badge>
-                </div>
+                  <dialog id={`event-${event.id}`} class="w-[min(720px,calc(100vw-2rem))] rounded-lg border bg-card p-0 text-card-foreground shadow-xl backdrop:bg-black/20">
+                    <div class="border-b p-4">
+                      <p class="font-mono text-sm">{event.name}</p>
+                      <p class="mt-1 text-xs text-muted-foreground">{event.url ?? "No URL recorded"}</p>
+                    </div>
+                    <div class="grid gap-4 p-4 text-sm">
+                      <div class="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <p class="text-xs text-muted-foreground">Session</p>
+                          <p class="mt-1 truncate font-mono">{event.sessionId}</p>
+                        </div>
+                        <div>
+                          <p class="text-xs text-muted-foreground">User</p>
+                          <p class="mt-1 truncate font-mono">{event.userId}</p>
+                        </div>
+                        <div>
+                          <p class="text-xs text-muted-foreground">Occurred</p>
+                          <p class="mt-1">{new Date(event.occurredAt).toLocaleString()}</p>
+                        </div>
+                        <div>
+                          <p class="text-xs text-muted-foreground">Received</p>
+                          <p class="mt-1">{new Date(event.receivedAt).toLocaleString()}</p>
+                        </div>
+                      </div>
+                      <div>
+                        <p class="text-xs text-muted-foreground">Properties</p>
+                        <pre class="mt-2 max-h-72 overflow-auto rounded-md border bg-muted p-3 text-xs leading-5"><code>{formatEventPayload(event.properties)}</code></pre>
+                      </div>
+                    </div>
+                    <div class="flex justify-end border-t p-3">
+                      <button class="h-8 rounded-md border px-3 text-sm font-medium hover:bg-muted" type="button" data-close-event>Close</button>
+                    </div>
+                  </dialog>
+                </>
               ))
             ) : (
               <div class="rounded-md border border-dashed p-6 text-sm text-muted-foreground">
@@ -126,10 +179,18 @@ const formatEventTime = (value: string) =>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           <div>
-            <p class="text-xs text-muted-foreground">Host</p>
+            <p class="text-xs text-muted-foreground">Assigned host</p>
             <p class="font-mono">{project.endpointHost}</p>
           </div>
           <Separator />
+          <div>
+            <p class="text-xs text-muted-foreground">Endpoint health</p>
+            <p class="mt-1"><Badge variant={endpointHealth === "healthy" ? "default" : "secondary"}>{endpointHealth}</Badge></p>
+          </div>
+          <div>
+            <p class="text-xs text-muted-foreground">Script URL</p>
+            <p class="break-all font-mono text-xs">{project.pixelUrl}</p>
+          </div>
           <div>
             <p class="text-xs text-muted-foreground">Environment</p>
             <p>{project.environment}</p>
@@ -170,6 +231,19 @@ const formatEventTime = (value: string) =>
           const label = button.querySelector("[data-copy-label]");
           if (label) label.textContent = "Copy failed";
         }
+      });
+    });
+
+    document.querySelectorAll<HTMLButtonElement>("[data-open-event]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const dialog = document.getElementById(button.dataset.eventDialog ?? "");
+        if (dialog instanceof HTMLDialogElement) dialog.showModal();
+      });
+    });
+
+    document.querySelectorAll<HTMLButtonElement>("[data-close-event]").forEach((button) => {
+      button.addEventListener("click", () => {
+        button.closest("dialog")?.close();
       });
     });
   </script>

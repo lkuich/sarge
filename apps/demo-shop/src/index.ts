@@ -23,13 +23,16 @@ const renderShop = (url: URL) => `<!doctype html>
   <title>Northline Supply Co.</title>
   <meta name="description" content="A tiny ecommerce demo store wired to Sarge event tracking.">
   <script>
+    window.dataLayer = window.dataLayer || [];
+    window.gtag = window.gtag || function(){ window.dataLayer.push(arguments); };
+    window.fbq = window.fbq || function(){ (window.fbq.queue = window.fbq.queue || []).push(arguments); };
     window._sarge = {
       queue: [
         ["track", "page.view", { page_type: "collection", demo: "northline-supply", path: "${escapeHtml(url.pathname)}" }]
       ]
     };
   </script>
-  <script async src="https://sarge.lkuich.com/pixel.js"></script>
+  <script async src="https://sarge.lkuich.com/pixel.js?site=site_demo"></script>
   <style>
     :root {
       color-scheme: light;
@@ -391,10 +394,6 @@ const renderShop = (url: URL) => `<!doctype html>
       document.querySelector("[data-checkout-summary]").textContent = cart.length
         ? cart.length + " item" + (cart.length === 1 ? "" : "s") + " · $" + total
         : "Cart is empty";
-    };
-
-    window.fbq = function(command, eventName, payload) {
-      send("meta.pixel.fire", { command, event_name: eventName, payload, vendor: "meta" });
     };
 
     document.querySelectorAll("[data-view]").forEach((button) => {

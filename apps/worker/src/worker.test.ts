@@ -26,6 +26,18 @@ const createMemoryStore = () => {
       }
 
       return null;
+    },
+    async findSiteById(id) {
+      if (id === "site_shared") {
+        return {
+          id: "site_shared",
+          endpointHost: "shared.sarge.events",
+          attributionTtlDays: 28,
+          pixelEnabled: true
+        };
+      }
+
+      return null;
     }
   };
 
@@ -57,6 +69,18 @@ describe("Cloudflare Worker hosted API", () => {
     expect(body).toContain("SargePixel");
   });
 
+  it("serves a shared-host pixel selected by site query parameter", async () => {
+    const { store } = createMemoryStore();
+    const handler = createWorkerHandler({ store });
+
+    const response = await handler.fetch(new Request("https://sarge.events/pixel.js?site=site_shared"), createEnv());
+    const body = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(body).toContain('"siteId":"site_shared"');
+    expect(body).toContain('"endpoint":"https://sarge.events"');
+  });
+
   it("stores events for a matching hosted site", async () => {
     const { events, store } = createMemoryStore();
     const handler = createWorkerHandler({ store });
@@ -81,6 +105,34 @@ describe("Cloudflare Worker hosted API", () => {
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
       siteId: "site_123",
+      name: "Purchase"
+    });
+  });
+
+  it("stores shared-host events by site ID", async () => {
+    const { events, store } = createMemoryStore();
+    const handler = createWorkerHandler({ store });
+
+    const response = await handler.fetch(
+      new Request("https://sarge.events/v2/events", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          siteId: "site_shared",
+          name: "Purchase",
+          occurredAt: "2026-06-19T12:00:00.000Z",
+          sessionId: "sess_123",
+          userId: "user_123",
+          properties: { value: 129.99 }
+        })
+      }),
+      createEnv()
+    );
+
+    expect(response.status).toBe(202);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      siteId: "site_shared",
       name: "Purchase"
     });
   });

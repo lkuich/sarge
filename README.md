@@ -96,6 +96,7 @@ GET /v2/e?sid=site_123&n=Lead&ts=2026-06-19T12:00:00.000Z&ss=sess_123&u=user_123
 ```
 
 See `docs/API.md` and `docs/TRACKING_CLIENT.md` for more detail.
+For hosted website installation, see `docs/INSTALLATION.md`.
 
 ## Distribution
 
@@ -107,6 +108,7 @@ Sarge has three planned distribution paths:
 
 See:
 
+- `docs/INSTALLATION.md`
 - `docs/SELF_HOSTED.md`
 - `docs/HOSTED_SHARED_TECHNICAL_SPEC.md`
 - `docs/CLOUDFLARE_NEON_DEPLOYMENT.md`

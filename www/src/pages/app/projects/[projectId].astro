@@ -1,6 +1,6 @@
 ---
 import { env } from "cloudflare:workers";
-import { Copy, Radio, ShieldAlert } from "lucide-react";
+import { Copy, ExternalLink, Radio, ShieldAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,6 +21,8 @@ const snippet = `<script>
   window._sarge = { queue: [["track", "page.view"]] };
 </script>
 <script async src="https://${project.endpointHost}/pixel.js"></script>`;
+const endpointHealthUrl = `https://${project.endpointHost}/healthz`;
+const pixelUrl = `https://${project.endpointHost}/pixel.js`;
 
 const recentEvents = project.recentEvents.slice(0, 12);
 
@@ -56,8 +58,34 @@ const formatEventTime = (value: string) =>
         <CardContent>
           <pre class="overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{snippet}</code></pre>
           <div class="mt-4 flex flex-wrap gap-2">
-            <Button><Copy className="mr-2 size-4" /> Copy snippet</Button>
-            <Button variant="outline">Open endpoint</Button>
+            <Button data-copy-snippet data-snippet={snippet}>
+              <Copy className="mr-2 size-4" />
+              <span data-copy-label>Copy snippet</span>
+            </Button>
+            <a
+              class="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-sm font-medium whitespace-nowrap transition-all hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+              href={endpointHealthUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <ExternalLink className="size-4" /> Open endpoint
+            </a>
+            <a
+              class="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-sm font-medium whitespace-nowrap transition-all hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+              href={pixelUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <ExternalLink className="size-4" /> Open pixel
+            </a>
+          </div>
+          <div class="mt-4 rounded-md border bg-card p-4 text-sm">
+            <p class="font-medium">Install checklist</p>
+            <ol class="mt-2 list-decimal space-y-1 pl-4 text-muted-foreground">
+              <li>Paste the snippet into the site head or as early as possible in the page body.</li>
+              <li>Emit `window.sarge("track", "event.name", properties)` for key user actions.</li>
+              <li>Reload the site and confirm events arrive in the debug stream below.</li>
+            </ol>
           </div>
         </CardContent>
       </Card>
@@ -123,4 +151,26 @@ const formatEventTime = (value: string) =>
       </Card>
     </aside>
   </section>
+
+  <script>
+    document.querySelectorAll<HTMLButtonElement>("[data-copy-snippet]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const snippet = button.dataset.snippet;
+        if (!snippet) return;
+
+        try {
+          await navigator.clipboard.writeText(snippet);
+          const label = button.querySelector("[data-copy-label]");
+          const originalText = label?.textContent ?? "Copy snippet";
+          if (label) label.textContent = "Copied";
+          window.setTimeout(() => {
+            if (label) label.textContent = originalText;
+          }, 1600);
+        } catch {
+          const label = button.querySelector("[data-copy-label]");
+          if (label) label.textContent = "Copy failed";
+        }
+      });
+    });
+  </script>
 </AppLayout>

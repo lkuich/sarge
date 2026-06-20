@@ -2,6 +2,8 @@
 import { UserButton } from "@clerk/astro/components";
 import { ChevronRight, Home } from "lucide-react";
 import type { SargeAccount } from "@/lib/sarge-demo";
+import ThemeToggle from "@/components/ThemeToggle";
+import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import "../styles/global.css";
 
 interface BreadcrumbItem {
@@ -30,8 +32,9 @@ const navItems = [
 ---
 
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
+    <script is:inline set:html={THEME_INIT_SCRIPT} />
     <meta charset="utf-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" href="/favicon.ico" />
@@ -83,6 +86,7 @@ const navItems = [
               <span class="hidden rounded-full border bg-card px-3 py-1 text-xs font-medium text-muted-foreground sm:inline-flex">
                 {account.role}
               </span>
+              <ThemeToggle client:load />
               <UserButton />
             </div>
           </div>

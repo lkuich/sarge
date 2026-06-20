@@ -3,14 +3,18 @@ import { Show, SignInButton, SignUpButton } from "@clerk/astro/components";
 import {
   ArrowRight,
   Bot,
+  Bell,
   CircleX,
   Cloud,
   Code2,
   Database,
+  Archive,
   Radio,
+  Scale,
   ShieldCheck,
   Sparkles,
   TerminalSquare,
+  Webhook,
   Zap,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -48,26 +52,46 @@ const loop = [
   },
 ];
 
-const features = [
+const useCases = [
   {
-    title: "The idiot's pixel",
-    description: "A deliberately simple event API: stable names, JSON properties, and no analytics ceremony.",
-    icon: Zap,
+    title: "Fire automations from real events",
+    description: "Turn clean tracking events into webhooks for n8n, Make, Zapier, Slack, CRM updates, lead routing, and internal ops.",
+    icon: Webhook,
   },
   {
-    title: "Third-party watchdog",
-    description: "Wraps `fbq`, `gtag`, and `dataLayer.push` so you can compare what Meta and Google recorded against your own source of truth.",
-    icon: ShieldCheck,
+    title: "Send sales data to your warehouse",
+    description: "Pipe checkout, purchase, attribution, and campaign events into your own Postgres, BigQuery, Snowflake, or ClickHouse stack.",
+    icon: Database,
   },
   {
-    title: "Automatic AI reviews",
-    description: "Scheduled diagnostics, summarized only when there's something to report — so reviews stay cheap and quiet.",
+    title: "Ask AI about marketing performance",
+    description: "Stream structured event history into your LLM layer and ask questions like why Meta reported 40 purchases when Sarge saw 31.",
     icon: Sparkles,
   },
   {
-    title: "Evidence that persists",
-    description: "Every run and finding is stored, so you can see what changed over time instead of re-checking from scratch.",
-    icon: Database,
+    title: "Verify affiliate numbers",
+    description: "Qualify affiliates with independent click, session, checkout, purchase, refund, and attribution-window evidence.",
+    icon: Scale,
+  },
+  {
+    title: "Audit ad platform reporting",
+    description: "Compare Meta, Google, TikTok, affiliate, and first-party events against your own neutral source of truth.",
+    icon: ShieldCheck,
+  },
+  {
+    title: "Keep an audit trail",
+    description: "Own the event history when dashboards change, attribution models shift, privacy rules bite, or a vendor report gets challenged.",
+    icon: Archive,
+  },
+  {
+    title: "Alert on silent failures",
+    description: "Catch no-purchase windows, duplicate order IDs, broken purchase pixels, affiliate spikes, or missing required event fields.",
+    icon: Bell,
+  },
+  {
+    title: "Debug consent and blockers",
+    description: "See what still fires when third-party scripts are blocked, delayed by consent, or loaded in the wrong order.",
+    icon: Radio,
   },
 ];
 
@@ -77,7 +101,7 @@ const features = [
   <section class="relative mx-auto flex min-h-[calc(100svh-5rem)] w-full max-w-6xl flex-col justify-center px-4 pb-8 pt-12 md:px-6 md:pt-20">
     <div class="max-w-4xl">
       <h1 class="max-w-5xl text-5xl font-semibold leading-[0.95] md:text-7xl lg:text-8xl">
-        Do you trust your ad platform?
+        Do you trust your tracking?
         <!-- Catch tracking bugs before your ad platforms lie to you. -->
       </h1>
       <p class="mt-6 max-w-2xl text-base leading-7 text-white md:text-lg">
@@ -136,7 +160,7 @@ const features = [
             <article class="rounded-lg border bg-card/80 p-5">
               <div class="flex items-center gap-3">
                 <span class="grid size-8 place-items-center rounded-md border bg-muted font-mono text-xs">{index + 1}</span>
-                <Icon className="size-4 text-primary" />
+                <Icon className="size-6 text-primary" />
               </div>
               <h3 class="mt-5 text-lg font-semibold">{title}</h3>
               <p class="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
@@ -160,16 +184,19 @@ const features = [
     </div>
   </section>
 
-  <section id="features" class="scroll-mt-20 border-y bg-muted/35 px-4 py-14 md:px-6">
+  <section id="use-cases" class="scroll-mt-20 border-y bg-muted/35 px-4 py-14 md:px-6">
     <div class="mx-auto max-w-6xl">
       <div class="max-w-2xl">
-        <Badge variant="outline">What makes it different</Badge>
-        <h2 class="mt-4 text-3xl font-semibold md:text-5xl">Debugging features, not vanity metrics.</h2>
+        <Badge variant="outline">Use cases</Badge>
+        <h2 class="mt-4 text-3xl font-semibold md:text-5xl">Your own audit trail unlocks more than debugging.</h2>
+        <p class="mt-4 text-sm leading-6 text-muted-foreground">
+          Once marketing events are stored in your own neutral ledger, they can trigger automations, feed your warehouse, verify partners, and give AI something factual to answer from.
+        </p>
       </div>
 
       <div class="mt-8 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
         {
-          features.map(({ title, description, icon: Icon }) => (
+          useCases.map(({ title, description, icon: Icon }) => (
             <article class="rounded-lg border bg-card p-5">
               <Icon className="size-5 text-primary" />
               <h3 class="mt-5 text-base font-semibold">{title}</h3>
@@ -246,7 +273,7 @@ const features = [
         <p class="text-sm font-semibold">Product</p>
         <ul class="mt-3 space-y-2 text-sm text-muted-foreground">
           <li><a class="transition hover:text-foreground" href="#setup">Setup</a></li>
-          <li><a class="transition hover:text-foreground" href="#features">Features</a></li>
+          <li><a class="transition hover:text-foreground" href="#use-cases">Use cases</a></li>
           <li><a class="transition hover:text-foreground" href="#pricing">Pricing</a></li>
         </ul>
       </nav>

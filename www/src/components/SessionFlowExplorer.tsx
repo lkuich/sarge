@@ -107,6 +107,19 @@ export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
     }
   }, [filteredGroups, selectedEventId]);
 
+  useEffect(() => {
+    if (!selectedEvent) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSelectedEventId(null);
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [selectedEvent]);
+
   if (events.length === 0) {
     return (
       <div className="rounded-md border border-dashed p-6 text-sm text-muted-foreground">
@@ -372,9 +385,10 @@ export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
               ))}
             </div>
           </div>
-          {selectedEvent && <EventDetails event={selectedEvent} />}
         </div>
       </div>
+
+      {selectedEvent && <EventDetailsModal event={selectedEvent} onClose={() => setSelectedEventId(null)} />}
     </div>
   );
 }
@@ -555,22 +569,52 @@ const isTimePresetActive = (preset: TimePreset, startAt: string, endAt: string, 
   return getPresetTimeRange(preset, latestEventAt).startAt === startAt;
 };
 
-function EventDetails({ event }: { event: FlowEvent }) {
+function EventDetailsModal({ event, onClose }: { event: FlowEvent; onClose: () => void }) {
   return (
-    <div className="grid gap-3 rounded-md border bg-card p-3 text-sm">
-      <div className="min-w-0">
-        <p className="truncate font-mono text-sm">{event.name}</p>
-        <p className="mt-1 truncate text-xs text-muted-foreground">{event.url ?? "No URL recorded"}</p>
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+      role="presentation"
+      onMouseDown={(mouseEvent) => {
+        if (mouseEvent.target === mouseEvent.currentTarget) onClose();
+      }}
+    >
+      <div
+        className="grid max-h-[calc(100vh-2rem)] w-[min(720px,calc(100vw-2rem))] overflow-hidden rounded-lg border bg-card text-card-foreground shadow-xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="flow-event-detail-title"
+      >
+        <div className="flex items-start justify-between gap-3 border-b p-4">
+          <div className="min-w-0">
+            <p id="flow-event-detail-title" className="truncate font-mono text-sm">
+              {event.name}
+            </p>
+            <p className="mt-1 truncate text-xs text-muted-foreground">{event.url ?? "No URL recorded"}</p>
+          </div>
+          <Button className="size-7" size="icon-sm" variant="ghost" type="button" aria-label="Close event details" onClick={onClose}>
+            <X className="size-4" />
+          </Button>
+        </div>
+        <div className="grid gap-4 overflow-auto p-4 text-sm">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <DetailRow label="Session" value={event.sessionId} />
+            <DetailRow label="User" value={event.userId} />
+            <DetailRow label="Occurred" value={new Date(event.occurredAt).toLocaleString()} />
+            <DetailRow label="Received" value={new Date(event.receivedAt).toLocaleString()} />
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Properties</p>
+            <pre className="mt-2 max-h-72 overflow-auto rounded-md border bg-muted p-3 text-xs leading-5">
+              <code>{JSON.stringify(event.properties, null, 2)}</code>
+            </pre>
+          </div>
+        </div>
+        <div className="flex justify-end border-t p-3">
+          <Button variant="outline" type="button" onClick={onClose}>
+            Close
+          </Button>
+        </div>
       </div>
-      <div className="grid gap-2 text-xs">
-        <DetailRow label="Session" value={event.sessionId} />
-        <DetailRow label="User" value={event.userId} />
-        <DetailRow label="Occurred" value={new Date(event.occurredAt).toLocaleString()} />
-        <DetailRow label="Received" value={new Date(event.receivedAt).toLocaleString()} />
-      </div>
-      <pre className="max-h-44 overflow-auto rounded-md border bg-muted p-2 text-xs leading-5">
-        <code>{JSON.stringify(event.properties, null, 2)}</code>
-      </pre>
     </div>
   );
 }

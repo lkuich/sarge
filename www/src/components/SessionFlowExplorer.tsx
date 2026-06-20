@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 
 type FlowMode = "session" | "user";
 type EventFilter = "all" | "conversion" | "watchdog" | "page" | "custom";
+type TimePreset = "all" | "1h" | "24h" | "7d";
 
 interface FlowEvent {
   id: string;
@@ -62,8 +63,15 @@ export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [eventFilter, setEventFilter] = useState<EventFilter>("all");
+  const [startAt, setStartAt] = useState("");
+  const [endAt, setEndAt] = useState("");
 
-  const groups = useMemo(() => buildGroups(events, mode), [events, mode]);
+  const sampleBounds = useMemo(() => getSampleBounds(events), [events]);
+  const timeFilteredEvents = useMemo(
+    () => filterEventsByTime(events, startAt, endAt),
+    [endAt, events, startAt],
+  );
+  const groups = useMemo(() => buildGroups(timeFilteredEvents, mode), [mode, timeFilteredEvents]);
   const filteredGroups = useMemo(
     () => filterGroups(groups, query, eventFilter),
     [eventFilter, groups, query],
@@ -74,8 +82,8 @@ export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
   }, [filteredGroups, selectedGroupId]);
   const { nodes, edges } = useMemo(() => buildFlowElements(visibleGroups, mode), [mode, visibleGroups]);
   const selectedEvent = useMemo(
-    () => events.find((event) => event.id === selectedEventId) ?? null,
-    [events, selectedEventId],
+    () => timeFilteredEvents.find((event) => event.id === selectedEventId) ?? null,
+    [timeFilteredEvents, selectedEventId],
   );
 
   useEffect(() => {
@@ -85,10 +93,10 @@ export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
   }, [filteredGroups, selectedGroupId]);
 
   useEffect(() => {
-    if (selectedEventId && !events.some((event) => event.id === selectedEventId)) {
+    if (selectedEventId && !timeFilteredEvents.some((event) => event.id === selectedEventId)) {
       setSelectedEventId(null);
     }
-  }, [events, selectedEventId]);
+  }, [timeFilteredEvents, selectedEventId]);
 
   useEffect(() => {
     if (
@@ -194,9 +202,83 @@ export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
             ))}
           </div>
         </div>
+        <div className="grid gap-2 lg:grid-cols-[auto_minmax(180px,220px)_minmax(180px,220px)_auto] lg:items-end">
+          <div className="flex flex-wrap gap-1">
+            {timePresets.map((preset) => (
+              <Button
+                key={preset.value}
+                className="h-8"
+                size="sm"
+                variant={isTimePresetActive(preset.value, startAt, endAt, sampleBounds.latest) ? "secondary" : "outline"}
+                type="button"
+                onClick={() => {
+                  const range = getPresetTimeRange(preset.value, sampleBounds.latest);
+                  setStartAt(range.startAt);
+                  setEndAt(range.endAt);
+                  setSelectedGroupId(null);
+                  setSelectedEventId(null);
+                }}
+              >
+                {preset.label}
+              </Button>
+            ))}
+          </div>
+          <label className="grid gap-1 text-xs text-muted-foreground">
+            Start
+            <Input
+              type="datetime-local"
+              value={startAt}
+              min={sampleBounds.earliest ? toDateTimeLocal(sampleBounds.earliest) : undefined}
+              max={endAt || (sampleBounds.latest ? toDateTimeLocal(sampleBounds.latest) : undefined)}
+              onChange={(event) => {
+                setStartAt(event.target.value);
+                setSelectedGroupId(null);
+                setSelectedEventId(null);
+              }}
+            />
+          </label>
+          <label className="grid gap-1 text-xs text-muted-foreground">
+            End
+            <Input
+              type="datetime-local"
+              value={endAt}
+              min={startAt || (sampleBounds.earliest ? toDateTimeLocal(sampleBounds.earliest) : undefined)}
+              max={sampleBounds.latest ? toDateTimeLocal(sampleBounds.latest) : undefined}
+              onChange={(event) => {
+                setEndAt(event.target.value);
+                setSelectedGroupId(null);
+                setSelectedEventId(null);
+              }}
+            />
+          </label>
+          {(startAt || endAt) && (
+            <Button
+              className="h-8 gap-1"
+              size="sm"
+              variant="ghost"
+              type="button"
+              onClick={() => {
+                setStartAt("");
+                setEndAt("");
+                setSelectedGroupId(null);
+                setSelectedEventId(null);
+              }}
+            >
+              <X className="size-3.5" />
+              Clear dates
+            </Button>
+          )}
+        </div>
         <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-          <Badge variant="outline">{events.length} events</Badge>
+          <Badge variant="outline">
+            {timeFilteredEvents.length} of {events.length} events
+          </Badge>
           <Badge variant="outline">{visibleGroups.length} visible</Badge>
+          {sampleBounds.earliest && sampleBounds.latest && (
+            <Badge variant="outline">
+              Sample {formatDateTime(sampleBounds.earliest)} - {formatDateTime(sampleBounds.latest)}
+            </Badge>
+          )}
           {selectedGroupId && (
             <Button
               className="h-5 gap-1 rounded-full px-2 text-xs"
@@ -428,6 +510,51 @@ const filterGroups = (groups: FlowGroup[], query: string, eventFilter: EventFilt
     .filter((group) => group.events.length > 0);
 };
 
+const filterEventsByTime = (events: FlowEvent[], startAt: string, endAt: string) => {
+  const startTime = parseDateTimeLocal(startAt);
+  const endTime = parseDateTimeLocal(endAt);
+
+  return events.filter((event) => {
+    const eventTime = Date.parse(event.occurredAt);
+    if (Number.isNaN(eventTime)) return false;
+    if (startTime !== null && eventTime < startTime) return false;
+    if (endTime !== null && eventTime > endTime) return false;
+    return true;
+  });
+};
+
+const getSampleBounds = (events: FlowEvent[]) => {
+  const times = events
+    .map((event) => Date.parse(event.occurredAt))
+    .filter((time) => !Number.isNaN(time))
+    .sort((left, right) => left - right);
+
+  return {
+    earliest: times.length > 0 ? new Date(times[0]).toISOString() : null,
+    latest: times.length > 0 ? new Date(times[times.length - 1]).toISOString() : null,
+  };
+};
+
+const getPresetTimeRange = (preset: TimePreset, latestEventAt: string | null) => {
+  if (preset === "all" || !latestEventAt) return { startAt: "", endAt: "" };
+
+  const latestTime = Date.parse(latestEventAt);
+  const durationMs = timePresetDurations[preset];
+  const startTime = latestTime - durationMs;
+
+  return {
+    startAt: toDateTimeLocal(new Date(startTime).toISOString()),
+    endAt: "",
+  };
+};
+
+const isTimePresetActive = (preset: TimePreset, startAt: string, endAt: string, latestEventAt: string | null) => {
+  if (preset === "all") return !startAt && !endAt;
+  if (!latestEventAt) return false;
+  if (endAt) return false;
+  return getPresetTimeRange(preset, latestEventAt).startAt === startAt;
+};
+
 function EventDetails({ event }: { event: FlowEvent }) {
   return (
     <div className="grid gap-3 rounded-md border bg-card p-3 text-sm">
@@ -466,6 +593,29 @@ const formatTime = (value: string) =>
     second: "2-digit",
   }).format(new Date(value));
 
+const formatDateTime = (value: string) =>
+  new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+
+const parseDateTimeLocal = (value: string) => {
+  if (!value) return null;
+
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? null : time;
+};
+
+const toDateTimeLocal = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const timezoneOffsetMs = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - timezoneOffsetMs).toISOString().slice(0, 16);
+};
+
 const shortenId = (value: string) => {
   if (value.length <= 18) return value;
   return `${value.slice(0, 8)}...${value.slice(-6)}`;
@@ -500,3 +650,16 @@ const eventFilters: { value: EventFilter; label: string }[] = [
   { value: "watchdog", label: "Watchdog" },
   { value: "custom", label: "Custom" },
 ];
+
+const timePresets: { value: TimePreset; label: string }[] = [
+  { value: "all", label: "All time" },
+  { value: "1h", label: "Last hour" },
+  { value: "24h", label: "Last 24h" },
+  { value: "7d", label: "Last 7d" },
+];
+
+const timePresetDurations: Record<Exclude<TimePreset, "all">, number> = {
+  "1h": 60 * 60 * 1000,
+  "24h": 24 * 60 * 60 * 1000,
+  "7d": 7 * 24 * 60 * 60 * 1000,
+};

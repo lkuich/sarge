@@ -2,12 +2,13 @@
 import { defineConfig } from 'astro/config';
 import cloudflare from '@astrojs/cloudflare';
 import clerk from '@clerk/astro';
+import { dark } from '@clerk/themes';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@astrojs/react';
 
 // https://astro.build/config
 export default defineConfig({
-  integrations: [clerk(), react()],
+  integrations: [clerk({ appearance: { baseTheme: dark } }), react()],
   vite: {
     plugins: [tailwindcss()],
   },

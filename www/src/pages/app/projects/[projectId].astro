@@ -1,4 +1,5 @@
 ---
+import { env } from "cloudflare:workers";
 import { Copy, Radio, ShieldAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,7 @@ export const prerender = false;
 const { userId } = Astro.locals.auth();
 if (!userId) return Astro.redirect("/sign-in");
 
-const account = await getViewerAccount(userId, Astro.locals.runtime?.env?.DATABASE_URL);
+const account = await getViewerAccount(userId, env.DATABASE_URL);
 const project = getProject(account, Astro.params.projectId ?? "");
 if (!project) return Astro.redirect("/app/projects");
 

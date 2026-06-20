@@ -1,5 +1,5 @@
 ---
-import { ArrowRight, BookOpen, Server, TerminalSquare } from "lucide-react";
+import { ArrowRight, BookOpen, Radio, Server, TerminalSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import SiteLayout from "@/layouts/SiteLayout.astro";
@@ -16,6 +16,12 @@ const docs = [
     description: "Install the hosted Sarge pixel and wire ecommerce events into an existing site.",
     href: "/#setup",
     icon: TerminalSquare,
+  },
+  {
+    title: "Event reference",
+    description: "Event names, payload shapes, watchdog events, and copy-paste tracking examples.",
+    href: "/docs/events",
+    icon: Radio,
   },
 ];
 ---

@@ -1,0 +1,203 @@
+---
+import { ArrowRight, Bot, Radio, ShieldCheck, ShoppingCart } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import SiteLayout from "@/layouts/SiteLayout.astro";
+
+const ecommerceEvents = [
+  {
+    name: "page.view",
+    when: "Initial page load and SPA route changes.",
+    required: ["path", "title"],
+    example: `window.sarge("track", "page.view", {
+  path: window.location.pathname,
+  title: document.title
+});`,
+  },
+  {
+    name: "product.viewed",
+    when: "Product detail view, quick view, or product card inspection.",
+    required: ["product_id"],
+    example: `window.sarge("track", "product.viewed", {
+  product_id: "field-flask",
+  product_name: "Field Flask",
+  price: 42,
+  currency: "USD"
+});`,
+  },
+  {
+    name: "cart.added",
+    when: "A product is successfully added to cart.",
+    required: ["product_id", "price"],
+    example: `window.sarge("track", "cart.added", {
+  product_id: "field-flask",
+  product_name: "Field Flask",
+  price: 42,
+  currency: "USD",
+  cart_size: 1
+});`,
+  },
+  {
+    name: "checkout.started",
+    when: "The customer starts checkout.",
+    required: ["value", "currency"],
+    example: `window.sarge("track", "checkout.started", {
+  value: 84,
+  currency: "USD",
+  cart_size: 2
+});`,
+  },
+  {
+    name: "purchase.completed",
+    when: "Payment succeeds and an order is created.",
+    required: ["order_id", "value", "currency"],
+    example: `window.sarge("track", "purchase.completed", {
+  order_id: "order_123",
+  value: 84,
+  currency: "USD",
+  item_count: 2,
+  products: ["field-flask", "map-wax"]
+});`,
+  },
+];
+
+const watchdogEvents = [
+  {
+    name: "meta.pixel.fire",
+    source: "Observed from `fbq(...)`",
+    example: `{
+  vendor: "meta",
+  command: "track",
+  event_name: "Purchase",
+  payload: { value: 84, currency: "USD" }
+}`,
+  },
+  {
+    name: "google.tag.fire",
+    source: "Observed from `gtag(...)`",
+    example: `{
+  vendor: "google",
+  command: "event",
+  event_name: "purchase",
+  payload: { transaction_id: "order_123", value: 84 }
+}`,
+  },
+  {
+    name: "data_layer.push",
+    source: "Observed from `dataLayer.push(...)`",
+    example: `{
+  vendor: "google",
+  payload: {
+    event: "purchase",
+    ecommerce: { value: 84, currency: "USD" }
+  }
+}`,
+  },
+];
+---
+
+<SiteLayout title="Event reference | Sarge Docs">
+  <section class="mx-auto max-w-6xl px-4 py-14 md:px-6">
+    <a class="inline-flex items-center text-sm text-muted-foreground hover:text-foreground" href="/docs">
+      <ArrowRight className="mr-1 size-3.5 rotate-180" /> Docs
+    </a>
+
+    <div class="mt-8 max-w-3xl">
+      <Badge variant="outline">Event reference</Badge>
+      <h1 class="mt-4 text-4xl font-semibold md:text-6xl">Track the events that prove what happened.</h1>
+      <p class="mt-4 text-sm leading-6 text-muted-foreground">
+        Use stable, lowercase, dot-separated names. Properties should be JSON-serializable and should keep the same shape every time an event fires.
+      </p>
+    </div>
+
+    <div class="mt-8 grid gap-4 lg:grid-cols-[1fr_340px]">
+      <div class="grid gap-4">
+        <section class="rounded-lg border bg-card p-5">
+          <div class="flex items-center gap-2">
+            <ShoppingCart className="size-5 text-primary" />
+            <h2 class="text-xl font-semibold">Ecommerce events</h2>
+          </div>
+          <div class="mt-5 grid gap-3">
+            {
+              ecommerceEvents.map((event) => (
+                <article class="rounded-md border bg-background p-4">
+                  <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h3 class="font-mono text-sm">{event.name}</h3>
+                      <p class="mt-1 text-sm text-muted-foreground">{event.when}</p>
+                    </div>
+                    <div class="flex flex-wrap gap-1">
+                      {event.required.map((field) => <Badge variant="outline">{field}</Badge>)}
+                    </div>
+                  </div>
+                  <pre class="mt-4 overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{event.example}</code></pre>
+                </article>
+              ))
+            }
+          </div>
+        </section>
+
+        <section class="rounded-lg border bg-card p-5">
+          <div class="flex items-center gap-2">
+            <ShieldCheck className="size-5 text-primary" />
+            <h2 class="text-xl font-semibold">Watchdog events</h2>
+          </div>
+          <p class="mt-2 text-sm leading-6 text-muted-foreground">
+            These are emitted automatically when Sarge observes common third-party marketing APIs after the pixel loads.
+          </p>
+          <div class="mt-5 grid gap-3">
+            {
+              watchdogEvents.map((event) => (
+                <article class="rounded-md border bg-background p-4">
+                  <h3 class="font-mono text-sm">{event.name}</h3>
+                  <p class="mt-1 text-sm text-muted-foreground">{event.source}</p>
+                  <pre class="mt-4 overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{event.example}</code></pre>
+                </article>
+              ))
+            }
+          </div>
+        </section>
+      </div>
+
+      <aside class="grid content-start gap-4">
+        <section class="rounded-lg border bg-card p-5">
+          <Radio className="size-5 text-primary" />
+          <h2 class="mt-5 font-semibold">Event envelope</h2>
+          <pre class="mt-4 overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{`{
+  siteId: "site_123",
+  name: "purchase.completed",
+  occurredAt: "2026-06-20T12:00:00.000Z",
+  sessionId: "sess_123",
+  userId: "user_123",
+  context: {
+    url: "https://shop.example.com/thanks",
+    referrer: "https://google.com",
+    title: "Thanks"
+  },
+  properties: {}
+}`}</code></pre>
+        </section>
+
+        <section class="rounded-lg border bg-card p-5">
+          <Bot className="size-5 text-primary" />
+          <h2 class="mt-5 font-semibold">AI diagnostics expect</h2>
+          <ul class="mt-3 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
+            <li>`purchase.completed` should include `order_id`, `value`, and `currency`.</li>
+            <li>`checkout.started` should include `value` and `currency`.</li>
+            <li>`cart.added` should include `product_id` and `price`.</li>
+            <li>Meta Purchase calls should line up with Sarge purchase events.</li>
+          </ul>
+        </section>
+
+        <section class="rounded-lg border bg-card p-5">
+          <h2 class="font-semibold">Naming rules</h2>
+          <ul class="mt-3 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
+            <li>Use lowercase dot-separated names.</li>
+            <li>Do not rename events once dashboards depend on them.</li>
+            <li>Keep property names stable across platforms.</li>
+            <li>Prefer `snake_case` payload keys.</li>
+          </ul>
+        </section>
+      </aside>
+    </div>
+  </section>
+</SiteLayout>

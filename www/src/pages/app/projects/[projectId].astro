@@ -1,6 +1,6 @@
 ---
 import { env } from "cloudflare:workers";
-import { Bot, Copy, ExternalLink, Globe2, Radio, Search, ShieldAlert, Sparkles } from "lucide-react";
+import { Bot, Copy, ExternalLink, Globe2, Radio, Search, ShieldAlert, Sparkles, TerminalSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,6 +41,8 @@ const severityClass = (severity: string) => {
   if (severity === "warning") return "border-amber-500/30 bg-amber-500/5";
   return "border-border bg-card";
 };
+const isWatchdogEvent = (name: string) =>
+  name === "meta.pixel.fire" || name === "google.tag.fire" || name === "data_layer.push";
 
 const formatEventTime = (value: string) =>
   new Intl.DateTimeFormat("en-US", {
@@ -112,6 +114,14 @@ const formatEventPayload = (value: Record<string, unknown>) => JSON.stringify(va
               <li>Emit `window.sarge("track", "event.name", properties)` for key user actions.</li>
               <li>Reload the site and confirm events arrive in the debug stream below.</li>
             </ol>
+            <a
+              class="mt-3 inline-flex items-center text-sm font-medium text-primary hover:underline"
+              href="/docs/events"
+              target="_blank"
+              rel="noreferrer"
+            >
+              View event names and payload examples <ExternalLink className="ml-1 size-3.5" />
+            </a>
           </div>
         </CardContent>
       </Card>
@@ -198,7 +208,13 @@ const formatEventPayload = (value: Record<string, unknown>) => JSON.stringify(va
               recentEvents.map((event) => (
                 <>
                   <div class="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-md border p-3">
-                    <Radio className="size-4 text-primary" />
+                    {
+                      isWatchdogEvent(event.name) ? (
+                        <TerminalSquare className="size-4 text-cyan-400" />
+                      ) : (
+                        <Radio className="size-4 text-primary" />
+                      )
+                    }
                     <div class="min-w-0">
                       <p class="font-mono text-sm">{event.name}</p>
                       <p class="truncate text-xs text-muted-foreground">

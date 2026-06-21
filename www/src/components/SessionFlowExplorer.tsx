@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 type FlowMode = "session" | "user";
-type EventFilter = "all" | "conversion" | "watchdog" | "page" | "custom";
+type EventFilter = "conversion" | "watchdog" | "page" | "custom";
 type TimePreset = "all" | "1h" | "24h" | "7d";
 
 interface FlowEvent {
@@ -62,7 +62,9 @@ export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [eventFilter, setEventFilter] = useState<EventFilter>("all");
+  const [selectedEventFilters, setSelectedEventFilters] = useState<EventFilter[]>(() =>
+    eventFilters.map((filter) => filter.value),
+  );
   const [startAt, setStartAt] = useState("");
   const [endAt, setEndAt] = useState("");
 
@@ -73,8 +75,8 @@ export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
   );
   const groups = useMemo(() => buildGroups(timeFilteredEvents, mode), [mode, timeFilteredEvents]);
   const filteredGroups = useMemo(
-    () => filterGroups(groups, query, eventFilter),
-    [eventFilter, groups, query],
+    () => filterGroups(groups, query, selectedEventFilters),
+    [groups, query, selectedEventFilters],
   );
   const visibleGroups = useMemo(() => {
     if (selectedGroupId) return filteredGroups.filter((group) => group.id === selectedGroupId);
@@ -202,10 +204,11 @@ export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
                 key={filter.value}
                 className="h-8"
                 size="sm"
-                variant={eventFilter === filter.value ? "secondary" : "outline"}
+                variant={selectedEventFilters.includes(filter.value) ? "secondary" : "outline"}
                 type="button"
+                aria-pressed={selectedEventFilters.includes(filter.value)}
                 onClick={() => {
-                  setEventFilter(filter.value);
+                  setSelectedEventFilters((current) => toggleEventFilter(current, filter.value));
                   setSelectedGroupId(null);
                   setSelectedEventId(null);
                 }}
@@ -500,13 +503,14 @@ const buildFlowElements = (groups: FlowGroup[], mode: FlowMode): { nodes: FlowNo
   return { nodes, edges };
 };
 
-const filterGroups = (groups: FlowGroup[], query: string, eventFilter: EventFilter) => {
+const filterGroups = (groups: FlowGroup[], query: string, selectedEventFilters: EventFilter[]) => {
   const normalizedQuery = query.trim().toLowerCase();
+  const selectedFilters = new Set(selectedEventFilters);
 
   return groups
     .map((group) => {
       const matchingEvents = group.events.filter((event) => {
-        const matchesFilter = eventFilter === "all" || getEventFilter(event.name) === eventFilter;
+        const matchesFilter = selectedFilters.has(getEventFilter(event.name));
         if (!matchesFilter) return false;
         if (!normalizedQuery) return true;
 
@@ -514,10 +518,12 @@ const filterGroups = (groups: FlowGroup[], query: string, eventFilter: EventFilt
           .filter(Boolean)
           .some((value) => String(value).toLowerCase().includes(normalizedQuery));
       });
+      const matchingFilters = new Set(matchingEvents.map((event) => getEventFilter(event.name)));
+      const matchesEverySelectedFilter = selectedEventFilters.every((filter) => matchingFilters.has(filter));
 
       return {
         ...group,
-        events: matchingEvents,
+        events: matchesEverySelectedFilter ? matchingEvents : [],
         lastEventAt: matchingEvents.at(-1)?.occurredAt ?? group.lastEventAt,
       };
     })
@@ -680,7 +686,7 @@ const isWatchdogEvent = (name: string) =>
 
 const isConversionEvent = (name: string) => name.includes("purchase") || name.includes("checkout");
 
-const getEventFilter = (name: string): Exclude<EventFilter, "all"> => {
+const getEventFilter = (name: string): EventFilter => {
   if (isConversionEvent(name)) return "conversion";
   if (isWatchdogEvent(name)) return "watchdog";
   if (name === "page.view") return "page";
@@ -688,12 +694,21 @@ const getEventFilter = (name: string): Exclude<EventFilter, "all"> => {
 };
 
 const eventFilters: { value: EventFilter; label: string }[] = [
-  { value: "all", label: "All" },
   { value: "conversion", label: "Conversion" },
   { value: "page", label: "Page views" },
   { value: "watchdog", label: "Watchdog" },
   { value: "custom", label: "Custom" },
 ];
+
+const toggleEventFilter = (current: EventFilter[], filter: EventFilter) => {
+  const next = current.includes(filter)
+    ? current.filter((currentFilter) => currentFilter !== filter)
+    : [...current, filter];
+
+  return eventFilters
+    .map((eventFilter) => eventFilter.value)
+    .filter((eventFilter) => next.includes(eventFilter));
+};
 
 const timePresets: { value: TimePreset; label: string }[] = [
   { value: "all", label: "All time" },

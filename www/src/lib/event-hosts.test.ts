@@ -5,14 +5,14 @@ describe("summarizeEventHosts", () => {
   it("uses distinct hosts from the top 10 most recent event URLs", () => {
     const events = Array.from({ length: 12 }, (_, index) => ({
       occurredAt: new Date(Date.UTC(2026, 5, 20, 12, index)).toISOString(),
-      url: index < 9 ? "https://shop.lkuich.com/products" : `https://older-${index}.example.com`,
+      url: index < 9 ? "https://shop.sargetrack.app/products" : `https://older-${index}.example.com`,
     }));
 
     const hosts = summarizeEventHosts(events);
 
     expect(hosts).toEqual([
       {
-        host: "shop.lkuich.com",
+        host: "shop.sargetrack.app",
         count: 9,
         lastEventAt: "2026-06-20T12:08:00.000Z",
       },

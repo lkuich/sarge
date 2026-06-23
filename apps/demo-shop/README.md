@@ -5,13 +5,13 @@ Tiny ecommerce storefront used to prove the hosted Sarge pixel end to end.
 Production URL:
 
 ```text
-https://shop.lkuich.com
+https://shop.sargetrack.app
 ```
 
 The page installs the hosted pixel from:
 
 ```html
-<script async src="https://sarge.lkuich.com/pixel.js?site=site_demo"></script>
+<script async src="https://track.sargetrack.app/pixel.js?site=site_demo"></script>
 ```
 
 It emits:

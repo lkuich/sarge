@@ -85,7 +85,7 @@ export type CreateWebhookResult =
   | { success: true; webhook: WebhookEndpoint; signingSecret: string }
   | { success: false; error: string };
 
-export const hostedEndpointHost = 'sarge.lkuich.com';
+export const hostedEndpointHost = 'track.sargetrack.app';
 
 const adminIds = new Set(
   (import.meta.env.SARGE_ADMIN_USER_IDS ?? '')
@@ -308,7 +308,7 @@ export const createProject = async (
     if (!workspace) return { success: false, error: 'Demo workspace is not available.' };
 
     const id = `site_${crypto.randomUUID()}`;
-    const endpointHost = `${slug}.sarge.lkuich.com`;
+    const endpointHost = `${slug}.sargetrack.app`;
     const rows = (await sql`
       INSERT INTO "Site" (id, "workspaceId", slug, name, "endpointHost", "attributionTtlDays", "pixelEnabled")
       VALUES (${id}, ${workspace.id}, ${slug}, ${name}, ${endpointHost}, 28, true)
@@ -433,7 +433,7 @@ const getFallbackAccount = (role: AccountRole): SargeAccount => ({
       id: 'site_demo',
       slug: 'demo-site',
       name: 'Demo Site',
-      endpointHost: 'sarge.lkuich.com',
+      endpointHost: 'demo.sargetrack.app',
       pixelUrl: buildPixelUrl('site_demo'),
       endpointHealthUrl: buildHealthUrl(),
       status: 'active',
@@ -453,7 +453,7 @@ const getFallbackAccount = (role: AccountRole): SargeAccount => ({
       id: 'site_checkout',
       slug: 'checkout-lab',
       name: 'Checkout Lab',
-      endpointHost: 'checkout.sarge.local',
+      endpointHost: 'checkout.sargetrack.app',
       pixelUrl: buildPixelUrl('site_checkout'),
       endpointHealthUrl: buildHealthUrl(),
       status: 'draft',

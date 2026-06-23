@@ -5,7 +5,7 @@ Astro application for the Sarge web dashboard and public app shell. It uses Cler
 Production URL:
 
 ```text
-https://app.lkuich.com
+https://sargetrack.app
 ```
 
 ## Local Development
@@ -34,7 +34,7 @@ npm run dev
 
 ## Cloudflare Deployment
 
-The app is configured in `wrangler.jsonc` as the `sarge-www` Worker and is routed through Cloudflare DNS at `app.lkuich.com/*`.
+The app is configured in `wrangler.jsonc` as the `sarge-www` Worker and is routed through Cloudflare DNS at `sargetrack.app/*` and `www.sargetrack.app/*`.
 
 Required GitHub Actions secrets:
 
@@ -46,7 +46,7 @@ CLERK_SECRET_KEY
 NEON_DATABASE_URL
 ```
 
-The Cloudflare token needs access to the `lkuich.com` zone and permission to deploy Workers, edit Worker routes, and edit DNS records. `NEON_DATABASE_URL` is installed on the Cloudflare Worker as the runtime `DATABASE_URL` secret so the portal can read live project and event data.
+The Cloudflare token needs access to the `sargetrack.app` zone and permission to deploy Workers, edit Worker routes, and edit DNS records. `NEON_DATABASE_URL` is installed on the Cloudflare Worker as the runtime `DATABASE_URL` secret so the portal can read live project and event data.
 
 Manual deploy:
 

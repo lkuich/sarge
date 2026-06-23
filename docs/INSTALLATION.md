@@ -10,7 +10,7 @@ Use the snippet from the project detail screen in the portal:
 <script>
   window._sarge = { queue: [["track", "page.view"]] };
 </script>
-<script async src="https://sarge.lkuich.com/pixel.js?site={siteId}"></script>
+<script async src="https://track.sargetrack.app/pixel.js?site={siteId}"></script>
 ```
 
 Use the exact snippet from the project detail screen. The `site` query parameter identifies the project while the shared hosted endpoint delivers the script.
@@ -119,8 +119,8 @@ https://shop.example.com/?sarge_ref=summer-campaign&sarge_aff=partner-42
 
 You can also open these project URLs directly from the portal:
 
-- `https://sarge.lkuich.com/healthz` checks the endpoint Worker.
-- `https://sarge.lkuich.com/pixel.js?site={siteId}` checks script delivery.
+- `https://track.sargetrack.app/healthz` checks the endpoint Worker.
+- `https://track.sargetrack.app/pixel.js?site={siteId}` checks script delivery.
 
 ## Agentic Install
 

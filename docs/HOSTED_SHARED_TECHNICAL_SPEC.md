@@ -5,7 +5,7 @@ This spec describes the standard hosted Sarge option: customers deploy with us, 
 ## Goals
 
 - Provision a new customer workspace in minutes.
-- Give each customer a simple endpoint such as `https://acme.sarge.lkuich.com` while the product is incubating under `lkuich.com`.
+- Give each customer a simple endpoint such as `https://acme.sargetrack.app`.
 - Serve a customized pixel that already knows its endpoint and site ID.
 - Store events in shared Postgres with strong tenant scoping.
 - Keep pricing aggressive by avoiding per-customer infrastructure by default.
@@ -27,16 +27,16 @@ Provisioning flow:
 Example snippet:
 
 ```html
-<script src="https://acme.sarge.lkuich.com/pixel.js"></script>
+<script src="https://acme.sargetrack.app/pixel.js"></script>
 <script>
   sarge('init');
   sarge('track', 'PageView');
 </script>
 ```
 
-The pixel served from `acme.sarge.lkuich.com` is customized with:
+The pixel served from `acme.sargetrack.app` is customized with:
 
-- API endpoint: `https://acme.sarge.lkuich.com`
+- API endpoint: `https://acme.sargetrack.app`
 - site ID
 - attribution TTL
 - feature flags
@@ -46,8 +46,8 @@ The pixel served from `acme.sarge.lkuich.com` is customized with:
 
 ```text
 Customer site
-  -> https://{siteSlug}.sarge.lkuich.com/pixel.js
-  -> https://{siteSlug}.sarge.lkuich.com/v2/events
+  -> https://{siteSlug}.sargetrack.app/pixel.js
+  -> https://{siteSlug}.sargetrack.app/v2/events
   -> Cloudflare Worker
   -> tenant resolver
   -> event validation
@@ -71,8 +71,8 @@ Initial deployment files:
 
 Required platform capability:
 
-- Cloudflare DNS for `lkuich.com`
-- wildcard routing for `*.sarge.lkuich.com`
+- Cloudflare DNS for `sargetrack.app`
+- wildcard routing for `*.sargetrack.app`
 - TLS for hosted subdomains
 - request routing by `Host` header in the Worker
 - Neon Postgres connectivity from Cloudflare, preferably through Hyperdrive when production traffic warrants it
@@ -82,7 +82,7 @@ Required platform capability:
 Use Cloudflare for hosted shared infrastructure:
 
 - Workers for API/event ingestion
-- Cloudflare DNS for `lkuich.com`
+- Cloudflare DNS for `sargetrack.app`
 - Cloudflare CDN/cache for `/pixel.js`
 - Cloudflare for SaaS/custom hostnames when customer-owned domains are added
 - Workers for Platforms later if Sarge supports customer-specific or AI-generated script execution
@@ -167,7 +167,7 @@ Generated shape:
 ```js
 window.__SARGE_CONFIG__ = {
   siteId: "site_123",
-  endpoint: "https://acme.sarge.lkuich.com",
+  endpoint: "https://acme.sargetrack.app",
   attributionTtlDays: 28
 };
 ```
@@ -214,7 +214,7 @@ Workspace creation:
 1. Validate desired workspace slug.
 2. Create `Workspace`.
 3. Create first `Site`.
-4. Assign `endpointHost = "{siteSlug}.sarge.lkuich.com"`.
+4. Assign `endpointHost = "{siteSlug}.sargetrack.app"`.
 5. Return install snippet.
 
 Site creation:

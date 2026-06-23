@@ -8,7 +8,7 @@
     "enabled": true
   },
   "vars": {
-    "SARGE_BASE_DOMAIN": "sarge.lkuich.com",
+    "SARGE_BASE_DOMAIN": "track.sargetrack.app",
     "DEFAULT_ATTRIBUTION_TTL_DAYS": "28",
     "DIAGNOSTIC_EVENT_LOOKBACK_MINUTES": "60",
     "DIAGNOSTIC_EVENT_LIMIT_PER_SITE": "200",
@@ -24,8 +24,12 @@
   },
   "routes": [
     {
-      "pattern": "sarge.lkuich.com/*",
-      "zone_name": "lkuich.com"
+      "pattern": "track.sargetrack.app/*",
+      "zone_name": "sargetrack.app"
+    },
+    {
+      "pattern": "*.sargetrack.app/*",
+      "zone_name": "sargetrack.app"
     }
   ]
 }

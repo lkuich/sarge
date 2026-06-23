@@ -18,8 +18,12 @@
   },
   "routes": [
     {
-      "pattern": "app.lkuich.com/*",
-      "zone_name": "lkuich.com"
+      "pattern": "sargetrack.app/*",
+      "zone_name": "sargetrack.app"
+    },
+    {
+      "pattern": "www.sargetrack.app/*",
+      "zone_name": "sargetrack.app"
     }
   ]
 }

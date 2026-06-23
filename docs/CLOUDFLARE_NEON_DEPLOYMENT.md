@@ -6,7 +6,7 @@ This is the primary hosted shared deployment path for Sarge.
 
 ```text
 Customer site
-  -> https://{site}.sarge.lkuich.com/pixel.js
+  -> https://{site}.sargetrack.app/pixel.js
   -> Cloudflare Worker
   -> Neon Postgres
 ```
@@ -15,7 +15,7 @@ Cloudflare owns the hosted edge, routing, TLS, CDN, and future custom-hostname p
 
 ## Required Accounts
 
-- Cloudflare account with the `lkuich.com` zone
+- Cloudflare account with the `sargetrack.app` zone
 - Neon project/database
 - GitHub repository with Actions enabled
 
@@ -27,7 +27,7 @@ CLOUDFLARE_ACCOUNT_ID
 NEON_DATABASE_URL
 ```
 
-The Cloudflare token needs permission to deploy Workers, manage Worker secrets, and manage Worker routes for `lkuich.com`.
+The Cloudflare token needs permission to deploy Workers, manage Worker secrets, and manage Worker routes for `sargetrack.app`.
 
 Minimum Cloudflare token permissions:
 
@@ -39,14 +39,14 @@ Zone > Workers Routes > Read
 Zone > Workers Routes > Edit or Write
 ```
 
-Scope the account permissions to `Loren.jk3@gmail.com's Account` and the zone permissions to `lkuich.com`.
+Scope the account permissions to `Loren.jk3@gmail.com's Account` and the zone permissions to `sargetrack.app`.
 
 Cloudflare's docs list both Dashboard and API permission names. In the dashboard, some permissions are labeled `Edit`; in the API list, the same permission may be labeled `Write`.
 
 When creating the token, add separate policies:
 
 1. Account policy scoped to `Loren.jk3@gmail.com's Account`.
-2. Zone policy scoped to `lkuich.com`.
+2. Zone policy scoped to `sargetrack.app`.
 
 If you only edit an `Entire Account` policy, Cloudflare will not show zone-only permissions like `Workers Routes`.
 
@@ -67,10 +67,11 @@ apps/worker/wrangler.jsonc
 Default route:
 
 ```text
-sarge.lkuich.com/*
+track.sargetrack.app/*
+*.sargetrack.app/*
 ```
 
-The initial shared-host deployment uses the exact `sarge.lkuich.com` hostname for smoke testing. Tenant subdomains such as `demo.sarge.lkuich.com` need a certificate strategy before they can be used in production, because Cloudflare's default universal certificate usually covers `*.lkuich.com`, not `*.sarge.lkuich.com`.
+The shared-host deployment uses the exact `track.sargetrack.app` hostname for smoke testing. Tenant subdomains such as `demo.sargetrack.app` are covered by Cloudflare's default one-level wildcard certificate for the `sargetrack.app` zone.
 
 Default Worker name:
 
@@ -102,7 +103,7 @@ Use `prisma:migrate` while developing migrations locally. Use `prisma:deploy` fo
 
 ## Cloudflare Setup
 
-1. Confirm `lkuich.com` is active in Cloudflare.
+1. Confirm `sargetrack.app` is active in Cloudflare.
 2. Confirm Cloudflare manages DNS for the zone.
 3. Create a Cloudflare API token for Worker deploys.
 4. Add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` to GitHub secrets.
@@ -143,20 +144,20 @@ printf '%s' "$NEON_DATABASE_URL" | pnpm wrangler secret put DATABASE_URL
 Health:
 
 ```http
-GET https://acme.sarge.lkuich.com/healthz
+GET https://acme.sargetrack.app/healthz
 ```
 
 Pixel:
 
 ```http
-GET https://acme.sarge.lkuich.com/pixel.js
+GET https://acme.sargetrack.app/pixel.js
 ```
 
 Event ingestion:
 
 ```http
-POST https://acme.sarge.lkuich.com/v2/events
-GET  https://acme.sarge.lkuich.com/v2/e
+POST https://acme.sargetrack.app/v2/events
+GET  https://acme.sargetrack.app/v2/e
 ```
 
 ## Current Limitations

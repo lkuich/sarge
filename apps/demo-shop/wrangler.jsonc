@@ -8,8 +8,8 @@
   },
   "routes": [
     {
-      "pattern": "shop.lkuich.com/*",
-      "zone_name": "lkuich.com"
+      "pattern": "shop.sargetrack.app/*",
+      "zone_name": "sargetrack.app"
     }
   ]
 }

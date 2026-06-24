@@ -77,7 +77,7 @@ const navItems: Array<{ id: Props["active"]; href: string; label: string }> = [
               <p class="truncate text-sm font-semibold">{account.name}</p>
               <p class="text-xs text-muted-foreground">{account.role} · {account.plan}</p>
             </div>
-            <ThemeToggle client:load />
+            <ThemeToggle client:only="react" />
             <UserButton />
           </div>
         </div>

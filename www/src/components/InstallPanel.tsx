@@ -24,7 +24,7 @@ const AGENT_LABELS: Record<AgentKey, string> = {
 };
 
 const DEFAULT_AGENT_PROMPT =
-  "Add Sarge tracking to this app: install the pixel snippet, wire page, product, cart, checkout, and purchase events, keep any existing Meta and Google pixels in place, then verify the events reach the Sarge portal.";
+  "Add Sarge tracking to this app. Read https://sargetrack.app/llms.txt first, then use https://sargetrack.app/docs/install.md and https://sargetrack.app/docs/events.md as the implementation reference. Install the pixel snippet, wire page, product, cart, checkout, and purchase events, keep any existing Meta and Google pixels in place, then verify the events reach the Sarge portal.";
 
 const CLAUDE_ORANGE = "#D97757";
 

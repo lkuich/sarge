@@ -1,0 +1,191 @@
+# Sarge LLM Documentation
+
+This file bundles the core Sarge Markdown docs for coding agents and LLMs.
+
+Canonical index: `/llms.txt`
+
+---
+
+# Install Sarge
+
+Sarge is installed as a small hosted browser script. Each Sarge project has a project-specific pixel URL. Use the exact snippet from the project detail screen in the Sarge portal.
+
+## Hosted Pixel Snippet
+
+```html
+<script>
+  window._sarge = { queue: [["track", "page.view"]] };
+</script>
+<script async src="https://track.sargetrack.app/pixel.js?site={siteId}"></script>
+```
+
+Place the snippet in the document `<head>` or as early as possible in the page body. The queued `page.view` call is replayed after `pixel.js` loads.
+
+## Track Events
+
+After the script loads, call:
+
+```js
+window.sarge("track", "product.viewed", {
+  product_id: "field-flask",
+  product_name: "Field Flask",
+  price: 42,
+  currency: "USD"
+});
+```
+
+Core event names:
+
+```text
+page.view
+product.viewed
+cart.added
+checkout.started
+purchase.completed
+meta.pixel.fire
+google.tag.fire
+data_layer.push
+```
+
+Properties must be JSON-serializable.
+
+## Verify Installation
+
+1. Open the target site in a browser.
+2. Open the Sarge portal.
+3. Go to Projects.
+4. Open the project that owns the pixel.
+5. Confirm events appear in the project event stream.
+
+No public Sarge MCP server or npm skill package is currently published. Do not run `npx sarge@latest` or install `@sarge/mcp`.
+
+---
+
+# Sarge Event Reference
+
+Use stable, lowercase, dot-separated event names. Properties should be JSON-serializable and should keep the same shape every time an event fires.
+
+## Ecommerce Events
+
+### `page.view`
+
+```js
+window.sarge("track", "page.view", {
+  path: window.location.pathname,
+  title: document.title
+});
+```
+
+### `product.viewed`
+
+Required: `product_id`
+
+```js
+window.sarge("track", "product.viewed", {
+  product_id: "field-flask",
+  product_name: "Field Flask",
+  price: 42,
+  currency: "USD"
+});
+```
+
+### `cart.added`
+
+Required: `product_id`, `price`
+
+```js
+window.sarge("track", "cart.added", {
+  product_id: "field-flask",
+  product_name: "Field Flask",
+  price: 42,
+  currency: "USD",
+  cart_size: 1
+});
+```
+
+### `checkout.started`
+
+Required: `value`, `currency`
+
+```js
+window.sarge("track", "checkout.started", {
+  value: 84,
+  currency: "USD",
+  cart_size: 2
+});
+```
+
+### `purchase.completed`
+
+Required: `order_id`, `value`, `currency`
+
+```js
+window.sarge("track", "purchase.completed", {
+  order_id: "order_123",
+  value: 84,
+  currency: "USD",
+  item_count: 2,
+  products: ["field-flask", "map-wax"]
+});
+```
+
+## Watchdog Events
+
+Sarge emits watchdog events automatically when it observes common third-party marketing APIs after the pixel loads:
+
+- `fbq(...)` -> `meta.pixel.fire`
+- `gtag(...)` -> `google.tag.fire`
+- `dataLayer.push(...)` -> `data_layer.push`
+
+## Naming Rules
+
+- Use lowercase dot-separated names.
+- Do not rename events once dashboards depend on them.
+- Keep property names stable across platforms.
+- Prefer `snake_case` payload keys.
+
+---
+
+# Self-Hosting Sarge
+
+Self-hosted Sarge is for teams that want the event API and database in their own cloud while keeping the same lightweight browser pixel and tracking model.
+
+## Deployment Shape
+
+```text
+Website/App
+  -> Sarge pixel
+  -> Sarge API container
+  -> Postgres
+```
+
+## Minimum Services
+
+- Postgres database
+- Sarge API service
+- HTTPS endpoint for event ingestion
+- Static hosting or CDN for the pixel bundle
+- A Workspace and Site record for each tracked property
+
+## Environment
+
+```sh
+DATABASE_URL="postgresql://user:password@host:5432/sarge?schema=public"
+PORT="49828"
+NODE_ENV="production"
+```
+
+## Test Event
+
+```sh
+curl -X POST "https://events.example.com/v2/events" \
+  -H "content-type: application/json" \
+  -d '{
+    "siteId": "site_123",
+    "name": "TestEvent",
+    "occurredAt": "2026-06-19T12:00:00.000Z",
+    "sessionId": "manual_test_session",
+    "userId": "manual_test_user",
+    "properties": { "source": "curl" }
+  }'
+```

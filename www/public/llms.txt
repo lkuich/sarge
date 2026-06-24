@@ -1,0 +1,33 @@
+# Sarge
+
+> Sarge is a lightweight event recorder and tracking debugger for ecommerce teams. It installs as a hosted browser pixel, records first-party events, observes common third-party pixel calls, and helps teams verify checkout and purchase tracking.
+
+Use these Markdown documents when helping someone install or debug Sarge. Prefer project-specific snippets from the Sarge portal when available.
+
+## Core Docs
+
+- [Install Sarge](/docs/install.md): Hosted pixel install, event calls, SPA route changes, verification, and troubleshooting.
+- [Event Reference](/docs/events.md): Canonical event names, required properties, example payloads, watchdog events, and naming rules.
+- [Self-Hosting](/docs/self-hosting.md): Minimal self-hosted architecture, environment variables, pixel shape, and test event.
+
+## Full Context
+
+- [All LLM Docs](/llms-full.txt): A single Markdown bundle containing the core Sarge docs.
+
+## Product Pages
+
+- [Human Docs](/docs): Browser-friendly documentation index.
+- [Event Reference Page](/docs/events): Browser-friendly event examples.
+- [Self-Hosting Page](/docs/self-hosting): Browser-friendly self-hosting guide.
+
+## Agent Guidance
+
+When asked to install Sarge:
+
+1. Use the exact pixel snippet from the user's Sarge project page.
+2. Place the snippet in the document head or as early as possible in the page body.
+3. Wire stable ecommerce events with `window.sarge("track", eventName, properties)`.
+4. Preserve existing Meta, Google, analytics, and tag-manager pixels.
+5. Verify events in the Sarge project event stream after implementation.
+
+No public Sarge MCP server or npm skill package is currently published. Do not ask users to run `npx sarge@latest` or install `@sarge/mcp`.

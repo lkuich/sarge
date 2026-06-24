@@ -64,6 +64,7 @@ afterEach(() => {
   if (root) {
     act(() => root?.unmount());
   }
+  vi.restoreAllMocks();
   root = null;
   container?.remove();
   container = null;
@@ -184,6 +185,51 @@ describe("SessionFlowExplorer event filters", () => {
     expect(flowPosition('[data-flow-node="event:session-b-page"]')).toEqual({ x: 500, y: 0 });
     expect(container?.querySelector('[data-flow-edge="user:shared-user->group:session-b"]')).not.toBeNull();
     expect(container?.querySelector('[data-flow-edge="user:shared-user->group:session-a"]')).not.toBeNull();
+  });
+
+  it("downloads the visible flow data as JSON for debugging", async () => {
+    const click = vi.fn();
+    const append = vi.spyOn(document.body, "appendChild");
+    const remove = vi.spyOn(document.body, "removeChild");
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:flow-export");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    vi.spyOn(document, "createElement").mockImplementation((tagName: string, options?: ElementCreationOptions) => {
+      const element = document.createElementNS("http://www.w3.org/1999/xhtml", tagName, options) as HTMLElement;
+      if (tagName === "a") {
+        element.click = click;
+      }
+      return element;
+    });
+
+    render(<SessionFlowExplorer events={events} />);
+
+    act(() => {
+      buttonNamed("Export JSON")?.click();
+    });
+
+    const blob = createObjectURL.mock.calls[0]?.[0] as Blob;
+    const payload = JSON.parse(await blob.text());
+    const link = append.mock.calls.find((call) => call[0].nodeName === "A")?.[0] as HTMLAnchorElement | undefined;
+
+    expect(link?.download).toMatch(/^sarge-flow-user-/);
+    expect(link?.download).toMatch(/\.json$/);
+    expect(payload.schemaVersion).toBe(1);
+    expect(payload.mode).toBe("user");
+    expect(payload.filters.traffic).toBe("real");
+    expect(payload.filters.eventCategories).toEqual(["conversion", "page", "watchdog", "custom"]);
+    expect(payload.visibleGroups).toHaveLength(3);
+    expect(payload.visibleGroups[0].events[0]).toMatchObject({
+      id: "page-only",
+      name: "page.view",
+      sessionId: "page-only",
+    });
+    expect(payload.graph.nodes.some((node: { id: string }) => node.id === "group:user-page-only")).toBe(true);
+    expect(payload.graph.edges.some((edge: { source: string; target: string }) => edge.source && edge.target)).toBe(
+      true,
+    );
+    expect(click).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:flow-export");
+    expect(remove).toHaveBeenCalledWith(link);
   });
 });
 

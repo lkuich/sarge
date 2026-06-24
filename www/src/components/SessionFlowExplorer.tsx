@@ -9,7 +9,7 @@ import {
   type Edge,
   type Node,
 } from "@xyflow/react";
-import { GitBranch, Radio, Search, UserRound, UsersRound, X } from "lucide-react";
+import { Download, GitBranch, Radio, Search, UserRound, UsersRound, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -94,6 +94,32 @@ export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
     () => timeFilteredEvents.find((event) => event.id === selectedEventId) ?? null,
     [timeFilteredEvents, selectedEventId],
   );
+  const exportFlowData = () => {
+    const generatedAt = new Date().toISOString();
+
+    downloadJsonFile(
+      getFlowExportFilename(mode, generatedAt),
+      buildFlowExportPayload({
+        generatedAt,
+        mode,
+        query,
+        selectedEventFilters,
+        trafficFilter,
+        startAt,
+        endAt,
+        selectedGroupId,
+        sampleBounds,
+        sourceEventCount: events.length,
+        trafficFilteredEventCount: trafficFilteredEvents.length,
+        timeFilteredEventCount: timeFilteredEvents.length,
+        groupCount: groups.length,
+        filteredGroupCount: filteredGroups.length,
+        visibleGroups,
+        nodes,
+        edges,
+      }),
+    );
+  };
 
   useEffect(() => {
     if (hasChosenTimeWindow) return;
@@ -179,9 +205,15 @@ export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
             Session
           </Button>
         </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Radio className="size-3.5" />
-          {filteredGroups.length} of {groups.length} {mode === "session" ? "sessions" : "users"}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Radio className="size-3.5" />
+            {filteredGroups.length} of {groups.length} {mode === "session" ? "sessions" : "users"}
+          </div>
+          <Button className="h-7 gap-1.5 px-2.5" size="sm" variant="outline" type="button" onClick={exportFlowData}>
+            <Download className="size-3.5" />
+            Export JSON
+          </Button>
         </div>
       </div>
 
@@ -624,6 +656,114 @@ const buildFlowElements = (groups: FlowGroup[], mode: FlowMode): { nodes: FlowNo
 
   return { nodes, edges };
 };
+
+const buildFlowExportPayload = ({
+  generatedAt,
+  mode,
+  query,
+  selectedEventFilters,
+  trafficFilter,
+  startAt,
+  endAt,
+  selectedGroupId,
+  sampleBounds,
+  sourceEventCount,
+  trafficFilteredEventCount,
+  timeFilteredEventCount,
+  groupCount,
+  filteredGroupCount,
+  visibleGroups,
+  nodes,
+  edges,
+}: {
+  generatedAt: string;
+  mode: FlowMode;
+  query: string;
+  selectedEventFilters: EventFilter[];
+  trafficFilter: TrafficFilter;
+  startAt: string;
+  endAt: string;
+  selectedGroupId: string | null;
+  sampleBounds: { earliest: string | null; latest: string | null };
+  sourceEventCount: number;
+  trafficFilteredEventCount: number;
+  timeFilteredEventCount: number;
+  groupCount: number;
+  filteredGroupCount: number;
+  visibleGroups: FlowGroup[];
+  nodes: FlowNode[];
+  edges: Edge[];
+}) => ({
+  schemaVersion: 1,
+  generatedAt,
+  source: "sarge.user-and-session-flows",
+  mode,
+  filters: {
+    query,
+    traffic: trafficFilter,
+    eventCategories: selectedEventFilters,
+    startAt,
+    endAt,
+    focusedGroupId: selectedGroupId,
+  },
+  sampleBounds,
+  counts: {
+    sourceEvents: sourceEventCount,
+    trafficFilteredEvents: trafficFilteredEventCount,
+    timeFilteredEvents: timeFilteredEventCount,
+    groups: groupCount,
+    filteredGroups: filteredGroupCount,
+    visibleGroups: visibleGroups.length,
+  },
+  visibleGroups: visibleGroups.map((group) => ({
+    id: group.id,
+    label: group.label,
+    lastEventAt: group.lastEventAt,
+    eventCount: group.events.length,
+    pageSegments: segmentEventsByPageView(group.events).map((segment) => segment.map((event) => event.id)),
+    events: group.events.map((event) => ({
+      ...event,
+      category: getEventFilter(event.name),
+      isTestTraffic: isTestTraffic(event),
+    })),
+  })),
+  graph: {
+    nodes: nodes.map((node) => ({
+      id: node.id,
+      type: node.type,
+      position: node.position,
+      data: {
+        kind: node.data.kind,
+        userId: node.data.userId,
+        groupId: node.data.groupId,
+        eventId: node.data.eventId,
+      },
+    })),
+    edges: edges.map((edge) => ({
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      type: edge.type,
+      animated: edge.animated === true,
+    })),
+  },
+});
+
+const downloadJsonFile = (filename: string, value: unknown) => {
+  const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
+const getFlowExportFilename = (mode: FlowMode, generatedAt: string) =>
+  `sarge-flow-${mode}-${generatedAt.replace(/[:.]/g, "-")}.json`;
 
 const getUserLayouts = (
   groupLayouts: {

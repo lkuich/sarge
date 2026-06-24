@@ -42,11 +42,11 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.PUBLIC_CLERK_PUBLISHABLE_KEY || secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
-        run: npx wrangler deploy --keep-vars
+        run: npx wrangler deploy --config dist/server/wrangler.json --keep-vars
 
       - name: Set Neon database secret
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
-        run: printf '%s' "$NEON_DATABASE_URL" | npx wrangler secret put DATABASE_URL
+        run: printf '%s' "$NEON_DATABASE_URL" | npx wrangler secret put DATABASE_URL --config dist/server/wrangler.json

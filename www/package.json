@@ -10,7 +10,7 @@
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
-    "deploy": "npm run build && wrangler deploy --keep-vars",
+    "deploy": "npm run build && wrangler deploy --config dist/server/wrangler.json --keep-vars",
     "cf-typegen": "wrangler types",
     "test": "vitest run"
   },

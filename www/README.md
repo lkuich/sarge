@@ -55,6 +55,8 @@ Manual deploy:
 npm run deploy
 ```
 
+The deploy script builds Astro first, then deploys with `dist/server/wrangler.json` so the Worker code and hashed client assets come from the same generated build output.
+
 After the first deploy, set runtime Clerk values in the Cloudflare dashboard and set the database secret on the remote Worker:
 
 ```sh

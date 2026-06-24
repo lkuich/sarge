@@ -30,12 +30,21 @@ describe("project detail install panel", () => {
 
     expect(projectDetail).toContain("const eventPulseBars = buildEventPulseBars(selectedEnvironment.recentEvents, selectedEnvironment.eventCount24h);");
     expect(projectDetail).toContain("const eventTypeMix = buildEventTypeMix(selectedEnvironment.recentEvents);");
+    expect(projectDetail).toContain("formatCount,");
     expect(projectDetail).toContain("Project pulse");
     expect(projectDetail).toContain("Event mix");
     expect(projectDetail).toContain("data-project-pulse");
     expect(projectDetail).toContain("data-event-pulse-bars");
     expect(pulsePanel).toBeGreaterThan(-1);
     expect(installPanel).toBeGreaterThan(pulsePanel);
+  });
+
+  it("keeps the session flow explorer off the Worker render path", () => {
+    const projectDetail = readSource("./projects/[projectId].astro");
+
+    expect(projectDetail).toContain("const flowEvents = selectedEnvironment.recentEvents.slice(0, 80);");
+    expect(projectDetail).toContain("<SessionFlowExplorer events={flowEvents} client:only=\"react\" />");
+    expect(projectDetail).not.toContain("<SessionFlowExplorer events={flowEvents} client:visible />");
   });
 
   it("supports production, staging, and development environments", () => {

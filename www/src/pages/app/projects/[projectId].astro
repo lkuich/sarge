@@ -16,6 +16,7 @@ import {
   createEnvironmentCredential,
   createWebhookEndpoint,
   environmentLabels,
+  formatCount,
   getProject,
   getViewerAccount,
   hostedEndpointHost,
@@ -151,7 +152,7 @@ const createdServerCredentialCurl = createdServerCredentialToken
   : "";
 
 const recentEvents = selectedEnvironment.recentEvents.slice(0, 12);
-const flowEvents = selectedEnvironment.recentEvents;
+const flowEvents = selectedEnvironment.recentEvents.slice(0, 80);
 const eventHosts = selectedEnvironment.eventHosts;
 const webhookEndpoints = selectedEnvironment.webhookEndpoints;
 const projectTesterUserId = buildProjectTesterUserId(selectedEnvironment.id, userId);
@@ -576,7 +577,7 @@ function hashId(value: string) {
           <CardTitle>User and session flows</CardTitle>
         </CardHeader>
         <CardContent>
-          <SessionFlowExplorer events={flowEvents} client:visible />
+          <SessionFlowExplorer events={flowEvents} client:only="react" />
         </CardContent>
       </Card>
 

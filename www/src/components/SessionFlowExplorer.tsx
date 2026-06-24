@@ -819,7 +819,6 @@ const segmentEventsByPageView = (events: FlowEvent[]) => {
 const filterGroups = (groups: FlowGroup[], query: string, selectedEventFilters: EventFilter[]) => {
   const normalizedQuery = query.trim().toLowerCase();
   const selectedFilters = new Set(selectedEventFilters);
-  const allEventFiltersSelected = eventFilters.every((filter) => selectedFilters.has(filter.value));
 
   return groups
     .map((group) => {
@@ -832,13 +831,10 @@ const filterGroups = (groups: FlowGroup[], query: string, selectedEventFilters: 
           .filter(Boolean)
           .some((value) => String(value).toLowerCase().includes(normalizedQuery));
       });
-      const matchingFilters = new Set(matchingEvents.map((event) => getEventFilter(event.name)));
-      const matchesSelectedFilters =
-        allEventFiltersSelected || selectedEventFilters.every((filter) => matchingFilters.has(filter));
 
       return {
         ...group,
-        events: matchesSelectedFilters ? matchingEvents : [],
+        events: matchingEvents,
         lastEventAt: matchingEvents.at(-1)?.occurredAt ?? group.lastEventAt,
       };
     })

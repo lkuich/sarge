@@ -129,6 +129,21 @@ describe("SessionFlowExplorer event filters", () => {
     expect(container?.textContent).toContain("1 visible");
   });
 
+  it("keeps flows visible when one event category is toggled off", () => {
+    render(<SessionFlowExplorer events={events} />);
+
+    act(() => {
+      buttonNamed("Watchdog")?.click();
+    });
+
+    expect(buttonNamed("Watchdog")?.getAttribute("aria-pressed")).toBe("false");
+    expect(container?.textContent).toContain("3 of 3 users");
+    expect(container?.textContent).toContain("3 visible");
+    expect(container?.querySelector('[data-flow-node="event:complete-watchdog"]')).toBeNull();
+    expect(container?.querySelector('[data-flow-node="event:missing-custom-watchdog"]')).toBeNull();
+    expect(container?.querySelector('[data-flow-node="event:page-only"]')).not.toBeNull();
+  });
+
   it("colors test traffic nodes and flow lines with the destructive chart color", () => {
     render(<SessionFlowExplorer events={sparseTrafficEvents("test-flow", true)} />);
 

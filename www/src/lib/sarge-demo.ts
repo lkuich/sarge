@@ -62,8 +62,13 @@ export interface SargeAccount {
   slug: string;
   role: AccountRole;
   plan: string;
+  workspaceSetupComplete: boolean;
   projects: SargeProject[];
   members: AccountMember[];
+}
+
+export interface CreateWorkspaceInput {
+  name: string;
 }
 
 export interface CreateProjectInput {
@@ -79,6 +84,10 @@ export interface CreateWebhookInput {
 
 export type CreateProjectResult =
   | { success: true; project: SargeProject }
+  | { success: false; error: string };
+
+export type CreateWorkspaceResult =
+  | { success: true; account: Pick<SargeAccount, 'id' | 'name' | 'slug'> }
   | { success: false; error: string };
 
 export type CreateWebhookResult =
@@ -129,22 +138,6 @@ const getViewerWorkspace = async (sql: SqlClient, userId: string) => {
   return workspaces.at(0) ?? null;
 };
 
-const getOrCreateViewerWorkspace = async (sql: SqlClient, userId: string) => {
-  const existingWorkspace = await getViewerWorkspace(sql, userId);
-  if (existingWorkspace) return existingWorkspace;
-
-  const id = `wrk_${crypto.randomUUID()}`;
-  const slug = buildViewerWorkspaceSlug(userId);
-  const workspaces = (await sql`
-    INSERT INTO "Workspace" (id, slug, name, "ownerUserId")
-    VALUES (${id}, ${slug}, ${demoAccountName}, ${userId})
-    ON CONFLICT ("ownerUserId") DO UPDATE SET name = EXCLUDED.name
-    RETURNING id, slug, name
-  `) as WorkspaceRow[];
-
-  return workspaces[0];
-};
-
 export const getViewerAccount = async (userId: string, databaseUrl?: string): Promise<SargeAccount> => {
   const role = resolveRole(userId);
 
@@ -154,7 +147,8 @@ export const getViewerAccount = async (userId: string, databaseUrl?: string): Pr
 
   try {
     const sql = neon(databaseUrl);
-    const workspace = await getOrCreateViewerWorkspace(sql, userId);
+    const workspace = await getViewerWorkspace(sql, userId);
+    if (!workspace) return getSetupAccount(role);
 
     const sites = (await sql`
       SELECT
@@ -255,12 +249,15 @@ export const getViewerAccount = async (userId: string, databaseUrl?: string): Pr
       webhookEndpointsBySite.set(webhookEndpoint.siteId, existingWebhookEndpoints);
     }
 
+    const isPlaceholderWorkspace = workspace.name === demoAccountName && sites.length === 0;
+
     return {
       id: workspace.id,
-      name: workspace.name,
+      name: isPlaceholderWorkspace ? 'Set up workspace' : workspace.name,
       slug: workspace.slug,
       role,
       plan: 'Hosted',
+      workspaceSetupComplete: !isPlaceholderWorkspace,
       projects: sites.map((site) => {
         const recentEvents = events.filter((event) => event.siteId === site.id).map(mapEvent);
         const latestRun = latestRunBySite.get(site.id);
@@ -295,6 +292,46 @@ export const getViewerAccount = async (userId: string, databaseUrl?: string): Pr
   }
 };
 
+export const createWorkspace = async (
+  userId: string,
+  databaseUrl: string | undefined,
+  input: CreateWorkspaceInput,
+): Promise<CreateWorkspaceResult> => {
+  if (!databaseUrl) return { success: false, error: 'DATABASE_URL is not configured.' };
+
+  const name = input.name.trim();
+  if (!name) return { success: false, error: 'Workspace name is required.' };
+  if (name.toLowerCase() === demoAccountName.toLowerCase()) {
+    return { success: false, error: 'Use your company, team, or store name for the workspace.' };
+  }
+
+  try {
+    const sql = neon(databaseUrl);
+    const existingWorkspace = await getViewerWorkspace(sql, userId);
+    const id = existingWorkspace?.id ?? `wrk_${crypto.randomUUID()}`;
+    const slug = existingWorkspace?.slug ?? buildViewerWorkspaceSlug(userId);
+    const rows = (await sql`
+      INSERT INTO "Workspace" (id, slug, name, "ownerUserId")
+      VALUES (${id}, ${slug}, ${name}, ${userId})
+      ON CONFLICT ("ownerUserId") DO UPDATE SET name = EXCLUDED.name
+      RETURNING id, slug, name
+    `) as WorkspaceRow[];
+    const account = rows[0];
+    if (!account) return { success: false, error: 'Workspace could not be created.' };
+
+    return {
+      success: true,
+      account,
+    };
+  } catch (error) {
+    console.error('Unable to create Sarge workspace', error);
+    return {
+      success: false,
+      error: 'Workspace could not be created. Try a different name.',
+    };
+  }
+};
+
 export const createProject = async (
   userId: string,
   databaseUrl: string | undefined,
@@ -311,7 +348,10 @@ export const createProject = async (
 
   try {
     const sql = neon(databaseUrl);
-    const workspace = await getOrCreateViewerWorkspace(sql, userId);
+    const workspace = await getViewerWorkspace(sql, userId);
+    if (!workspace || workspace.name === demoAccountName) {
+      return { success: false, error: 'Create your workspace before adding a project.' };
+    }
 
     const id = `site_${crypto.randomUUID()}`;
     const endpointHost = buildScopedEndpointHost(slug, workspace.id);
@@ -438,6 +478,7 @@ const getFallbackAccount = (role: AccountRole): SargeAccount => ({
   slug: 'demo',
   role,
   plan: 'Hosted',
+  workspaceSetupComplete: true,
   projects: [
     {
       id: 'site_demo',
@@ -481,6 +522,17 @@ const getFallbackAccount = (role: AccountRole): SargeAccount => ({
     },
   ],
   members,
+});
+
+const getSetupAccount = (role: AccountRole): SargeAccount => ({
+  id: 'setup',
+  name: 'Set up workspace',
+  slug: 'setup',
+  role,
+  plan: 'Setup',
+  workspaceSetupComplete: false,
+  projects: [],
+  members: [],
 });
 
 const mapEvent = (event: EventRow): SargeEvent => ({

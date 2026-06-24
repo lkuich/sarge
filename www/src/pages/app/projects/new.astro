@@ -13,6 +13,7 @@ const { userId } = Astro.locals.auth();
 if (!userId) return Astro.redirect("/sign-in");
 
 const account = await getViewerAccount(userId, env.DATABASE_URL);
+if (!account.workspaceSetupComplete) return Astro.redirect("/app");
 if (!canAdministerAccount(account)) return Astro.redirect("/app/projects");
 
 let error = "";

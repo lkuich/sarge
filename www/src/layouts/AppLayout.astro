@@ -25,9 +25,13 @@ const { account, title = "Sarge", eyebrow = account.name, heading, description, 
 
 const navItems = [
   { id: "overview", href: "/app", label: "Overview" },
-  { id: "projects", href: "/app/projects", label: "Projects" },
-  { id: "account", href: "/app/account", label: "Account" },
-  ...(account.role === "admin" ? [{ id: "admin", href: "/admin", label: "Admin" }] : []),
+  ...(account.workspaceSetupComplete
+    ? [
+        { id: "projects", href: "/app/projects", label: "Projects" },
+        { id: "account", href: "/app/account", label: "Account" },
+      ]
+    : []),
+  ...(account.workspaceSetupComplete && account.role === "admin" ? [{ id: "admin", href: "/admin", label: "Admin" }] : []),
 ];
 ---
 

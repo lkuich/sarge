@@ -1,63 +1,55 @@
 ---
 import { env } from "cloudflare:workers";
-import { AlertTriangle, CheckCircle2, Code2, FolderPlus, Radio, Send, Webhook } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FolderPlus, Radio } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import AppLayout from "@/layouts/AppLayout.astro";
-import { formatCount, getViewerAccount } from "@/lib/sarge-demo";
+import { createWorkspace, formatCount, getViewerAccount } from "@/lib/sarge-demo";
 
 const { userId } = Astro.locals.auth();
 if (!userId) return Astro.redirect("/sign-in");
+
+let workspaceError = "";
+let workspaceValues = {
+  name: "",
+};
+
+if (Astro.request.method === "POST") {
+  const formData = await Astro.request.formData();
+  const intent = String(formData.get("intent") ?? "");
+
+  if (intent === "create-workspace") {
+    workspaceValues = {
+      name: String(formData.get("workspaceName") ?? ""),
+    };
+
+    const result = await createWorkspace(userId, env.DATABASE_URL, workspaceValues);
+    if (result.success) return Astro.redirect("/app", 303);
+
+    workspaceError = result.error;
+  }
+}
 
 const account = await getViewerAccount(userId, env.DATABASE_URL);
 const totalEvents = account.projects.reduce((sum, project) => sum + project.eventCount24h, 0);
 const failedEvents = account.projects.reduce((sum, project) => sum + project.failedEvents24h, 0);
 const hasProjects = account.projects.length > 0;
-const hasEvents = totalEvents > 0;
-const hasWebhook = account.projects.some((project) => project.webhookEndpoints.length > 0);
-const shouldShowSetupGuide = !hasProjects || !hasEvents;
-const setupSteps = [
-  {
-    title: "Create your first project",
-    description: "Name the site or store you want Sarge to watch.",
-    href: "/app/projects/new",
-    action: "Create project",
-    complete: hasProjects,
-    icon: FolderPlus,
-  },
-  {
-    title: "Install the tracking script",
-    description: "Copy the project script into your storefront or app.",
-    href: hasProjects ? `/app/projects/${account.projects[0].slug}` : "/app/projects/new",
-    action: "Open install details",
-    complete: hasEvents,
-    icon: Code2,
-  },
-  {
-    title: "Send a test event",
-    description: "Load a page, start checkout, or trigger a purchase in your test flow.",
-    href: hasProjects ? `/app/projects/${account.projects[0].slug}` : "/app/projects/new",
-    action: "View event stream",
-    complete: hasEvents,
-    icon: Send,
-  },
-  {
-    title: "Add webhooks later",
-    description: "Forward verified events to your warehouse, alerting, or attribution stack.",
-    href: hasProjects ? `/app/projects/${account.projects[0].slug}` : "/app/projects/new",
-    action: "Configure webhooks",
-    complete: hasWebhook,
-    icon: Webhook,
-  },
-];
+const needsWorkspaceSetup = !account.workspaceSetupComplete;
+const shouldShowSetupGuide = needsWorkspaceSetup || !hasProjects;
 ---
 
 <AppLayout
   account={account}
   title="Dashboard | Sarge"
-  heading="Account overview"
-  description="Projects are grouped under your account. Admins manage access and setup; users inspect assigned projects and event flow."
+  heading={needsWorkspaceSetup ? "Create your workspace" : "Account overview"}
+  description={needsWorkspaceSetup
+    ? "Start by naming the workspace that will own your Sarge projects."
+    : "Projects are grouped under your account. Admins manage access and setup; users inspect assigned projects and event flow."}
   active="overview"
   breadcrumbs={[{ label: "Overview" }]}
 >
@@ -67,123 +59,172 @@ const setupSteps = [
         <div class="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Setup guide</p>
-            <h2 class="mt-1 text-xl font-semibold tracking-tight">Start tracking your first project</h2>
+            <h2 class="mt-1 text-xl font-semibold tracking-tight">Set up Sarge in two steps</h2>
           </div>
           <Badge variant={hasProjects ? "secondary" : "outline"}>{hasProjects ? "Project ready" : "New account"}</Badge>
         </div>
         <div class="grid gap-3 md:grid-cols-2">
-          {setupSteps.map((step, index) => {
-            const Icon = step.complete ? CheckCircle2 : step.icon;
-            const isCurrent = !step.complete && setupSteps.slice(0, index).every((previousStep) => previousStep.complete);
+          <Card className={needsWorkspaceSetup ? "border-primary/70" : ""}>
+            <CardHeader className="pb-3">
+              <div class="flex items-start gap-3">
+                <span
+                  class:list={[
+                    "grid size-9 shrink-0 place-items-center rounded-md border",
+                    needsWorkspaceSetup
+                      ? "border-primary/40 bg-primary/10 text-primary"
+                      : "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+                  ]}
+                >
+                  <CheckCircle2 className="size-4" />
+                </span>
+                <div class="min-w-0">
+                  <CardTitle className="text-base">Create your workspace</CardTitle>
+                  <p class="mt-1 text-sm leading-5 text-muted-foreground">This is the account your projects and events will live under.</p>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0">
+              {
+                needsWorkspaceSetup ? (
+                  <>
+                    {workspaceError && (
+                      <Alert className="mb-4">
+                        <AlertTitle>Workspace was not created</AlertTitle>
+                        <AlertDescription>{workspaceError}</AlertDescription>
+                      </Alert>
+                    )}
+                    <form method="post" class="grid gap-3">
+                      <input type="hidden" name="intent" value="create-workspace" />
+                      <div class="grid gap-2">
+                        <Label htmlFor="workspaceName">Workspace name</Label>
+                        <Input id="workspaceName" name="workspaceName" value={workspaceValues.name} placeholder="Acme Growth" required />
+                      </div>
+                      <div>
+                        <Button type="submit">Create workspace</Button>
+                      </div>
+                    </form>
+                  </>
+                ) : (
+                  <p class="text-sm font-medium">{account.name}</p>
+                )
+              }
+            </CardContent>
+          </Card>
 
-            return (
-              <Card className={isCurrent ? "border-primary/70" : ""}>
-                <CardHeader className="pb-3">
-                  <div class="flex items-start gap-3">
-                    <span
-                      class:list={[
-                        "grid size-9 shrink-0 place-items-center rounded-md border",
-                        step.complete
-                          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                          : isCurrent
-                            ? "border-primary/40 bg-primary/10 text-primary"
-                            : "bg-secondary text-muted-foreground",
-                      ]}
-                    >
-                      <Icon className="size-4" />
-                    </span>
-                    <div class="min-w-0">
-                      <CardTitle className="text-base">{step.title}</CardTitle>
-                      <p class="mt-1 text-sm leading-5 text-muted-foreground">{step.description}</p>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-0">
+          <Card className={!needsWorkspaceSetup && !hasProjects ? "border-primary/70" : ""}>
+            <CardHeader className="pb-3">
+              <div class="flex items-start gap-3">
+                <span
+                  class:list={[
+                    "grid size-9 shrink-0 place-items-center rounded-md border",
+                    hasProjects
+                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                      : needsWorkspaceSetup
+                        ? "bg-secondary text-muted-foreground"
+                        : "border-primary/40 bg-primary/10 text-primary",
+                  ]}
+                >
+                  {hasProjects ? <CheckCircle2 className="size-4" /> : <FolderPlus className="size-4" />}
+                </span>
+                <div class="min-w-0">
+                  <CardTitle className="text-base">Add your project</CardTitle>
+                  <p class="mt-1 text-sm leading-5 text-muted-foreground">Create the site or store you want to track first.</p>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0">
+              {
+                hasProjects ? (
+                  <p class="text-sm font-medium">{account.projects[0].name}</p>
+                ) : needsWorkspaceSetup ? (
+                  <p class="text-sm text-muted-foreground">Create your workspace first.</p>
+                ) : (
                   <a
-                    class:list={[
-                      "inline-flex h-8 items-center justify-center rounded-md px-2.5 text-sm font-medium transition",
-                      step.complete
-                        ? "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                        : "bg-primary text-primary-foreground hover:bg-primary/80",
-                    ]}
-                    href={step.href}
+                    class="inline-flex h-8 items-center justify-center rounded-md bg-primary px-2.5 text-sm font-medium text-primary-foreground transition hover:bg-primary/80"
+                    href="/app/projects/new"
                   >
-                    {step.complete ? "Review" : step.action}
+                    Add project
                   </a>
-                </CardContent>
-              </Card>
-            );
-          })}
+                )
+              }
+            </CardContent>
+          </Card>
         </div>
       </section>
     )
   }
 
-  <section class="grid gap-4 md:grid-cols-2">
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium">Events</CardTitle>
-        <Radio className="size-4 text-muted-foreground" />
-      </CardHeader>
-      <CardContent>
-        <p class="text-3xl font-semibold">{formatCount(totalEvents)}</p>
-        <p class="text-xs text-muted-foreground">accepted in 24h</p>
-      </CardContent>
-    </Card>
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium">Failures</CardTitle>
-        <AlertTriangle className="size-4 text-muted-foreground" />
-      </CardHeader>
-      <CardContent>
-        <p class="text-3xl font-semibold">{failedEvents}</p>
-        <p class="text-xs text-muted-foreground">needs inspection</p>
-      </CardContent>
-    </Card>
-  </section>
+  {
+    !needsWorkspaceSetup && (
+      <>
+        <section class="grid gap-4 md:grid-cols-2">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Events</CardTitle>
+              <Radio className="size-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <p class="text-3xl font-semibold">{formatCount(totalEvents)}</p>
+              <p class="text-xs text-muted-foreground">accepted in 24h</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Failures</CardTitle>
+              <AlertTriangle className="size-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <p class="text-3xl font-semibold">{failedEvents}</p>
+              <p class="text-xs text-muted-foreground">needs inspection</p>
+            </CardContent>
+          </Card>
+        </section>
 
-  <Card className="mt-6">
-    <CardHeader>
-      <CardTitle>Recent project activity</CardTitle>
-    </CardHeader>
-    <CardContent>
-      {
-        hasProjects ? (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Project</TableHead>
-                <TableHead>Tracking domain</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">24h Events</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {account.projects.map((project) => (
-                <TableRow>
-                  <TableCell>
-                    <a class="font-medium hover:underline" href={`/app/projects/${project.slug}`}>{project.name}</a>
-                    <p class="text-xs text-muted-foreground">{project.lastEventAt}</p>
-                  </TableCell>
-                  <TableCell className="font-mono text-xs">{project.endpointHost}</TableCell>
-                  <TableCell><Badge variant="outline">{project.status}</Badge></TableCell>
-                  <TableCell className="text-right">{formatCount(project.eventCount24h)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        ) : (
-          <div class="flex flex-col items-start gap-3 rounded-md border border-dashed p-5">
-            <div>
-              <p class="font-medium">No projects yet</p>
-              <p class="mt-1 text-sm text-muted-foreground">Create a project to get install details, a tracking domain, and an event stream for this account.</p>
-            </div>
-            <a class="inline-flex h-8 items-center justify-center gap-1.5 rounded-md bg-primary px-2.5 text-sm font-medium text-primary-foreground transition hover:bg-primary/80" href="/app/projects/new">
-              <FolderPlus className="size-4" /> Create project
-            </a>
-          </div>
-        )
-      }
-    </CardContent>
-  </Card>
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>Recent project activity</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {
+              hasProjects ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Project</TableHead>
+                      <TableHead>Tracking domain</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">24h Events</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {account.projects.map((project) => (
+                      <TableRow>
+                        <TableCell>
+                          <a class="font-medium hover:underline" href={`/app/projects/${project.slug}`}>{project.name}</a>
+                          <p class="text-xs text-muted-foreground">{project.lastEventAt}</p>
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">{project.endpointHost}</TableCell>
+                        <TableCell><Badge variant="outline">{project.status}</Badge></TableCell>
+                        <TableCell className="text-right">{formatCount(project.eventCount24h)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <div class="flex flex-col items-start gap-3 rounded-md border border-dashed p-5">
+                  <div>
+                    <p class="font-medium">No projects yet</p>
+                    <p class="mt-1 text-sm text-muted-foreground">Add a project to get install details, a tracking domain, and an event stream.</p>
+                  </div>
+                  <a class="inline-flex h-8 items-center justify-center gap-1.5 rounded-md bg-primary px-2.5 text-sm font-medium text-primary-foreground transition hover:bg-primary/80" href="/app/projects/new">
+                    <FolderPlus className="size-4" /> Add project
+                  </a>
+                </div>
+              )
+            }
+          </CardContent>
+        </Card>
+      </>
+    )
+  }
 </AppLayout>

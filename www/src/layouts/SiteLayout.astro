@@ -1,6 +1,7 @@
 ---
 import { Show, UserButton } from "@clerk/astro/components";
 import ThemeToggle from "@/components/ThemeToggle";
+import ShaderEffect from "@/components/shaderBackground";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import "../styles/global.css";
 
@@ -24,6 +25,12 @@ const { title = "Sarge", shader = false } = Astro.props;
     <title>{title}</title>
   </head>
   <body class:list={[{ "site-shell": shader }]}>
+    {shader && (
+      <div class="shader-layer pointer-events-none fixed inset-0 z-0 overflow-hidden" aria-hidden="true">
+        <ShaderEffect client:load />
+      </div>
+    )}
+
     <header class="relative z-10 mx-auto flex min-h-16 w-full max-w-6xl items-center justify-between gap-4 px-4 py-3 md:px-6">
       <a class="flex items-center" href="/" aria-label="Sarge home">
         <img class="h-9 w-auto dark:hidden" src="/sarge-logo-light.svg" alt="Sarge" width="196" height="48" />

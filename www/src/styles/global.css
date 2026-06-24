@@ -82,6 +82,30 @@
     @apply bg-background text-foreground;
   }
 
+  body.site-shell {
+    background: transparent;
+  }
+
+  body.site-shell.shader-failed {
+    background:
+      linear-gradient(90deg, color-mix(in oklch, var(--color-border) 45%, transparent) 1px, transparent 1px),
+      linear-gradient(color-mix(in oklch, var(--color-border) 35%, transparent) 1px, transparent 1px),
+      var(--color-background);
+    background-size: 48px 48px;
+  }
+
+  .shader-layer {
+    background:
+      radial-gradient(circle at 88% 7%, color-mix(in oklch, var(--primary) 32%, transparent) 0 9rem, transparent 27rem),
+      radial-gradient(circle at 4% 92%, color-mix(in oklch, var(--accent) 20%, transparent) 0 8rem, transparent 24rem),
+      linear-gradient(135deg, color-mix(in oklch, var(--primary) 8%, transparent), transparent 34%),
+      var(--background);
+  }
+
+  .shader-layer astro-island {
+    display: contents;
+  }
+
   .sarge-session-flow .react-flow__node {
     cursor: pointer;
   }

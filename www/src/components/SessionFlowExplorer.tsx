@@ -59,7 +59,7 @@ const nodeGap = 250;
 const rowGap = 154;
 
 export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
-  const [mode, setMode] = useState<FlowMode>("session");
+  const [mode, setMode] = useState<FlowMode>("user");
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -140,21 +140,6 @@ export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
           <Button
             className="h-7 gap-1.5 rounded-md px-2.5"
             size="sm"
-            variant={mode === "session" ? "default" : "ghost"}
-            type="button"
-            aria-pressed={mode === "session"}
-            onClick={() => {
-              setMode("session");
-              setSelectedGroupId(null);
-              setSelectedEventId(null);
-            }}
-          >
-            <GitBranch className="size-3.5" />
-            Session
-          </Button>
-          <Button
-            className="h-7 gap-1.5 rounded-md px-2.5"
-            size="sm"
             variant={mode === "user" ? "default" : "ghost"}
             type="button"
             aria-pressed={mode === "user"}
@@ -166,6 +151,21 @@ export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
           >
             <UsersRound className="size-3.5" />
             User
+          </Button>
+          <Button
+            className="h-7 gap-1.5 rounded-md px-2.5"
+            size="sm"
+            variant={mode === "session" ? "default" : "ghost"}
+            type="button"
+            aria-pressed={mode === "session"}
+            onClick={() => {
+              setMode("session");
+              setSelectedGroupId(null);
+              setSelectedEventId(null);
+            }}
+          >
+            <GitBranch className="size-3.5" />
+            Session
           </Button>
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -451,6 +451,7 @@ const buildFlowElements = (groups: FlowGroup[], mode: FlowMode): { nodes: FlowNo
   groups.forEach((group, groupIndex) => {
     const y = groupIndex * rowGap;
     const groupNodeId = `group:${group.id}`;
+    const hasTestTraffic = group.events.some(isTestTraffic);
 
     nodes.push({
       id: groupNodeId,
@@ -471,15 +472,17 @@ const buildFlowElements = (groups: FlowGroup[], mode: FlowMode): { nodes: FlowNo
       },
       style: {
         width: nodeWidth,
-        borderColor: "color-mix(in oklch, var(--color-primary) 42%, transparent)",
-        background: "var(--color-card)",
+        borderColor: hasTestTraffic ? testTrafficBorderColor : "color-mix(in oklch, var(--color-primary) 42%, transparent)",
+        background: hasTestTraffic ? testTrafficBackground : "var(--color-card)",
         color: "var(--color-card-foreground)",
+        boxShadow: hasTestTraffic ? testTrafficShadow : undefined,
       },
     });
 
     group.events.forEach((event, eventIndex) => {
       const nodeId = `event:${event.id}`;
       const previousNodeId = eventIndex === 0 ? groupNodeId : `event:${group.events[eventIndex - 1].id}`;
+      const isTestEvent = isTestTraffic(event);
 
       nodes.push({
         id: nodeId,
@@ -498,13 +501,16 @@ const buildFlowElements = (groups: FlowGroup[], mode: FlowMode): { nodes: FlowNo
         },
         style: {
           width: nodeWidth,
-          borderColor: isConversionEvent(event.name)
+          borderColor: isTestEvent
+            ? testTrafficBorderColor
+            : isConversionEvent(event.name)
             ? "color-mix(in oklch, var(--color-success) 48%, transparent)"
             : isWatchdogEvent(event.name)
               ? "color-mix(in oklch, var(--color-chart-2) 55%, transparent)"
               : "var(--color-border)",
-          background: "var(--color-card)",
+          background: isTestEvent ? testTrafficBackground : "var(--color-card)",
           color: "var(--color-card-foreground)",
+          boxShadow: isTestEvent ? testTrafficShadow : undefined,
         },
       });
 
@@ -514,10 +520,14 @@ const buildFlowElements = (groups: FlowGroup[], mode: FlowMode): { nodes: FlowNo
         target: nodeId,
         type: "smoothstep",
         animated: isConversionEvent(event.name),
-        markerEnd: { type: MarkerType.ArrowClosed },
+        markerEnd: { type: MarkerType.ArrowClosed, color: isTestEvent ? "var(--color-destructive)" : undefined },
         style: {
-          stroke: isConversionEvent(event.name) ? "var(--color-success)" : "var(--color-primary)",
-          strokeWidth: isConversionEvent(event.name) ? 2.5 : 1.8,
+          stroke: isTestEvent
+            ? "var(--color-destructive)"
+            : isConversionEvent(event.name)
+              ? "var(--color-success)"
+              : "var(--color-primary)",
+          strokeWidth: isTestEvent || isConversionEvent(event.name) ? 2.5 : 1.8,
         },
       });
     });
@@ -529,6 +539,7 @@ const buildFlowElements = (groups: FlowGroup[], mode: FlowMode): { nodes: FlowNo
 const filterGroups = (groups: FlowGroup[], query: string, selectedEventFilters: EventFilter[]) => {
   const normalizedQuery = query.trim().toLowerCase();
   const selectedFilters = new Set(selectedEventFilters);
+  const allEventFiltersSelected = eventFilters.every((filter) => selectedFilters.has(filter.value));
 
   return groups
     .map((group) => {
@@ -542,11 +553,12 @@ const filterGroups = (groups: FlowGroup[], query: string, selectedEventFilters: 
           .some((value) => String(value).toLowerCase().includes(normalizedQuery));
       });
       const matchingFilters = new Set(matchingEvents.map((event) => getEventFilter(event.name)));
-      const matchesEverySelectedFilter = selectedEventFilters.every((filter) => matchingFilters.has(filter));
+      const matchesSelectedFilters =
+        allEventFiltersSelected || selectedEventFilters.every((filter) => matchingFilters.has(filter));
 
       return {
         ...group,
-        events: matchesEverySelectedFilter ? matchingEvents : [],
+        events: matchesSelectedFilters ? matchingEvents : [],
         lastEventAt: matchingEvents.at(-1)?.occurredAt ?? group.lastEventAt,
       };
     })
@@ -717,6 +729,10 @@ const isWatchdogEvent = (name: string) =>
   name === "meta.pixel.fire" || name === "google.tag.fire" || name === "data_layer.push";
 
 const isConversionEvent = (name: string) => name.includes("purchase") || name.includes("checkout");
+
+const testTrafficBorderColor = "color-mix(in oklch, var(--color-destructive) 72%, transparent)";
+const testTrafficBackground = "color-mix(in oklch, var(--color-destructive) 14%, var(--color-card))";
+const testTrafficShadow = "0 0 0 1px color-mix(in oklch, var(--color-destructive) 18%, transparent)";
 
 const getEventFilter = (name: string): EventFilter => {
   if (isConversionEvent(name)) return "conversion";

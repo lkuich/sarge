@@ -102,6 +102,10 @@ describe("project detail install panel", () => {
 
     expect(projectDetail).toContain("createdServerCredentialToken");
     expect(projectDetail).toContain("createdPostbackCredentialToken");
+    expect(projectDetail).toContain("createdServerCredentialCurl");
+    expect(projectDetail).toContain("curl -X POST");
+    expect(projectDetail).toContain("authorization: Bearer ${createdServerCredentialToken}");
+    expect(projectDetail).toContain('"siteId": "${selectedEnvironment.id}"');
     expect(projectDetail).toContain("Server event secret rotated");
     expect(projectDetail).toContain("Postback token rotated");
     expect(projectDetail).not.toContain("createdCredentialName");

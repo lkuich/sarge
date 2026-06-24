@@ -24,7 +24,7 @@ const AGENT_LABELS: Record<AgentKey, string> = {
 };
 
 const DEFAULT_AGENT_PROMPT =
-  "Add Sarge tracking to this app. Read https://sargetrack.app/llms.txt first, then use https://sargetrack.app/docs/install.md and https://sargetrack.app/docs/events.md as the implementation reference. Install the pixel snippet, wire page, product, cart, checkout, and purchase events, keep any existing Meta and Google pixels in place, then verify the events reach the Sarge portal.";
+  `Add Sarge tracking. Read these docs first: - https://sargetrack.app/llms.txt - https://sargetrack.app/docs/install.md - https://sargetrack.app/docs/events.md Install this pixel snippet as early as possible in the page: <script> window._sarge = { queue: [["track", "page.view"]] }; </script> <script async src="https://track.sargetrack.app/pixel.js?env=XXXXX"></script> Then emit window.sarge("track", "event.name", properties) for page, product, cart, checkout, and purchase actions. Keep existing Meta, Google, or analytics pixels in place. After wiring, open https://sargetrack.app/verify/site_XXXXX and verify the expected events appear in the public Sarge event stream. Make sure I give you the full site ID to replace site_XXXXX before you start anything.`;
 
 const CLAUDE_ORANGE = "#D97757";
 

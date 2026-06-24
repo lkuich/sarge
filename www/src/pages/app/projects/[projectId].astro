@@ -133,6 +133,22 @@ const endpointHealthUrl = selectedEnvironment.endpointHealthUrl;
 const pixelUrl = selectedEnvironment.pixelUrl;
 const serverEventEndpoint = `https://${hostedEndpointHost}/v2/server/events`;
 const postbackEndpointTemplate = `https://${hostedEndpointHost}/v2/postback/${selectedEnvironment.id}/{postbackToken}`;
+const createdServerCredentialCurl = createdServerCredentialToken
+  ? `curl -X POST "${serverEventEndpoint}" \\
+  -H "authorization: Bearer ${createdServerCredentialToken}" \\
+  -H "content-type: application/json" \\
+  -d '{
+    "siteId": "${selectedEnvironment.id}",
+    "name": "purchase.completed",
+    "eventId": "order_123",
+    "userId": "customer_123",
+    "properties": {
+      "order_id": "order_123",
+      "value": 129.99,
+      "currency": "USD"
+    }
+  }'`
+  : "";
 
 const recentEvents = selectedEnvironment.recentEvents.slice(0, 12);
 const flowEvents = selectedEnvironment.recentEvents;
@@ -533,13 +549,13 @@ function hashId(value: string) {
                       <AlertDescription>
                         <p>Copy this value now. Sarge stores only the hash and will not show it again.</p>
                         <div class="mt-2 grid gap-2 rounded-md border bg-muted p-2">
-                          <div class="flex min-w-0 items-center gap-2">
-                            <code class="min-w-0 flex-1 truncate font-mono text-xs">{createdServerCredentialToken}</code>
+                          <div class="flex min-w-0 items-start gap-2">
+                            <pre class="min-w-0 flex-1 overflow-x-auto whitespace-pre-wrap rounded-md bg-background/60 p-2 font-mono text-xs leading-5"><code>{createdServerCredentialCurl}</code></pre>
                             <button
                               class="inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md border bg-background px-2 text-xs font-medium hover:bg-muted"
                               type="button"
                               data-copy-credential
-                              data-credential={createdServerCredentialToken}
+                              data-credential={createdServerCredentialCurl}
                             >
                               <Copy className="size-3" /> <span data-credential-label>Copy</span>
                             </button>

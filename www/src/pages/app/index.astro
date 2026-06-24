@@ -1,13 +1,12 @@
 ---
 import { env } from "cloudflare:workers";
-import { AlertTriangle, CheckCircle2, FolderPlus, Plus, Radio } from "lucide-react";
+import { Activity, AlertTriangle, CheckCircle2, FolderPlus, Gauge, Plus } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import AppLayout from "@/layouts/AppLayout.astro";
 import { canAdministerAccount, createWorkspace, environmentLabels, formatCount, getViewerAccount } from "@/lib/sarge-demo";
 
@@ -43,6 +42,38 @@ const needsWorkspaceSetup = !account.workspaceSetupComplete;
 const shouldShowSetupGuide = needsWorkspaceSetup || !hasProjects;
 const canCreateProjects = canAdministerAccount(account);
 const projectCountLabel = `${account.projects.length} ${account.projects.length === 1 ? "project" : "projects"} under ${account.name}`;
+const activeProjects = account.projects.filter((project) => project.status === "active").length;
+const collectingProjects = account.projects.filter((project) => project.eventCount24h > 0).length;
+const attentionItems = account.projects.filter((project) => project.status !== "active").length + failedEvents;
+const coveragePercent = hasProjects ? Math.round((collectingProjects / account.projects.length) * 100) : 0;
+const failureRate = totalEvents > 0 ? Math.round((failedEvents / totalEvents) * 1000) / 10 : 0;
+const busiestProject = [...account.projects].sort((left, right) => right.eventCount24h - left.eventCount24h).at(0);
+const projectDistribution = buildProjectDistribution(account.projects);
+const projectActivityScale = Math.max(1, ...account.projects.map((project) => project.eventCount24h));
+
+function buildProjectDistribution(projects: typeof account.projects) {
+  const total = Math.max(1, projects.length);
+  return [
+    {
+      label: "Active",
+      value: projects.filter((project) => project.status === "active").length,
+      className: "bg-emerald-500",
+    },
+    {
+      label: "Draft",
+      value: projects.filter((project) => project.status === "draft").length,
+      className: "bg-chart-4",
+    },
+    {
+      label: "Paused",
+      value: projects.filter((project) => project.status === "paused").length,
+      className: "bg-muted-foreground",
+    },
+  ].map((item) => ({
+    ...item,
+    share: Math.round((item.value / total) * 100),
+  }));
+}
 ---
 
 <AppLayout
@@ -159,142 +190,146 @@ const projectCountLabel = `${account.projects.length} ${account.projects.length 
   {
     !needsWorkspaceSetup && (
       <>
-        <section class="grid gap-4 md:grid-cols-2">
+        <section class="grid gap-4 md:grid-cols-3" data-overview-metrics>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Events</CardTitle>
-              <Radio className="size-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium">Coverage</CardTitle>
+              <Gauge className="size-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <p class="text-3xl font-semibold">{coveragePercent}%</p>
+              <div class="mt-3 h-2 rounded-full bg-secondary">
+                <div class="h-full rounded-full bg-emerald-500" style={`width: ${coveragePercent}%`} />
+              </div>
+              <p class="mt-2 text-xs text-muted-foreground">{collectingProjects} of {account.projects.length} projects receiving events</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Throughput</CardTitle>
+              <Activity className="size-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <p class="text-3xl font-semibold">{formatCount(totalEvents)}</p>
-              <p class="text-xs text-muted-foreground">accepted in 24h</p>
+              <p class="text-xs text-muted-foreground">{busiestProject ? `${busiestProject.name} is busiest` : "No events in the last 24h"}</p>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Failures</CardTitle>
+              <CardTitle className="text-sm font-medium">Attention</CardTitle>
               <AlertTriangle className="size-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <p class="text-3xl font-semibold">{failedEvents}</p>
-              <p class="text-xs text-muted-foreground">needs inspection</p>
+              <p class="text-3xl font-semibold">{attentionItems}</p>
+              <p class="text-xs text-muted-foreground">{failedEvents} failed · {failureRate}% failure rate</p>
             </CardContent>
           </Card>
         </section>
 
-        <section class="mt-6">
-          <div class="mb-4 flex items-center justify-between gap-3">
-            <p class="text-sm text-muted-foreground">{projectCountLabel}</p>
-            {
-              canCreateProjects && (
-                <a
-                  class="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-primary px-2.5 text-sm font-medium whitespace-nowrap text-primary-foreground transition-all hover:bg-primary/80 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-                  href="/app/projects/new"
-                >
-                  <Plus className="size-4" /> New project
-                </a>
-              )
-            }
-          </div>
+        <section class="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+          <div>
+            <div class="mb-4 flex items-center justify-between gap-3">
+              <p class="text-sm text-muted-foreground">{projectCountLabel}</p>
+              {
+                canCreateProjects && (
+                  <a
+                    class="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-primary px-2.5 text-sm font-medium whitespace-nowrap text-primary-foreground transition-all hover:bg-primary/80 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                    href="/app/projects/new"
+                  >
+                    <Plus className="size-4" /> New project
+                  </a>
+                )
+              }
+            </div>
 
-          {
-            hasProjects ? (
-              <div class="grid gap-4 md:grid-cols-2">
-                {account.projects.map((project) => (
-                  <Card>
-                    <CardHeader>
-                      <div class="flex items-start justify-between gap-3">
-                        <div>
-                          <CardTitle><a href={`/app/projects/${project.slug}`}>{project.name}</a></CardTitle>
-                          <p class="mt-1 font-mono text-xs text-muted-foreground">{project.endpointHost}</p>
-                        </div>
-                        <Badge variant={project.status === "active" ? "default" : "secondary"}>{project.status}</Badge>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div class="grid grid-cols-3 gap-3 text-sm">
-                        <div>
-                          <p class="text-xs text-muted-foreground">Environment</p>
-                          <p class="font-medium">{environmentLabels[project.environment]}</p>
-                        </div>
-                        <div>
-                          <p class="text-xs text-muted-foreground">24h Events</p>
-                          <p class="font-medium">{formatCount(project.eventCount24h)}</p>
-                        </div>
-                        <div>
-                          <p class="text-xs text-muted-foreground">Snippet</p>
-                          <p class="font-medium">{project.pixelVersion}</p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            ) : (
-              <div class="flex flex-col items-start gap-3 rounded-md border border-dashed p-5">
-                <div>
-                  <p class="font-medium">No projects yet</p>
-                  <p class="mt-1 text-sm text-muted-foreground">Add a project to get install details, a tracking domain, and an event stream.</p>
-                </div>
-                {
-                  canCreateProjects && (
-                    <a
-                      class="inline-flex h-8 items-center justify-center gap-1.5 rounded-md bg-primary px-2.5 text-sm font-medium text-primary-foreground transition hover:bg-primary/80"
-                      href="/app/projects/new"
-                    >
-                      <FolderPlus className="size-4" /> Add project
-                    </a>
-                  )
-                }
-              </div>
-            )
-          }
-        </section>
-
-        <Card className="mt-6">
-          <CardHeader>
-            <CardTitle>Recent project activity</CardTitle>
-          </CardHeader>
-          <CardContent>
             {
               hasProjects ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Project</TableHead>
-                      <TableHead>Tracking domain</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">24h Events</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {account.projects.map((project) => (
-                      <TableRow>
-                        <TableCell>
-                          <a class="font-medium hover:underline" href={`/app/projects/${project.slug}`}>{project.name}</a>
-                          <p class="text-xs text-muted-foreground">{project.lastEventAt}</p>
-                        </TableCell>
-                        <TableCell className="font-mono text-xs">{project.endpointHost}</TableCell>
-                        <TableCell><Badge variant="outline">{project.status}</Badge></TableCell>
-                        <TableCell className="text-right">{formatCount(project.eventCount24h)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                <div class="grid gap-4 md:grid-cols-2">
+                  {account.projects.map((project) => (
+                    <Card>
+                      <CardHeader>
+                        <div class="flex items-start justify-between gap-3">
+                          <div class="min-w-0">
+                            <CardTitle><a href={`/app/projects/${project.slug}`}>{project.name}</a></CardTitle>
+                            <p class="mt-1 truncate font-mono text-xs text-muted-foreground">{project.endpointHost}</p>
+                          </div>
+                          <Badge variant={project.status === "active" ? "default" : "secondary"}>{project.status}</Badge>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <div class="grid gap-4 text-sm">
+                          <div class="h-2 rounded-full bg-secondary">
+                            <div
+                              class="h-full rounded-full bg-primary"
+                              style={`width: ${Math.max(project.eventCount24h > 0 ? 8 : 2, Math.round((project.eventCount24h / projectActivityScale) * 100))}%`}
+                            />
+                          </div>
+                          <div class="grid grid-cols-3 gap-3">
+                            <div>
+                              <p class="text-xs text-muted-foreground">Environment</p>
+                              <p class="font-medium">{environmentLabels[project.environment]}</p>
+                            </div>
+                            <div>
+                              <p class="text-xs text-muted-foreground">Events</p>
+                              <p class="font-medium">{formatCount(project.eventCount24h)}</p>
+                            </div>
+                            <div>
+                              <p class="text-xs text-muted-foreground">Last seen</p>
+                              <p class="font-medium">{project.lastEventAt}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
               ) : (
                 <div class="flex flex-col items-start gap-3 rounded-md border border-dashed p-5">
                   <div>
                     <p class="font-medium">No projects yet</p>
                     <p class="mt-1 text-sm text-muted-foreground">Add a project to get install details, a tracking domain, and an event stream.</p>
                   </div>
-                  <a class="inline-flex h-8 items-center justify-center gap-1.5 rounded-md bg-primary px-2.5 text-sm font-medium text-primary-foreground transition hover:bg-primary/80" href="/app/projects/new">
-                    <FolderPlus className="size-4" /> Add project
-                  </a>
+                  {
+                    canCreateProjects && (
+                      <a
+                        class="inline-flex h-8 items-center justify-center gap-1.5 rounded-md bg-primary px-2.5 text-sm font-medium text-primary-foreground transition hover:bg-primary/80"
+                        href="/app/projects/new"
+                      >
+                        <FolderPlus className="size-4" /> Add project
+                      </a>
+                    )
+                  }
                 </div>
               )
             }
-          </CardContent>
-        </Card>
+          </div>
+
+          <Card data-project-distribution>
+            <CardHeader>
+              <CardTitle>Project distribution</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4">
+              <div class="flex h-28 items-end gap-2 rounded-md border bg-muted/30 p-3">
+                {projectDistribution.map((item) => (
+                  <div class="grid flex-1 gap-2 text-center">
+                    <div class="flex h-20 items-end rounded-sm bg-secondary p-px">
+                      <div class={`w-full rounded-sm ${item.className}`} style={`height: ${Math.max(6, item.share)}%`} />
+                    </div>
+                    <span class="truncate text-xs text-muted-foreground">{item.label}</span>
+                  </div>
+                ))}
+              </div>
+              <div class="grid gap-2 text-sm">
+                {projectDistribution.map((item) => (
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="text-muted-foreground">{item.label}</span>
+                    <span class="font-medium">{item.value}</span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </section>
       </>
     )
   }

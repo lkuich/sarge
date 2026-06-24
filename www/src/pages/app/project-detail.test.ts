@@ -23,6 +23,21 @@ describe("project detail install panel", () => {
     expect(projectDetail).not.toContain("<Badge>{selectedEnvironment.status}</Badge>");
   });
 
+  it("adds a compact project pulse panel above operational sections", () => {
+    const projectDetail = readSource("./projects/[projectId].astro");
+    const pulsePanel = projectDetail.indexOf("data-project-pulse");
+    const installPanel = projectDetail.indexOf("data-install-pixel-details");
+
+    expect(projectDetail).toContain("const eventPulseBars = buildEventPulseBars(selectedEnvironment.recentEvents, selectedEnvironment.eventCount24h);");
+    expect(projectDetail).toContain("const eventTypeMix = buildEventTypeMix(selectedEnvironment.recentEvents);");
+    expect(projectDetail).toContain("Project pulse");
+    expect(projectDetail).toContain("Event mix");
+    expect(projectDetail).toContain("data-project-pulse");
+    expect(projectDetail).toContain("data-event-pulse-bars");
+    expect(pulsePanel).toBeGreaterThan(-1);
+    expect(installPanel).toBeGreaterThan(pulsePanel);
+  });
+
   it("supports production, staging, and development environments", () => {
     const projectDetail = readSource("./projects/[projectId].astro");
     const demoData = readSource("../../lib/sarge-demo.ts");

@@ -42,11 +42,10 @@ Required GitHub Actions secrets:
 CLOUDFLARE_API_TOKEN
 CLOUDFLARE_ACCOUNT_ID
 PUBLIC_CLERK_PUBLISHABLE_KEY
-CLERK_SECRET_KEY
 NEON_DATABASE_URL
 ```
 
-The Cloudflare token needs access to the `sargetrack.app` zone and permission to deploy Workers, edit Worker routes, and edit DNS records. `NEON_DATABASE_URL` is installed on the Cloudflare Worker as the runtime `DATABASE_URL` secret so the portal can read live project and event data.
+The Cloudflare token needs access to the `sargetrack.app` zone and permission to deploy Workers, edit Worker routes, and edit DNS records. `PUBLIC_CLERK_PUBLISHABLE_KEY` is used while building the client bundle. Runtime Clerk variables are managed in the Cloudflare dashboard and preserved during deploys. `NEON_DATABASE_URL` is installed on the Cloudflare Worker as the runtime `DATABASE_URL` secret so the portal can read live project and event data.
 
 Manual deploy:
 
@@ -54,10 +53,9 @@ Manual deploy:
 npm run deploy
 ```
 
-After the first deploy, set the Clerk secret on the remote Worker:
+After the first deploy, set runtime Clerk values in the Cloudflare dashboard and set the database secret on the remote Worker:
 
 ```sh
-printf '%s' "$CLERK_SECRET_KEY" | npx wrangler secret put CLERK_SECRET_KEY
 printf '%s' "$NEON_DATABASE_URL" | npx wrangler secret put DATABASE_URL
 ```
 

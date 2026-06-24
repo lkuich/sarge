@@ -19,12 +19,22 @@ vi.mock("@xyflow/react", () => ({
     edges = [],
   }: {
     children: React.ReactNode;
-    nodes?: Array<{ id: string; data: { label: React.ReactNode }; style?: Record<string, unknown> }>;
+    nodes?: Array<{
+      id: string;
+      data: { label: React.ReactNode };
+      position?: { x: number; y: number };
+      style?: Record<string, unknown>;
+    }>;
     edges?: Array<{ id: string; style?: Record<string, unknown> }>;
   }) => (
     <div>
       {nodes.map((node) => (
-        <div key={node.id} data-flow-node={node.id} data-flow-style={JSON.stringify(node.style ?? {})}>
+        <div
+          key={node.id}
+          data-flow-node={node.id}
+          data-flow-position={JSON.stringify(node.position ?? {})}
+          data-flow-style={JSON.stringify(node.style ?? {})}
+        >
           {node.data.label}
         </div>
       ))}
@@ -80,8 +90,9 @@ describe("SessionFlowExplorer event filters", () => {
     expect(buttonNamed("User")?.className).toContain("bg-primary");
     expect(buttonNamed("User")?.getAttribute("aria-pressed")).toBe("true");
     expect(buttonNamed("Conversion")?.className).toContain("bg-primary");
-    expect(buttonNamed("All time")?.className).toContain("bg-primary");
-    expect(buttonNamed("All time")?.getAttribute("aria-pressed")).toBe("true");
+    expect(buttonNamed("All time")?.getAttribute("aria-pressed")).toBe("false");
+    expect(buttonNamed("Last hour")?.className).toContain("bg-primary");
+    expect(buttonNamed("Last hour")?.getAttribute("aria-pressed")).toBe("true");
   });
 
   it("defaults to real traffic and can switch to impersonation test traffic", () => {
@@ -131,6 +142,49 @@ describe("SessionFlowExplorer event filters", () => {
       "--color-destructive",
     );
   });
+
+  it("starts a new row for each page view while keeping the flow connected", () => {
+    render(
+      <SessionFlowExplorer
+        events={[
+          event("multi-page-page-1", "page.view", "multi-page", 0),
+          event("multi-page-watchdog-1", "meta.pixel.fire", "multi-page", 1),
+          event("multi-page-page-2", "page.view", "multi-page", 2),
+          event("multi-page-conversion-2", "checkout.started", "multi-page", 3),
+        ]}
+      />,
+    );
+
+    expect(flowPosition('[data-flow-node="event:multi-page-page-1"]')).toEqual({ x: 250, y: 0 });
+    expect(flowPosition('[data-flow-node="event:multi-page-watchdog-1"]')).toEqual({ x: 500, y: 0 });
+    expect(flowPosition('[data-flow-node="event:multi-page-page-2"]')).toEqual({ x: 250, y: 154 });
+    expect(flowPosition('[data-flow-node="event:multi-page-conversion-2"]')).toEqual({ x: 500, y: 154 });
+    expect(container?.querySelector('[data-flow-edge="event:multi-page-watchdog-1->event:multi-page-page-2"]')).not.toBeNull();
+  });
+
+  it("adds a user node before session nodes in session mode", () => {
+    render(
+      <SessionFlowExplorer
+        events={[
+          { ...event("session-a-page", "page.view", "session-a", 0), userId: "shared-user" },
+          { ...event("session-a-watchdog", "meta.pixel.fire", "session-a", 1), userId: "shared-user" },
+          { ...event("session-b-page", "page.view", "session-b", 2), userId: "shared-user" },
+          { ...event("session-b-conversion", "checkout.started", "session-b", 3), userId: "shared-user" },
+        ]}
+      />,
+    );
+
+    act(() => {
+      buttonNamed("Session")?.click();
+    });
+
+    expect(flowPosition('[data-flow-node="user:shared-user"]')).toEqual({ x: 0, y: 125 });
+    expect(flowPosition('[data-flow-node="group:session-b"]')).toEqual({ x: 250, y: 0 });
+    expect(flowPosition('[data-flow-node="group:session-a"]')).toEqual({ x: 250, y: 250 });
+    expect(flowPosition('[data-flow-node="event:session-b-page"]')).toEqual({ x: 500, y: 0 });
+    expect(container?.querySelector('[data-flow-edge="user:shared-user->group:session-b"]')).not.toBeNull();
+    expect(container?.querySelector('[data-flow-edge="user:shared-user->group:session-a"]')).not.toBeNull();
+  });
 });
 
 function render(ui: React.ReactNode) {
@@ -161,6 +215,10 @@ function modeButtonLabels() {
 
 function flowStyle(selector: string) {
   return container?.querySelector<HTMLElement>(selector)?.dataset.flowStyle ?? "";
+}
+
+function flowPosition(selector: string) {
+  return JSON.parse(container?.querySelector<HTMLElement>(selector)?.dataset.flowPosition ?? "{}");
 }
 
 function event(id: string, name: string, sessionId: string, minute: number) {

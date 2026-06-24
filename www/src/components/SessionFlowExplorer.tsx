@@ -47,7 +47,8 @@ interface FlowGroup {
 
 interface FlowNodeData extends Record<string, unknown> {
   label: ReactNode;
-  kind: "group" | "event";
+  kind: "user" | "group" | "event";
+  userId?: string;
   groupId?: string;
   eventId?: string;
 }
@@ -56,7 +57,8 @@ type FlowNode = Node<FlowNodeData>;
 
 const nodeWidth = 210;
 const nodeGap = 250;
-const rowGap = 154;
+const pageRowGap = 154;
+const groupGap = 96;
 
 export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
   const [mode, setMode] = useState<FlowMode>("user");
@@ -67,11 +69,13 @@ export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
     eventFilters.map((filter) => filter.value),
   );
   const [trafficFilter, setTrafficFilter] = useState<TrafficFilter>("real");
-  const [startAt, setStartAt] = useState("");
-  const [endAt, setEndAt] = useState("");
+  const [startAt, setStartAt] = useState(() => getDefaultTimeRange(events).startAt);
+  const [endAt, setEndAt] = useState(() => getDefaultTimeRange(events).endAt);
+  const [hasChosenTimeWindow, setHasChosenTimeWindow] = useState(false);
 
   const trafficFilteredEvents = useMemo(() => filterEventsByTraffic(events, trafficFilter), [events, trafficFilter]);
   const sampleBounds = useMemo(() => getSampleBounds(trafficFilteredEvents), [trafficFilteredEvents]);
+  const defaultTimeRange = useMemo(() => getPresetTimeRange("1h", sampleBounds.latest), [sampleBounds.latest]);
   const timeFilteredEvents = useMemo(
     () => filterEventsByTime(trafficFilteredEvents, startAt, endAt),
     [endAt, startAt, trafficFilteredEvents],
@@ -90,6 +94,13 @@ export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
     () => timeFilteredEvents.find((event) => event.id === selectedEventId) ?? null,
     [timeFilteredEvents, selectedEventId],
   );
+
+  useEffect(() => {
+    if (hasChosenTimeWindow) return;
+
+    setStartAt(defaultTimeRange.startAt);
+    setEndAt(defaultTimeRange.endAt);
+  }, [defaultTimeRange.endAt, defaultTimeRange.startAt, hasChosenTimeWindow]);
 
   useEffect(() => {
     if (selectedGroupId && !filteredGroups.some((group) => group.id === selectedGroupId)) {
@@ -254,6 +265,7 @@ export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
                   const range = getPresetTimeRange(preset.value, sampleBounds.latest);
                   setStartAt(range.startAt);
                   setEndAt(range.endAt);
+                  setHasChosenTimeWindow(true);
                   setSelectedGroupId(null);
                   setSelectedEventId(null);
                 }}
@@ -271,6 +283,7 @@ export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
               max={endAt || (sampleBounds.latest ? toDateTimeLocal(sampleBounds.latest) : undefined)}
               onChange={(event) => {
                 setStartAt(event.target.value);
+                setHasChosenTimeWindow(true);
                 setSelectedGroupId(null);
                 setSelectedEventId(null);
               }}
@@ -285,6 +298,7 @@ export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
               max={sampleBounds.latest ? toDateTimeLocal(sampleBounds.latest) : undefined}
               onChange={(event) => {
                 setEndAt(event.target.value);
+                setHasChosenTimeWindow(true);
                 setSelectedGroupId(null);
                 setSelectedEventId(null);
               }}
@@ -299,6 +313,7 @@ export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
               onClick={() => {
                 setStartAt("");
                 setEndAt("");
+                setHasChosenTimeWindow(true);
                 setSelectedGroupId(null);
                 setSelectedEventId(null);
               }}
@@ -447,16 +462,67 @@ const buildGroups = (events: FlowEvent[], mode: FlowMode): FlowGroup[] => {
 const buildFlowElements = (groups: FlowGroup[], mode: FlowMode): { nodes: FlowNode[]; edges: Edge[] } => {
   const nodes: FlowNode[] = [];
   const edges: Edge[] = [];
+  let groupTop = 0;
+  const groupX = mode === "session" ? nodeGap : 0;
+  const eventX = groupX + nodeGap;
+  const groupLayouts = groups.map((group) => {
+    const pageSegments = segmentEventsByPageView(group.events);
+    const groupNodeY = groupTop + ((pageSegments.length - 1) * pageRowGap) / 2;
+    const layout = {
+      group,
+      pageSegments,
+      groupNodeY,
+      top: groupTop,
+      userId: group.events[0]?.userId ?? group.id,
+    };
 
-  groups.forEach((group, groupIndex) => {
-    const y = groupIndex * rowGap;
+    groupTop += pageSegments.length * pageRowGap + groupGap;
+    return layout;
+  });
+
+  if (mode === "session") {
+    getUserLayouts(groupLayouts).forEach((userLayout, userId) => {
+      const userNodeId = `user:${userId}`;
+      const hasTestTraffic = userLayout.groups.some(({ group }) => group.events.some(isTestTraffic));
+
+      nodes.push({
+        id: userNodeId,
+        type: "input",
+        position: { x: 0, y: userLayout.y },
+        data: {
+          kind: "user",
+          userId,
+          label: (
+            <div className="grid gap-1 text-left">
+              <span className="text-[11px] font-medium uppercase text-muted-foreground">User</span>
+              <span className="truncate font-mono text-xs">{shortenId(userId)}</span>
+              <span className="text-[11px] text-muted-foreground">
+                {userLayout.groups.length} {userLayout.groups.length === 1 ? "session" : "sessions"}
+              </span>
+            </div>
+          ),
+        },
+        style: {
+          width: nodeWidth,
+          borderColor: hasTestTraffic ? testTrafficBorderColor : "color-mix(in oklch, var(--color-primary) 52%, transparent)",
+          background: hasTestTraffic ? testTrafficBackground : "color-mix(in oklch, var(--color-primary) 10%, var(--color-card))",
+          color: "var(--color-card-foreground)",
+          boxShadow: hasTestTraffic
+            ? testTrafficShadow
+            : "0 0 0 1px color-mix(in oklch, var(--color-primary) 12%, transparent)",
+        },
+      });
+    });
+  }
+
+  groupLayouts.forEach(({ group, pageSegments, groupNodeY, top, userId }) => {
     const groupNodeId = `group:${group.id}`;
     const hasTestTraffic = group.events.some(isTestTraffic);
 
     nodes.push({
       id: groupNodeId,
-      type: "input",
-      position: { x: 0, y },
+      type: mode === "session" ? undefined : "input",
+      position: { x: groupX, y: groupNodeY },
       data: {
         kind: "group",
         groupId: group.id,
@@ -479,61 +545,135 @@ const buildFlowElements = (groups: FlowGroup[], mode: FlowMode): { nodes: FlowNo
       },
     });
 
-    group.events.forEach((event, eventIndex) => {
-      const nodeId = `event:${event.id}`;
-      const previousNodeId = eventIndex === 0 ? groupNodeId : `event:${group.events[eventIndex - 1].id}`;
-      const isTestEvent = isTestTraffic(event);
-
-      nodes.push({
-        id: nodeId,
-        position: { x: nodeGap + eventIndex * nodeGap, y },
-        data: {
-          kind: "event",
-          groupId: group.id,
-          eventId: event.id,
-          label: (
-            <div className="grid gap-1 text-left">
-              <span className="truncate font-mono text-xs">{event.name}</span>
-              <span className="truncate text-[11px] text-muted-foreground">{event.title ?? eventHost(event.url)}</span>
-              <span className="text-[11px] text-muted-foreground">{formatTime(event.occurredAt)}</span>
-            </div>
-          ),
-        },
-        style: {
-          width: nodeWidth,
-          borderColor: isTestEvent
-            ? testTrafficBorderColor
-            : isConversionEvent(event.name)
-            ? "color-mix(in oklch, var(--color-success) 48%, transparent)"
-            : isWatchdogEvent(event.name)
-              ? "color-mix(in oklch, var(--color-chart-2) 55%, transparent)"
-              : "var(--color-border)",
-          background: isTestEvent ? testTrafficBackground : "var(--color-card)",
-          color: "var(--color-card-foreground)",
-          boxShadow: isTestEvent ? testTrafficShadow : undefined,
-        },
-      });
+    if (mode === "session") {
+      const userNodeId = `user:${userId}`;
 
       edges.push({
-        id: `${previousNodeId}->${nodeId}`,
-        source: previousNodeId,
-        target: nodeId,
+        id: `${userNodeId}->${groupNodeId}`,
+        source: userNodeId,
+        target: groupNodeId,
         type: "smoothstep",
-        animated: isConversionEvent(event.name),
-        markerEnd: { type: MarkerType.ArrowClosed, color: isTestEvent ? "var(--color-destructive)" : undefined },
+        markerEnd: { type: MarkerType.ArrowClosed },
         style: {
-          stroke: isTestEvent
-            ? "var(--color-destructive)"
-            : isConversionEvent(event.name)
-              ? "var(--color-success)"
-              : "var(--color-primary)",
-          strokeWidth: isTestEvent || isConversionEvent(event.name) ? 2.5 : 1.8,
+          stroke: hasTestTraffic ? "var(--color-destructive)" : "var(--color-primary)",
+          strokeWidth: hasTestTraffic ? 2.5 : 1.8,
         },
+      });
+    }
+
+    let previousNodeId = groupNodeId;
+
+    pageSegments.forEach((segment, pageIndex) => {
+      const y = top + pageIndex * pageRowGap;
+
+      segment.forEach((event, eventIndex) => {
+        const nodeId = `event:${event.id}`;
+        const isTestEvent = isTestTraffic(event);
+
+        nodes.push({
+          id: nodeId,
+          position: { x: eventX + eventIndex * nodeGap, y },
+          data: {
+            kind: "event",
+            groupId: group.id,
+            eventId: event.id,
+            label: (
+              <div className="grid gap-1 text-left">
+                <span className="truncate font-mono text-xs">{event.name}</span>
+                <span className="truncate text-[11px] text-muted-foreground">{event.title ?? eventHost(event.url)}</span>
+                <span className="text-[11px] text-muted-foreground">{formatTime(event.occurredAt)}</span>
+              </div>
+            ),
+          },
+          style: {
+            width: nodeWidth,
+            borderColor: isTestEvent
+              ? testTrafficBorderColor
+              : isConversionEvent(event.name)
+                ? "color-mix(in oklch, var(--color-success) 48%, transparent)"
+                : isWatchdogEvent(event.name)
+                  ? "color-mix(in oklch, var(--color-chart-2) 55%, transparent)"
+                  : "var(--color-border)",
+            background: isTestEvent ? testTrafficBackground : "var(--color-card)",
+            color: "var(--color-card-foreground)",
+            boxShadow: isTestEvent ? testTrafficShadow : undefined,
+          },
+        });
+
+        edges.push({
+          id: `${previousNodeId}->${nodeId}`,
+          source: previousNodeId,
+          target: nodeId,
+          type: "smoothstep",
+          animated: isConversionEvent(event.name),
+          markerEnd: { type: MarkerType.ArrowClosed, color: isTestEvent ? "var(--color-destructive)" : undefined },
+          style: {
+            stroke: isTestEvent
+              ? "var(--color-destructive)"
+              : isConversionEvent(event.name)
+                ? "var(--color-success)"
+                : "var(--color-primary)",
+            strokeWidth: isTestEvent || isConversionEvent(event.name) ? 2.5 : 1.8,
+          },
+        });
+
+        previousNodeId = nodeId;
       });
     });
   });
 
   return { nodes, edges };
+};
+
+const getUserLayouts = (
+  groupLayouts: {
+    group: FlowGroup;
+    groupNodeY: number;
+    userId: string;
+  }[],
+) => {
+  const userLayouts = new Map<string, { groups: { group: FlowGroup }[]; minY: number; maxY: number; y: number }>();
+
+  groupLayouts.forEach((layout) => {
+    const existing = userLayouts.get(layout.userId);
+
+    if (!existing) {
+      userLayouts.set(layout.userId, {
+        groups: [layout],
+        minY: layout.groupNodeY,
+        maxY: layout.groupNodeY,
+        y: layout.groupNodeY,
+      });
+      return;
+    }
+
+    existing.groups.push(layout);
+    existing.minY = Math.min(existing.minY, layout.groupNodeY);
+    existing.maxY = Math.max(existing.maxY, layout.groupNodeY);
+    existing.y = (existing.minY + existing.maxY) / 2;
+  });
+
+  return userLayouts;
+};
+
+const segmentEventsByPageView = (events: FlowEvent[]) => {
+  const segments: FlowEvent[][] = [];
+  let currentSegment: FlowEvent[] = [];
+
+  for (const event of events) {
+    if (event.name === "page.view" && currentSegment.length > 0) {
+      segments.push(currentSegment);
+      currentSegment = [];
+    }
+
+    currentSegment.push(event);
+  }
+
+  if (currentSegment.length > 0) {
+    segments.push(currentSegment);
+  }
+
+  return segments;
 };
 
 const filterGroups = (groups: FlowGroup[], query: string, selectedEventFilters: EventFilter[]) => {
@@ -582,6 +722,12 @@ const filterEventsByTraffic = (events: FlowEvent[], trafficFilter: TrafficFilter
   if (trafficFilter === "all") return events;
 
   return events.filter((event) => (trafficFilter === "test" ? isTestTraffic(event) : !isTestTraffic(event)));
+};
+
+const getDefaultTimeRange = (events: FlowEvent[]) => {
+  const realTrafficBounds = getSampleBounds(filterEventsByTraffic(events, "real"));
+
+  return getPresetTimeRange("1h", realTrafficBounds.latest);
 };
 
 const getSampleBounds = (events: FlowEvent[]) => {

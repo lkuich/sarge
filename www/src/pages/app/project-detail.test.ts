@@ -23,6 +23,19 @@ describe("project detail install panel", () => {
     expect(projectDetail).not.toContain("<Badge>{selectedEnvironment.status}</Badge>");
   });
 
+  it("renders a top project metrics band from environment event data", () => {
+    const projectDetail = readSource("./projects/[projectId].astro");
+
+    expect(projectDetail).toContain("const eventTrend = buildEventTrend(selectedEnvironment.recentEvents, selectedEnvironment.eventCount24h);");
+    expect(projectDetail).toContain("const eventNameBreakdown = buildEventNameBreakdown(selectedEnvironment.recentEvents);");
+    expect(projectDetail).toContain("Traffic pulse");
+    expect(projectDetail).toContain("24h event volume");
+    expect(projectDetail).toContain("Install health");
+    expect(projectDetail).toContain("Failure rate");
+    expect(projectDetail).toContain("Event mix");
+    expect(projectDetail).toContain('<polyline points={eventTrend.points}');
+  });
+
   it("supports production, staging, and development environments", () => {
     const projectDetail = readSource("./projects/[projectId].astro");
     const demoData = readSource("../../lib/sarge-demo.ts");

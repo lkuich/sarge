@@ -35,6 +35,19 @@ describe("app navigation routes", () => {
     expect(overview).toContain('href={`/app/projects/${project.slug}`}');
   });
 
+  it("shows high-level account metrics on the overview", () => {
+    const overview = readSource("./index.astro");
+
+    expect(overview).toContain("const accountHealthScore");
+    expect(overview).toContain("buildProjectActivityBars(account.projects)");
+    expect(overview).toContain("buildStatusBreakdown(account.projects)");
+    expect(overview).toContain("Account health");
+    expect(overview).toContain("24h events");
+    expect(overview).toContain("Watchlist");
+    expect(overview).toContain("Project activity");
+    expect(overview).toContain("Status mix");
+  });
+
   it("routes project flows back to overview instead of the removed index", () => {
     const newProject = readSource("./projects/new.astro");
     const projectDetail = readSource("./projects/[projectId].astro");

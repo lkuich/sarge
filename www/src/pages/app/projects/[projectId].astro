@@ -8,11 +8,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import InstallPanel from "@/components/InstallPanel";
+import ProjectShareDialog from "@/components/ProjectShareDialog";
 import { SessionFlowExplorer } from "@/components/SessionFlowExplorer";
 import { Separator } from "@/components/ui/separator";
 import AppLayout from "@/layouts/AppLayout.astro";
 import {
   canAdministerAccount,
+  canManageProject,
   createEnvironmentCredential,
   createWebhookEndpoint,
   environmentLabels,
@@ -21,14 +23,20 @@ import {
   getViewerAccount,
   hostedEndpointHost,
   projectEnvironmentOptions,
+  removeProjectShare,
+  shareProject,
+  updateProjectShare,
+  type ProjectShareRole,
 } from "@/lib/sarge-demo";
 
 export const prerender = false;
 
 const { userId } = Astro.locals.auth();
 if (!userId) return Astro.redirect("/sign-in");
+const currentUser = await Astro.locals.currentUser();
+const viewerEmails = currentUser?.emailAddresses.map((email) => email.emailAddress).filter(Boolean) ?? [];
 
-const account = await getViewerAccount(userId, env.DATABASE_URL);
+const account = await getViewerAccount(userId, env.DATABASE_URL, { viewerEmails });
 const project = getProject(account, Astro.params.projectId ?? "");
 if (!project) return Astro.redirect("/app");
 
@@ -45,12 +53,16 @@ const environmentOptions = projectEnvironmentOptions.map((environment) => ({
   selected: environment === selectedEnvironment.environment,
 }));
 
-const canCreateWebhooks = canAdministerAccount(account);
-const canManageCredentials = canAdministerAccount(account);
+const canShareProject = project.ownership === "owned" && canAdministerAccount(account);
+const canCreateWebhooks = canManageProject(project);
+const canManageCredentials = canManageProject(project);
 let webhookError = "";
 let createdWebhookSecret = "";
 let createdWebhookName = "";
 let credentialError = "";
+let shareError = "";
+let shareWarning = "";
+let shareSuccess = "";
 let createdServerCredentialToken = "";
 let createdServerCredentialEndpoint = "";
 let createdPostbackCredentialToken = "";
@@ -60,10 +72,76 @@ let webhookValues = {
   url: "",
   eventNames: "",
 };
+const runtimeEnv = env as unknown as Record<string, string | undefined>;
 
 if (Astro.request.method === "POST") {
   const formData = await Astro.request.formData();
   const intent = String(formData.get("intent") ?? "");
+
+  if (intent === "share-project") {
+    if (!canShareProject) {
+      shareError = "Only project owners can share projects.";
+    } else {
+      const result = await shareProject(
+        userId,
+        env.DATABASE_URL,
+        project.slug,
+        {
+          email: String(formData.get("email") ?? ""),
+          role: String(formData.get("role") ?? "view") as ProjectShareRole,
+        },
+        {
+          sendgridApiKey: runtimeEnv.SENDGRID_API_KEY,
+          emailFrom: runtimeEnv.SARGE_EMAIL_FROM,
+          appUrl: `${Astro.url.origin}/app`,
+        },
+      );
+
+      if (result.success) {
+        project.shares = [result.share, ...project.shares.filter((share) => share.id !== result.share.id)];
+        shareWarning = result.warning ?? "";
+        shareSuccess = result.warning ? "" : `${result.share.email} can now ${result.share.role === "edit" ? "edit" : "view"} this project.`;
+      } else {
+        shareError = result.error;
+      }
+    }
+  }
+
+  if (intent === "update-project-share") {
+    if (!canShareProject) {
+      shareError = "Only project owners can update project shares.";
+    } else {
+      const result = await updateProjectShare(
+        userId,
+        env.DATABASE_URL,
+        String(formData.get("shareId") ?? ""),
+        String(formData.get("role") ?? "view") as ProjectShareRole,
+      );
+
+      if (result.success) {
+        project.shares = project.shares.map((share) => (share.id === result.share.id ? result.share : share));
+        shareSuccess = `${result.share.email} now has ${result.share.role} access.`;
+      } else {
+        shareError = result.error;
+      }
+    }
+  }
+
+  if (intent === "remove-project-share") {
+    if (!canShareProject) {
+      shareError = "Only project owners can remove project shares.";
+    } else {
+      const shareId = String(formData.get("shareId") ?? "");
+      const result = await removeProjectShare(userId, env.DATABASE_URL, shareId);
+
+      if (result.success) {
+        project.shares = project.shares.filter((share) => share.id !== shareId);
+        shareSuccess = "Project access was removed.";
+      } else {
+        shareError = result.error;
+      }
+    }
+  }
 
   if (intent === "create-webhook") {
     webhookValues = {
@@ -73,7 +151,7 @@ if (Astro.request.method === "POST") {
     };
 
     if (!canCreateWebhooks) {
-      webhookError = "Only admins can create webhooks.";
+      webhookError = "Edit access is required to create webhooks.";
     } else {
       const result = await createWebhookEndpoint(userId, env.DATABASE_URL, selectedEnvironment.id, webhookValues);
 
@@ -90,7 +168,7 @@ if (Astro.request.method === "POST") {
 
   if (intent === "rotate-server-credential" || intent === "rotate-postback-token") {
     if (!canManageCredentials) {
-      credentialError = "Only admins can manage server-side credentials.";
+      credentialError = "Edit access is required to manage server-side credentials.";
     } else {
       const kind = intent === "rotate-server-credential" ? "server" : "postback";
       const result = await createEnvironmentCredential(userId, env.DATABASE_URL, selectedEnvironment.id, kind);
@@ -335,7 +413,19 @@ function hashId(value: string) {
         ))
       }
     </div>
-    <p class="text-xs text-muted-foreground">Viewing {selectedEnvironmentLabel} for this project.</p>
+    <div class="flex items-center gap-2">
+      <p class="text-xs text-muted-foreground">Viewing {selectedEnvironmentLabel} for this project.</p>
+      {canShareProject && (
+        <ProjectShareDialog
+          projectName={project.name}
+          shares={project.shares}
+          error={shareError}
+          warning={shareWarning}
+          success={shareSuccess}
+          client:load
+        />
+      )}
+    </div>
   </div>
 
   <section class="mb-4 grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(300px,0.9fr)]" data-project-pulse>

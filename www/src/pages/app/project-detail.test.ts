@@ -136,6 +136,65 @@ describe("project detail install panel", () => {
     expect(projectDetail).not.toContain("createdCredentialToken &&");
   });
 
+  it("models project shares with view and edit roles", () => {
+    const demoData = readSource("../../lib/sarge-demo.ts");
+    const schema = readSource("../../../../apps/api/prisma/schema.prisma");
+
+    expect(schema).toContain("model ProjectShare");
+    expect(schema).toContain("projectShares");
+    expect(schema).toContain("ProjectShare[]");
+    expect(schema).toContain('@@unique([siteId, email])');
+    expect(schema).toContain('@@index([acceptedUserId])');
+
+    expect(demoData).toContain('export type ProjectShareRole = "view" | "edit";');
+    expect(demoData).toContain("export interface ProjectShare");
+    expect(demoData).toContain('ownership: "owned" | "shared";');
+    expect(demoData).toContain("shareRole?: ProjectShareRole;");
+    expect(demoData).toContain("shares: ProjectShare[];");
+    expect(demoData).toContain("ownedProjects: SargeProject[];");
+    expect(demoData).toContain("sharedProjects: SargeProject[];");
+  });
+
+  it("sets up SendGrid-backed project invite mutations", () => {
+    const demoData = readSource("../../lib/sarge-demo.ts");
+    const mailer = readSource("../../lib/project-invite-email.ts");
+    const packageJson = readSource("../../../../www/package.json");
+
+    expect(packageJson).toContain('"@sendgrid/mail"');
+    expect(mailer).toContain('@sendgrid/mail');
+    expect(mailer).toContain("SENDGRID_API_KEY");
+    expect(mailer).toContain("SARGE_EMAIL_FROM");
+    expect(mailer).toContain("sendProjectInviteEmail");
+    expect(mailer).toContain("Project invite saved, but email was not sent");
+
+    expect(demoData).toContain("export const shareProject");
+    expect(demoData).toContain("export const updateProjectShare");
+    expect(demoData).toContain("export const removeProjectShare");
+    expect(demoData).toContain("normalizeInviteEmail");
+  });
+
+  it("renders a project share dialog and gates management controls by project access", () => {
+    const projectDetail = readSource("./projects/[projectId].astro");
+    const shareDialog = readSource("../../components/ProjectShareDialog.tsx");
+
+    expect(projectDetail).toContain("ProjectShareDialog");
+    expect(projectDetail).toContain("canShareProject");
+    expect(projectDetail).toContain("canManageProject");
+    expect(projectDetail).toContain('intent === "share-project"');
+    expect(projectDetail).toContain('intent === "update-project-share"');
+    expect(projectDetail).toContain('intent === "remove-project-share"');
+    expect(projectDetail).toContain("<ProjectShareDialog");
+    expect(projectDetail).toContain("{canShareProject &&");
+    expect(projectDetail).toContain("canCreateWebhooks = canManageProject(project)");
+    expect(projectDetail).toContain("canManageCredentials = canManageProject(project)");
+
+    expect(shareDialog).toContain("data-project-share-dialog");
+    expect(shareDialog).toContain('name="intent" value="share-project"');
+    expect(shareDialog).toContain('name="intent" value="update-project-share"');
+    expect(shareDialog).toContain('name="intent" value="remove-project-share"');
+    expect(shareDialog).toContain('name="role"');
+  });
+
   it("places test impersonation and server-side calls side-by-side above the debug stream", () => {
     const projectDetail = readSource("./projects/[projectId].astro");
     const toolsRow = projectDetail.indexOf('<div class="grid gap-4 lg:col-span-2 xl:grid-cols-2">');

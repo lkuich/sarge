@@ -11,8 +11,10 @@ import { canAdministerAccount, createProject, getViewerAccount } from "@/lib/sar
 
 const { userId } = Astro.locals.auth();
 if (!userId) return Astro.redirect("/sign-in");
+const currentUser = await Astro.locals.currentUser();
+const viewerEmails = currentUser?.emailAddresses.map((email) => email.emailAddress).filter(Boolean) ?? [];
 
-const account = await getViewerAccount(userId, env.DATABASE_URL);
+const account = await getViewerAccount(userId, env.DATABASE_URL, { viewerEmails });
 if (!account.workspaceSetupComplete) return Astro.redirect("/app");
 if (!canAdministerAccount(account)) return Astro.redirect("/app");
 

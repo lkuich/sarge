@@ -39,11 +39,11 @@ describe("app navigation routes", () => {
     const overview = readSource("./index.astro");
 
     expect(overview).toContain("data-overview-metrics");
-    expect(overview).toContain("data-project-distribution");
     expect(overview).toContain("Coverage");
     expect(overview).toContain("Throughput");
     expect(overview).toContain("Attention");
     expect(overview).toContain("buildProjectDistribution(account.projects)");
+    expect(overview).not.toContain("data-project-distribution");
     expect(overview).not.toContain("Recent project activity");
     expect(overview).not.toContain("<Table>");
   });
@@ -57,5 +57,39 @@ describe("app navigation routes", () => {
     expect(projectDetail).not.toContain('Astro.redirect("/app/projects")');
     expect(newProject).toContain('href="/app"');
     expect(projectDetail).toContain('Astro.redirect("/app")');
+  });
+
+  it("lets an owner delete an empty workspace from overview", () => {
+    const overview = readSource("./index.astro");
+    const demoData = readSource("../../lib/sarge-demo.ts");
+
+    expect(demoData).toContain("export const deleteWorkspace");
+    expect(overview).toContain('intent === "delete-workspace"');
+    expect(overview).toContain("data-delete-workspace");
+    expect(overview).toContain("Delete empty workspace");
+    expect(overview).toContain("Only empty workspaces can be deleted.");
+  });
+
+  it("separates owned and shared projects using Clerk viewer emails", () => {
+    const overview = readSource("./index.astro");
+    const newProject = readSource("./projects/new.astro");
+    const projectDetail = readSource("./projects/[projectId].astro");
+    const account = readSource("./account.astro");
+    const demoData = readSource("../../lib/sarge-demo.ts");
+
+    expect(overview).toContain("Astro.locals.currentUser()");
+    expect(newProject).toContain("Astro.locals.currentUser()");
+    expect(projectDetail).toContain("Astro.locals.currentUser()");
+    expect(account).toContain("Astro.locals.currentUser()");
+    expect(overview).toContain("viewerEmails");
+    expect(overview).toContain("Your workspace");
+    expect(overview).toContain("Shared with you");
+    expect(overview).toContain("account.ownedProjects");
+    expect(overview).toContain("account.sharedProjects");
+
+    expect(demoData).toContain("interface GetViewerAccountOptions");
+    expect(demoData).toContain("viewerEmails?: string[];");
+    expect(demoData).toContain("mapProjectShare");
+    expect(demoData).toContain("ownership: \"shared\"");
   });
 });

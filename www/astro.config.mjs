@@ -29,6 +29,9 @@ const clerkDarkAppearance = {
 
 // https://astro.build/config
 export default defineConfig({
+  devToolbar: {
+    enabled: false,
+  },
   integrations: [clerk({ appearance: clerkDarkAppearance }), react()],
   vite: {
     plugins: [tailwindcss()],

@@ -1,10 +1,12 @@
 import { neon } from '@neondatabase/serverless';
 import { summarizeEventHosts, type EventHostSummary } from './event-hosts';
+import { sendProjectInviteEmail, type ProjectInviteEmailInput } from './project-invite-email';
 import { analyzeProjectEvents, type ProjectDiagnostic } from './project-diagnostics';
 
 export type AccountRole = 'admin' | 'user';
 export type ProjectStatus = 'active' | 'paused' | 'draft';
 export type ProjectEnvironment = 'production' | 'staging' | 'development';
+export type ProjectShareRole = "view" | "edit";
 
 export const environmentLabels: Record<ProjectEnvironment, string> = {
   production: 'Production',
@@ -44,6 +46,14 @@ export interface WebhookEndpoint {
   createdAt: string;
 }
 
+export interface ProjectShare {
+  id: string;
+  email: string;
+  role: ProjectShareRole;
+  status: 'pending' | 'accepted';
+  createdAt: string;
+}
+
 export interface SargeProjectEnvironment {
   id: string;
   environment: ProjectEnvironment;
@@ -68,6 +78,10 @@ export interface SargeProjectEnvironment {
 export interface SargeProject extends SargeProjectEnvironment {
   slug: string;
   name: string;
+  workspaceName?: string;
+  ownership: "owned" | "shared";
+  shareRole?: ProjectShareRole;
+  shares: ProjectShare[];
   environments: SargeProjectEnvironment[];
 }
 
@@ -78,6 +92,8 @@ export interface SargeAccount {
   role: AccountRole;
   plan: string;
   workspaceSetupComplete: boolean;
+  ownedProjects: SargeProject[];
+  sharedProjects: SargeProject[];
   projects: SargeProject[];
   members: AccountMember[];
 }
@@ -97,10 +113,25 @@ export interface CreateProjectInput {
   slug?: string;
 }
 
+interface GetViewerAccountOptions {
+  viewerEmails?: string[];
+}
+
 export interface CreateWebhookInput {
   name: string;
   url: string;
   eventNames?: string;
+}
+
+export interface ShareProjectInput {
+  email: string;
+  role: ProjectShareRole;
+}
+
+export interface ProjectInviteEmailOptions {
+  sendgridApiKey?: string;
+  emailFrom?: string;
+  appUrl: string;
 }
 
 export type EnvironmentCredentialKind = 'server' | 'postback';
@@ -113,12 +144,28 @@ export type CreateWorkspaceResult =
   | { success: true; account: Pick<SargeAccount, 'id' | 'name' | 'slug'> }
   | { success: false; error: string };
 
+export type DeleteWorkspaceResult =
+  | { success: true }
+  | { success: false; error: string };
+
 export type CreateWebhookResult =
   | { success: true; webhook: WebhookEndpoint; signingSecret: string }
   | { success: false; error: string };
 
 export type CreateEnvironmentCredentialResult =
   | { success: true; kind: EnvironmentCredentialKind; token: string; endpoint: string }
+  | { success: false; error: string };
+
+export type ShareProjectResult =
+  | { success: true; share: ProjectShare; warning?: string }
+  | { success: false; error: string };
+
+export type UpdateProjectShareResult =
+  | { success: true; share: ProjectShare }
+  | { success: false; error: string };
+
+export type RemoveProjectShareResult =
+  | { success: true }
   | { success: false; error: string };
 
 export const hostedEndpointHost = 'track.sargetrack.app';
@@ -165,8 +212,86 @@ const getViewerWorkspace = async (sql: SqlClient, userId: string) => {
   return workspaces.at(0) ?? null;
 };
 
-export const getViewerAccount = async (userId: string, databaseUrl?: string): Promise<SargeAccount> => {
+const getViewerProjectShares = async (
+  sql: SqlClient,
+  userId: string,
+  viewerEmails: string[],
+): Promise<ProjectShareRow[]> => {
+  if (viewerEmails.length === 0) {
+    return (await sql`
+      SELECT
+        ps.id,
+        ps."siteId",
+        ps.email,
+        ps.role,
+        ps."acceptedUserId",
+        ps."createdAt",
+        ps."acceptedAt"
+      FROM "ProjectShare" ps
+      WHERE ps."acceptedUserId" = ${userId}
+      ORDER BY ps."createdAt" DESC
+    `) as ProjectShareRow[];
+  }
+
+  return (await sql`
+    SELECT
+      ps.id,
+      ps."siteId",
+      ps.email,
+      ps.role,
+      ps."acceptedUserId",
+      ps."createdAt",
+      ps."acceptedAt"
+    FROM "ProjectShare" ps
+    WHERE ps."acceptedUserId" = ${userId}
+      OR ps.email = ANY(${viewerEmails})
+    ORDER BY ps."createdAt" DESC
+  `) as ProjectShareRow[];
+};
+
+const getOwnedSiteBySlug = async (sql: SqlClient, userId: string, projectSlug: string) => {
+  const rows = (await sql`
+    SELECT
+      s.id,
+      s.slug,
+      s.name
+    FROM "Site" s
+    JOIN "Workspace" w ON w.id = s."workspaceId"
+    WHERE w."ownerUserId" = ${userId}
+      AND s.slug = ${projectSlug}
+    LIMIT 1
+  `) as Pick<SiteSummaryRow, 'id' | 'slug' | 'name'>[];
+
+  return rows.at(0) ?? null;
+};
+
+const normalizeEmails = (emails: string[]) =>
+  Array.from(
+    new Set(
+      emails
+        .map((email) => email.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  );
+
+const normalizeShareRole = (role: string | null | undefined): ProjectShareRole | null => {
+  if (role === "view" || role === "edit") return role;
+  return null;
+};
+
+const normalizeInviteEmail = (email: string) => {
+  const normalized = email.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) return '';
+  return normalized;
+};
+
+export const getViewerAccount = async (
+  userId: string,
+  databaseUrl?: string,
+  options: GetViewerAccountOptions = {},
+): Promise<SargeAccount> => {
   const role = resolveRole(userId);
+  const viewerEmails = normalizeEmails(options.viewerEmails ?? []);
 
   if (!databaseUrl) {
     return getFallbackAccount(role);
@@ -175,9 +300,23 @@ export const getViewerAccount = async (userId: string, databaseUrl?: string): Pr
   try {
     const sql = neon(databaseUrl);
     const workspace = await getViewerWorkspace(sql, userId);
-    if (!workspace) return getSetupAccount(role);
+    const sharedProjectShares = await getViewerProjectShares(sql, userId, viewerEmails);
+    const sharedSiteIds = Array.from(new Set(sharedProjectShares.map((share) => share.siteId)));
+    const sharedSites = sharedSiteIds.length > 0 ? ((await sql`
+      SELECT
+        s.id,
+        s.slug,
+        s.name,
+        w.name AS "workspaceName"
+      FROM "Site" s
+      JOIN "Workspace" w ON w.id = s."workspaceId"
+      WHERE s.id = ANY(${sharedSiteIds})
+      ORDER BY s."createdAt" ASC
+    `) as SharedSiteSummaryRow[]) : [];
 
-    const sites = (await sql`
+    if (!workspace && sharedSites.length === 0) return getSetupAccount(role);
+
+    const sites = workspace ? ((await sql`
       SELECT
         s.id,
         s.slug,
@@ -185,8 +324,9 @@ export const getViewerAccount = async (userId: string, databaseUrl?: string): Pr
       FROM "Site" s
       WHERE s."workspaceId" = ${workspace.id}
       ORDER BY s."createdAt" ASC
-    `) as SiteSummaryRow[];
-    const siteEnvironments = (await sql`
+    `) as SiteSummaryRow[]) : [];
+    const allSiteIds = Array.from(new Set([...sites.map((site) => site.id), ...sharedSiteIds]));
+    const siteEnvironments = allSiteIds.length > 0 ? ((await sql`
       SELECT
         se.id,
         se."siteId",
@@ -200,12 +340,12 @@ export const getViewerAccount = async (userId: string, databaseUrl?: string): Pr
       FROM "SiteEnvironment" se
       JOIN "Site" s ON s.id = se."siteId"
       LEFT JOIN "Event" e ON e."siteEnvironmentId" = se.id
-      WHERE s."workspaceId" = ${workspace.id}
+      WHERE s.id = ANY(${allSiteIds})
       GROUP BY se.id
       ORDER BY se."siteId" ASC, se."createdAt" ASC
-    `) as SiteEnvironmentSummaryRow[];
+    `) as SiteEnvironmentSummaryRow[]) : [];
 
-    const events = (await sql`
+    const events = allSiteIds.length > 0 ? ((await sql`
       SELECT
         e.id,
         e."siteId",
@@ -221,11 +361,11 @@ export const getViewerAccount = async (userId: string, databaseUrl?: string): Pr
         e.properties
       FROM "Event" e
       JOIN "Site" s ON s.id = e."siteId"
-      WHERE s."workspaceId" = ${workspace.id}
+      WHERE s.id = ANY(${allSiteIds})
       ORDER BY e."occurredAt" DESC
       LIMIT 200
-    `) as EventRow[];
-    const diagnosticRuns = (await sql`
+    `) as EventRow[]) : [];
+    const diagnosticRuns = allSiteIds.length > 0 ? ((await sql`
       SELECT DISTINCT ON (dr."siteEnvironmentId")
         dr.id,
         dr."siteId",
@@ -235,10 +375,10 @@ export const getViewerAccount = async (userId: string, databaseUrl?: string): Pr
         dr."findingCount"
       FROM "DiagnosticRun" dr
       JOIN "Site" s ON s.id = dr."siteId"
-      WHERE s."workspaceId" = ${workspace.id}
+      WHERE s.id = ANY(${allSiteIds})
       ORDER BY dr."siteEnvironmentId", dr."createdAt" DESC
-    `) as DiagnosticRunRow[];
-    const diagnosticFindings = (await sql`
+    `) as DiagnosticRunRow[]) : [];
+    const diagnosticFindings = allSiteIds.length > 0 ? ((await sql`
       SELECT
         df.id,
         df."runId",
@@ -253,13 +393,27 @@ export const getViewerAccount = async (userId: string, databaseUrl?: string): Pr
       FROM "DiagnosticFinding" df
       JOIN "DiagnosticRun" dr ON dr.id = df."runId"
       JOIN "Site" s ON s.id = df."siteId"
-      WHERE s."workspaceId" = ${workspace.id}
+      WHERE s.id = ANY(${allSiteIds})
       ORDER BY df."createdAt" DESC
       LIMIT 100
-    `) as DiagnosticFindingRow[];
+    `) as DiagnosticFindingRow[]) : [];
+    const projectShares = allSiteIds.length > 0 ? ((await sql`
+      SELECT
+        ps.id,
+        ps."siteId",
+        ps.email,
+        ps.role,
+        ps."acceptedUserId",
+        ps."createdAt",
+        ps."acceptedAt"
+      FROM "ProjectShare" ps
+      JOIN "Site" s ON s.id = ps."siteId"
+      WHERE s.id = ANY(${allSiteIds})
+      ORDER BY ps."createdAt" DESC
+    `) as ProjectShareRow[]) : [];
     let webhookEndpoints: WebhookEndpointRow[] = [];
     try {
-      webhookEndpoints = (await sql`
+      webhookEndpoints = allSiteIds.length > 0 ? ((await sql`
         SELECT
           wh.id,
           wh."siteId",
@@ -271,10 +425,10 @@ export const getViewerAccount = async (userId: string, databaseUrl?: string): Pr
           wh."createdAt"
         FROM "WebhookEndpoint" wh
         JOIN "Site" s ON s.id = wh."siteId"
-        WHERE s."workspaceId" = ${workspace.id}
+        WHERE s.id = ANY(${allSiteIds})
         ORDER BY wh."createdAt" DESC
         LIMIT 100
-      `) as WebhookEndpointRow[];
+      `) as WebhookEndpointRow[]) : [];
     } catch (error) {
       console.error('Unable to load webhook endpoints', error);
     }
@@ -291,42 +445,86 @@ export const getViewerAccount = async (userId: string, databaseUrl?: string): Pr
       existingWebhookEndpoints.push(mapWebhookEndpoint(webhookEndpoint));
       webhookEndpointsByEnvironment.set(webhookEndpoint.siteEnvironmentId, existingWebhookEndpoints);
     }
+    const projectSharesBySite = new Map<string, ProjectShare[]>();
+    for (const share of projectShares) {
+      const existingShares = projectSharesBySite.get(share.siteId) ?? [];
+      existingShares.push(mapProjectShare(share));
+      projectSharesBySite.set(share.siteId, existingShares);
+    }
+    const viewerShareBySite = new Map(sharedProjectShares.map((share) => [share.siteId, share]));
 
-    const isPlaceholderWorkspace = workspace.name === demoAccountName && sites.length === 0;
+    const isPlaceholderWorkspace = workspace?.name === demoAccountName && sites.length === 0;
+
+    const ownedProjects = sites.map((site) => {
+      const environments = siteEnvironments
+        .filter((environment) => environment.siteId === site.id)
+        .map((environment) => {
+          const recentEvents = events.filter((event) => event.siteEnvironmentId === environment.id).map(mapEvent);
+          const latestRun = latestRunByEnvironment.get(environment.id);
+          const persistedDiagnostics = latestRun ? findingsByRun.get(latestRun.id) ?? [] : null;
+
+          return mapProjectEnvironment(environment, {
+            recentEvents,
+            persistedDiagnostics,
+            latestRun,
+            webhookEndpoints: webhookEndpointsByEnvironment.get(environment.id) ?? [],
+          });
+        });
+      const productionEnvironment = environments.find((environment) => environment.environment === 'production') ?? environments[0];
+      const eventCount24h = environments.reduce((sum, environment) => sum + environment.eventCount24h, 0);
+
+      return {
+        ...productionEnvironment,
+        slug: site.slug,
+        name: site.name,
+        ownership: "owned",
+        shares: projectSharesBySite.get(site.id) ?? [],
+        eventCount24h,
+        environments,
+      } satisfies SargeProject;
+    });
+    const sharedProjects = sharedSites.map((site) => {
+      const environments = siteEnvironments
+        .filter((environment) => environment.siteId === site.id)
+        .map((environment) => {
+          const recentEvents = events.filter((event) => event.siteEnvironmentId === environment.id).map(mapEvent);
+          const latestRun = latestRunByEnvironment.get(environment.id);
+          const persistedDiagnostics = latestRun ? findingsByRun.get(latestRun.id) ?? [] : null;
+
+          return mapProjectEnvironment(environment, {
+            recentEvents,
+            persistedDiagnostics,
+            latestRun,
+            webhookEndpoints: webhookEndpointsByEnvironment.get(environment.id) ?? [],
+          });
+        });
+      const productionEnvironment = environments.find((environment) => environment.environment === 'production') ?? environments[0];
+      const eventCount24h = environments.reduce((sum, environment) => sum + environment.eventCount24h, 0);
+      const viewerShare = viewerShareBySite.get(site.id);
+
+      return {
+        ...productionEnvironment,
+        slug: site.slug,
+        name: site.name,
+        workspaceName: site.workspaceName,
+        ownership: "shared",
+        shareRole: normalizeShareRole(viewerShare?.role) ?? "view",
+        shares: projectSharesBySite.get(site.id) ?? [],
+        eventCount24h,
+        environments,
+      } satisfies SargeProject;
+    });
 
     return {
-      id: workspace.id,
-      name: isPlaceholderWorkspace ? 'Set up workspace' : workspace.name,
-      slug: workspace.slug,
+      id: workspace?.id ?? 'shared',
+      name: workspace ? (isPlaceholderWorkspace ? 'Set up workspace' : workspace.name) : 'Shared projects',
+      slug: workspace?.slug ?? 'shared',
       role,
       plan: 'Cloud',
-      workspaceSetupComplete: !isPlaceholderWorkspace,
-      projects: sites.map((site) => {
-        const environments = siteEnvironments
-          .filter((environment) => environment.siteId === site.id)
-          .map((environment) => {
-            const recentEvents = events.filter((event) => event.siteEnvironmentId === environment.id).map(mapEvent);
-            const latestRun = latestRunByEnvironment.get(environment.id);
-            const persistedDiagnostics = latestRun ? findingsByRun.get(latestRun.id) ?? [] : null;
-
-            return mapProjectEnvironment(environment, {
-              recentEvents,
-              persistedDiagnostics,
-              latestRun,
-              webhookEndpoints: webhookEndpointsByEnvironment.get(environment.id) ?? [],
-            });
-          });
-        const productionEnvironment = environments.find((environment) => environment.environment === 'production') ?? environments[0];
-        const eventCount24h = environments.reduce((sum, environment) => sum + environment.eventCount24h, 0);
-
-        return {
-          ...productionEnvironment,
-          slug: site.slug,
-          name: site.name,
-          eventCount24h,
-          environments,
-        };
-      }),
+      workspaceSetupComplete: Boolean(workspace && !isPlaceholderWorkspace),
+      ownedProjects,
+      sharedProjects,
+      projects: [...ownedProjects, ...sharedProjects],
       members,
     };
   } catch (error) {
@@ -431,6 +629,43 @@ export const createWorkspace = async (
   }
 };
 
+export const deleteWorkspace = async (
+  userId: string,
+  databaseUrl: string | undefined,
+): Promise<DeleteWorkspaceResult> => {
+  if (!databaseUrl) return { success: false, error: 'DATABASE_URL is not configured.' };
+
+  try {
+    const sql = neon(databaseUrl);
+    const workspace = await getViewerWorkspace(sql, userId);
+    if (!workspace) return { success: false, error: 'Workspace was not found.' };
+
+    const projectCounts = (await sql`
+      SELECT COUNT(*)::int AS count
+      FROM "Site"
+      WHERE "workspaceId" = ${workspace.id}
+    `) as { count: number }[];
+    const projectCount = projectCounts.at(0)?.count ?? 0;
+    if (projectCount > 0) {
+      return { success: false, error: 'Only empty workspaces can be deleted.' };
+    }
+
+    await sql`
+      DELETE FROM "Workspace"
+      WHERE id = ${workspace.id}
+        AND "ownerUserId" = ${userId}
+    `;
+
+    return { success: true };
+  } catch (error) {
+    console.error('Unable to delete Sarge workspace', error);
+    return {
+      success: false,
+      error: 'Workspace could not be deleted.',
+    };
+  }
+};
+
 export const createProject = async (
   userId: string,
   databaseUrl: string | undefined,
@@ -469,6 +704,8 @@ export const createProject = async (
         ...productionEnvironment,
         slug: site.slug,
         name: site.name,
+        ownership: "owned",
+        shares: [],
         environments,
       },
     };
@@ -486,7 +723,133 @@ export const getProject = (account: SargeAccount, slug: string) =>
 
 export const canAdministerAccount = (account: SargeAccount) => account.role === 'admin';
 
+export const canManageProject = (project: SargeProject) =>
+  project.ownership === 'owned' || project.shareRole === 'edit';
+
 export const formatCount = (value: number) => new Intl.NumberFormat('en-US').format(value);
+
+export const shareProject = async (
+  userId: string,
+  databaseUrl: string | undefined,
+  projectSlug: string,
+  input: ShareProjectInput,
+  emailOptions: ProjectInviteEmailOptions,
+): Promise<ShareProjectResult> => {
+  if (!databaseUrl) return { success: false, error: 'DATABASE_URL is not configured.' };
+
+  const email = normalizeInviteEmail(input.email);
+  const role = normalizeShareRole(input.role);
+  if (!email) return { success: false, error: 'Invite email is required.' };
+  if (!role) return { success: false, error: 'Choose view or edit access.' };
+
+  try {
+    const sql = neon(databaseUrl);
+    const site = await getOwnedSiteBySlug(sql, userId, projectSlug);
+    if (!site) return { success: false, error: 'Project was not found in your workspace.' };
+
+    const rows = (await sql`
+      INSERT INTO "ProjectShare" (id, "siteId", email, role, "invitedByUserId")
+      VALUES (${`share_${crypto.randomUUID()}`}, ${site.id}, ${email}, ${role}, ${userId})
+      ON CONFLICT ("siteId", email) DO UPDATE
+      SET role = EXCLUDED.role,
+          "invitedByUserId" = EXCLUDED."invitedByUserId"
+      RETURNING id, "siteId", email, role, "acceptedUserId", "createdAt", "acceptedAt"
+    `) as ProjectShareRow[];
+    const share = rows.at(0);
+    if (!share) return { success: false, error: 'Project invite could not be saved.' };
+
+    const emailResult = await sendProjectInviteEmail({
+      to: email,
+      projectName: site.name,
+      inviterLabel: 'A Sarge workspace admin',
+      role,
+      appUrl: emailOptions.appUrl,
+      sendgridApiKey: emailOptions.sendgridApiKey,
+      emailFrom: emailOptions.emailFrom,
+    } satisfies ProjectInviteEmailInput);
+
+    return {
+      success: true,
+      share: mapProjectShare(share),
+      warning: emailResult.sent ? undefined : emailResult.warning,
+    };
+  } catch (error) {
+    console.error('Unable to share Sarge project', error);
+    return {
+      success: false,
+      error: 'Project invite could not be saved.',
+    };
+  }
+};
+
+export const updateProjectShare = async (
+  userId: string,
+  databaseUrl: string | undefined,
+  shareId: string,
+  role: ProjectShareRole,
+): Promise<UpdateProjectShareResult> => {
+  if (!databaseUrl) return { success: false, error: 'DATABASE_URL is not configured.' };
+
+  const normalizedRole = normalizeShareRole(role);
+  if (!normalizedRole) return { success: false, error: 'Choose view or edit access.' };
+
+  try {
+    const sql = neon(databaseUrl);
+    const rows = (await sql`
+      UPDATE "ProjectShare" ps
+      SET role = ${normalizedRole}
+      FROM "Site" s
+      JOIN "Workspace" w ON w.id = s."workspaceId"
+      WHERE ps.id = ${shareId}
+        AND ps."siteId" = s.id
+        AND w."ownerUserId" = ${userId}
+      RETURNING ps.id, ps."siteId", ps.email, ps.role, ps."acceptedUserId", ps."createdAt", ps."acceptedAt"
+    `) as ProjectShareRow[];
+    const share = rows.at(0);
+    if (!share) return { success: false, error: 'Project share was not found.' };
+
+    return {
+      success: true,
+      share: mapProjectShare(share),
+    };
+  } catch (error) {
+    console.error('Unable to update Sarge project share', error);
+    return {
+      success: false,
+      error: 'Project share could not be updated.',
+    };
+  }
+};
+
+export const removeProjectShare = async (
+  userId: string,
+  databaseUrl: string | undefined,
+  shareId: string,
+): Promise<RemoveProjectShareResult> => {
+  if (!databaseUrl) return { success: false, error: 'DATABASE_URL is not configured.' };
+
+  try {
+    const sql = neon(databaseUrl);
+    const rows = (await sql`
+      DELETE FROM "ProjectShare" ps
+      USING "Site" s
+      JOIN "Workspace" w ON w.id = s."workspaceId"
+      WHERE ps.id = ${shareId}
+        AND ps."siteId" = s.id
+        AND w."ownerUserId" = ${userId}
+      RETURNING ps.id
+    `) as { id: string }[];
+    if (!rows.at(0)) return { success: false, error: 'Project share was not found.' };
+
+    return { success: true };
+  } catch (error) {
+    console.error('Unable to remove Sarge project share', error);
+    return {
+      success: false,
+      error: 'Project share could not be removed.',
+    };
+  }
+};
 
 export const createWebhookEndpoint = async (
   userId: string,
@@ -627,14 +990,8 @@ export const createEnvironmentCredential = async (
   }
 };
 
-const getFallbackAccount = (role: AccountRole): SargeAccount => ({
-  id: 'acct_demo',
-  name: demoAccountName,
-  slug: 'demo',
-  role,
-  plan: 'Cloud',
-  workspaceSetupComplete: true,
-  projects: [
+const getFallbackAccount = (role: AccountRole): SargeAccount => {
+  const ownedProjects = [
     buildFallbackProject({
       id: 'site_demo',
       slug: 'demo-site',
@@ -653,9 +1010,21 @@ const getFallbackAccount = (role: AccountRole): SargeAccount => ({
       failedEvents24h: 0,
       lastEventAt: 'No events yet',
     }),
-  ],
-  members,
-});
+  ];
+
+  return {
+    id: 'acct_demo',
+    name: demoAccountName,
+    slug: 'demo',
+    role,
+    plan: 'Cloud',
+    workspaceSetupComplete: true,
+    ownedProjects,
+    sharedProjects: [],
+    projects: ownedProjects,
+    members,
+  };
+};
 
 const getSetupAccount = (role: AccountRole): SargeAccount => ({
   id: 'setup',
@@ -664,6 +1033,8 @@ const getSetupAccount = (role: AccountRole): SargeAccount => ({
   role,
   plan: 'Setup',
   workspaceSetupComplete: false,
+  ownedProjects: [],
+  sharedProjects: [],
   projects: [],
   members: [],
 });
@@ -700,6 +1071,14 @@ const mapWebhookEndpoint = (webhookEndpoint: WebhookEndpointRow): WebhookEndpoin
     : [],
   isActive: webhookEndpoint.isActive,
   createdAt: webhookEndpoint.createdAt.toISOString(),
+});
+
+const mapProjectShare = (share: ProjectShareRow): ProjectShare => ({
+  id: share.id,
+  email: share.email,
+  role: normalizeShareRole(share.role) ?? 'view',
+  status: share.acceptedUserId || share.acceptedAt ? 'accepted' : 'pending',
+  createdAt: share.createdAt.toISOString(),
 });
 
 const mapProjectEnvironment = (
@@ -816,6 +1195,8 @@ const buildFallbackProject = (input: {
     ...productionEnvironment,
     slug: input.slug,
     name: input.name,
+    ownership: "owned",
+    shares: [],
     eventCount24h: input.eventCount24h,
     failedEvents24h: input.failedEvents24h,
     lastEventAt: input.lastEventAt,
@@ -925,6 +1306,10 @@ interface SiteSummaryRow {
   pixelEnabled: boolean;
 }
 
+interface SharedSiteSummaryRow extends SiteSummaryRow {
+  workspaceName: string;
+}
+
 interface SiteEnvironmentSummaryRow {
   id: string;
   siteId: string;
@@ -991,4 +1376,14 @@ interface WebhookEndpointRow {
   eventNames: unknown;
   isActive: boolean;
   createdAt: Date;
+}
+
+interface ProjectShareRow {
+  id: string;
+  siteId: string;
+  email: string;
+  role: string;
+  acceptedUserId: string | null;
+  createdAt: Date;
+  acceptedAt: Date | null;
 }

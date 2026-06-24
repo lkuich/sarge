@@ -32,6 +32,7 @@ model Site {
   diagnosticFindings    DiagnosticFinding[]
   webhookEndpoints      WebhookEndpoint[]
   environments          SiteEnvironment[]
+  projectShares         ProjectShare[]
 
   workspace Workspace @relation(fields: [workspaceId], references: [id])
 
@@ -158,4 +159,21 @@ model WebhookEndpoint {
   @@index([siteId, createdAt])
   @@index([siteEnvironmentId, createdAt])
   @@index([isActive])
+}
+
+model ProjectShare {
+  id              String    @id @default(cuid())
+  siteId          String
+  email           String
+  role            String
+  invitedByUserId String
+  acceptedUserId  String?
+  createdAt       DateTime  @default(now())
+  acceptedAt      DateTime?
+
+  site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@unique([siteId, email])
+  @@index([email])
+  @@index([acceptedUserId])
 }

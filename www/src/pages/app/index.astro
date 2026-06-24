@@ -8,12 +8,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import AppLayout from "@/layouts/AppLayout.astro";
-import { canAdministerAccount, createWorkspace, environmentLabels, formatCount, getViewerAccount } from "@/lib/sarge-demo";
+import { canAdministerAccount, createWorkspace, deleteWorkspace, environmentLabels, formatCount, getViewerAccount } from "@/lib/sarge-demo";
 
 const { userId } = Astro.locals.auth();
 if (!userId) return Astro.redirect("/sign-in");
+const currentUser = await Astro.locals.currentUser();
+const viewerEmails = currentUser?.emailAddresses.map((email) => email.emailAddress).filter(Boolean) ?? [];
 
 let workspaceError = "";
+let workspaceDeleteError = "";
 let workspaceValues = {
   name: "",
 };
@@ -32,16 +35,26 @@ if (Astro.request.method === "POST") {
 
     workspaceError = result.error;
   }
+
+  if (intent === "delete-workspace") {
+    const result = await deleteWorkspace(userId, env.DATABASE_URL);
+    if (result.success) return Astro.redirect("/app", 303);
+
+    workspaceDeleteError = result.error;
+  }
 }
 
-const account = await getViewerAccount(userId, env.DATABASE_URL);
+const account = await getViewerAccount(userId, env.DATABASE_URL, { viewerEmails });
 const totalEvents = account.projects.reduce((sum, project) => sum + project.eventCount24h, 0);
 const failedEvents = account.projects.reduce((sum, project) => sum + project.failedEvents24h, 0);
 const hasProjects = account.projects.length > 0;
+const hasOwnedProjects = account.ownedProjects.length > 0;
+const hasSharedProjects = account.sharedProjects.length > 0;
 const needsWorkspaceSetup = !account.workspaceSetupComplete;
-const shouldShowSetupGuide = needsWorkspaceSetup || !hasProjects;
+const shouldShowSetupGuide = needsWorkspaceSetup || !hasOwnedProjects;
 const canCreateProjects = canAdministerAccount(account);
-const projectCountLabel = `${account.projects.length} ${account.projects.length === 1 ? "project" : "projects"} under ${account.name}`;
+const canDeleteWorkspace = canCreateProjects && account.workspaceSetupComplete && account.ownedProjects.length === 0;
+const projectCountLabel = `${account.ownedProjects.length} ${account.ownedProjects.length === 1 ? "project" : "projects"} under ${account.name}`;
 const activeProjects = account.projects.filter((project) => project.status === "active").length;
 const collectingProjects = account.projects.filter((project) => project.eventCount24h > 0).length;
 const attentionItems = account.projects.filter((project) => project.status !== "active").length + failedEvents;
@@ -94,7 +107,7 @@ function buildProjectDistribution(projects: typeof account.projects) {
             <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Setup guide</p>
             <h2 class="mt-1 text-xl font-semibold tracking-tight">Set up Sarge in two steps</h2>
           </div>
-          <Badge variant={hasProjects ? "secondary" : "outline"}>{hasProjects ? "Project ready" : "New account"}</Badge>
+          <Badge variant={hasOwnedProjects ? "secondary" : "outline"}>{hasOwnedProjects ? "Project ready" : "New account"}</Badge>
         </div>
         <div class="grid gap-3 md:grid-cols-2">
           <Card className={needsWorkspaceSetup ? "border-primary/70" : ""}>
@@ -138,26 +151,50 @@ function buildProjectDistribution(projects: typeof account.projects) {
                     </form>
                   </>
                 ) : (
-                  <p class="text-sm font-medium">{account.name}</p>
+                  <div class="grid gap-3">
+                    <p class="text-sm font-medium">{account.name}</p>
+                    {workspaceDeleteError && (
+                      <Alert>
+                        <AlertTitle>Workspace was not deleted</AlertTitle>
+                        <AlertDescription>{workspaceDeleteError}</AlertDescription>
+                      </Alert>
+                    )}
+                    <div class="rounded-md border bg-muted/30 p-3" data-delete-workspace>
+                      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p class="text-sm font-medium">Delete empty workspace</p>
+                          <p class="mt-1 text-xs text-muted-foreground">
+                            {canDeleteWorkspace ? "Only empty workspaces can be deleted." : "Remove projects first before deleting this workspace."}
+                          </p>
+                        </div>
+                        <form method="post">
+                          <input type="hidden" name="intent" value="delete-workspace" />
+                          <Button type="submit" variant="outline" size="sm" disabled={!canDeleteWorkspace}>
+                            Delete
+                          </Button>
+                        </form>
+                      </div>
+                    </div>
+                  </div>
                 )
               }
             </CardContent>
           </Card>
 
-          <Card className={!needsWorkspaceSetup && !hasProjects ? "border-primary/70" : ""}>
+          <Card className={!needsWorkspaceSetup && !hasOwnedProjects ? "border-primary/70" : ""}>
             <CardHeader className="pb-3">
               <div class="flex items-start gap-3">
                 <span
                   class:list={[
                     "grid size-9 shrink-0 place-items-center rounded-md border",
-                    hasProjects
+                    hasOwnedProjects
                       ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                       : needsWorkspaceSetup
                         ? "bg-secondary text-muted-foreground"
                         : "border-primary/40 bg-primary/10 text-primary",
                   ]}
                 >
-                  {hasProjects ? <CheckCircle2 className="size-4" /> : <FolderPlus className="size-4" />}
+                  {hasOwnedProjects ? <CheckCircle2 className="size-4" /> : <FolderPlus className="size-4" />}
                 </span>
                 <div class="min-w-0">
                   <CardTitle className="text-base">Add your project</CardTitle>
@@ -167,8 +204,8 @@ function buildProjectDistribution(projects: typeof account.projects) {
             </CardHeader>
             <CardContent className="pt-0">
               {
-                hasProjects ? (
-                  <p class="text-sm font-medium">{account.projects[0].name}</p>
+                hasOwnedProjects ? (
+                  <p class="text-sm font-medium">{account.ownedProjects[0].name}</p>
                 ) : needsWorkspaceSetup ? (
                   <p class="text-sm text-muted-foreground">Create your workspace first.</p>
                 ) : (
@@ -188,7 +225,7 @@ function buildProjectDistribution(projects: typeof account.projects) {
   }
 
   {
-    !needsWorkspaceSetup && (
+    (!needsWorkspaceSetup || hasSharedProjects) && (
       <>
         <section class="grid gap-4 md:grid-cols-3" data-overview-metrics>
           <Card>
@@ -226,10 +263,13 @@ function buildProjectDistribution(projects: typeof account.projects) {
           </Card>
         </section>
 
-        <section class="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+        <section class="mt-6 grid gap-6">
           <div>
             <div class="mb-4 flex items-center justify-between gap-3">
-              <p class="text-sm text-muted-foreground">{projectCountLabel}</p>
+              <div>
+                <h2 class="text-lg font-semibold tracking-tight">Your workspace</h2>
+                <p class="text-sm text-muted-foreground">{projectCountLabel}</p>
+              </div>
               {
                 canCreateProjects && (
                   <a
@@ -243,9 +283,9 @@ function buildProjectDistribution(projects: typeof account.projects) {
             </div>
 
             {
-              hasProjects ? (
+              hasOwnedProjects ? (
                 <div class="grid gap-4 md:grid-cols-2">
-                  {account.projects.map((project) => (
+                  {account.ownedProjects.map((project) => (
                     <Card>
                       <CardHeader>
                         <div class="flex items-start justify-between gap-3">
@@ -286,7 +326,7 @@ function buildProjectDistribution(projects: typeof account.projects) {
               ) : (
                 <div class="flex flex-col items-start gap-3 rounded-md border border-dashed p-5">
                   <div>
-                    <p class="font-medium">No projects yet</p>
+                    <p class="font-medium">No projects in your workspace</p>
                     <p class="mt-1 text-sm text-muted-foreground">Add a project to get install details, a tracking domain, and an event stream.</p>
                   </div>
                   {
@@ -304,31 +344,62 @@ function buildProjectDistribution(projects: typeof account.projects) {
             }
           </div>
 
-          <Card data-project-distribution>
-            <CardHeader>
-              <CardTitle>Project distribution</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-4">
-              <div class="flex h-28 items-end gap-2 rounded-md border bg-muted/30 p-3">
-                {projectDistribution.map((item) => (
-                  <div class="grid flex-1 gap-2 text-center">
-                    <div class="flex h-20 items-end rounded-sm bg-secondary p-px">
-                      <div class={`w-full rounded-sm ${item.className}`} style={`height: ${Math.max(6, item.share)}%`} />
-                    </div>
-                    <span class="truncate text-xs text-muted-foreground">{item.label}</span>
-                  </div>
-                ))}
-              </div>
-              <div class="grid gap-2 text-sm">
-                {projectDistribution.map((item) => (
-                  <div class="flex items-center justify-between gap-3">
-                    <span class="text-muted-foreground">{item.label}</span>
-                    <span class="font-medium">{item.value}</span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+          <div>
+            <div class="mb-4">
+              <h2 class="text-lg font-semibold tracking-tight">Shared with you</h2>
+              <p class="text-sm text-muted-foreground">Projects another workspace invited you to inspect or edit.</p>
+            </div>
+
+            {
+              hasSharedProjects ? (
+                <div class="grid gap-4 md:grid-cols-2">
+                  {account.sharedProjects.map((project) => (
+                    <Card>
+                      <CardHeader>
+                        <div class="flex items-start justify-between gap-3">
+                          <div class="min-w-0">
+                            <CardTitle><a href={`/app/projects/${project.slug}`}>{project.name}</a></CardTitle>
+                            <p class="mt-1 truncate font-mono text-xs text-muted-foreground">{project.endpointHost}</p>
+                            {project.workspaceName && <p class="mt-1 truncate text-xs text-muted-foreground">{project.workspaceName}</p>}
+                          </div>
+                          <Badge variant={project.shareRole === "edit" ? "default" : "secondary"}>{project.shareRole ?? "view"}</Badge>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <div class="grid gap-4 text-sm">
+                          <div class="h-2 rounded-full bg-secondary">
+                            <div
+                              class="h-full rounded-full bg-primary"
+                              style={`width: ${Math.max(project.eventCount24h > 0 ? 8 : 2, Math.round((project.eventCount24h / projectActivityScale) * 100))}%`}
+                            />
+                          </div>
+                          <div class="grid grid-cols-3 gap-3">
+                            <div>
+                              <p class="text-xs text-muted-foreground">Environment</p>
+                              <p class="font-medium">{environmentLabels[project.environment]}</p>
+                            </div>
+                            <div>
+                              <p class="text-xs text-muted-foreground">Events</p>
+                              <p class="font-medium">{formatCount(project.eventCount24h)}</p>
+                            </div>
+                            <div>
+                              <p class="text-xs text-muted-foreground">Last seen</p>
+                              <p class="font-medium">{project.lastEventAt}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <div class="rounded-md border border-dashed p-5">
+                  <p class="font-medium">No shared projects</p>
+                  <p class="mt-1 text-sm text-muted-foreground">Invites from other workspaces will appear here.</p>
+                </div>
+              )
+            }
+          </div>
         </section>
       </>
     )

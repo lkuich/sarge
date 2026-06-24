@@ -2,6 +2,13 @@ import type { BrowserLike, EventPayload, EventProperties, InitOptions, SargeClie
 
 const DEFAULT_ENDPOINT = "https://white-dawn-6379.fly.dev";
 const DEFAULT_ATTRIBUTION_TTL_DAYS = 28;
+const sessionStorageKey = "sarge_sess";
+const refStorageKey = "sarge_ref";
+const affiliateStorageKey = "sarge_aff";
+const expirationStorageKey = "sarge_exp";
+
+const userStorageKey = (siteId: string) => `sarge_user:${siteId}`;
+const impersonationStorageKey = (siteId: string) => `sarge_impersonate:${siteId}`;
 
 export const createSargeClient = (browser: BrowserLike): SargeClient => {
   let options: Required<InitOptions> | null = null;
@@ -26,7 +33,7 @@ export const createSargeClient = (browser: BrowserLike): SargeClient => {
       attributionTtlDays: resolvedOptions.attributionTtlDays ?? DEFAULT_ATTRIBUTION_TTL_DAYS
     };
 
-    refreshAttribution(options.attributionTtlDays);
+    refreshAttribution(options.siteId, options.attributionTtlDays);
   };
 
   const track = (name: string, properties?: EventProperties) => {
@@ -38,10 +45,27 @@ export const createSargeClient = (browser: BrowserLike): SargeClient => {
     sendPayload(options.endpoint, payload);
   };
 
-  const refreshAttribution = (attributionTtlDays: number) => {
-    localStore.set("sarge_sess", browser.crypto.randomUUID());
+  const impersonate = (userId: string) => {
+    const trimmedUserId = userId.trim();
+    if (!trimmedUserId) {
+      throw new Error("Sarge impersonation requires a user id");
+    }
 
-    const existingExpiration = localStore.get("sarge_exp");
+    const currentOptions = requireOptions("impersonating users");
+    ensureProjectUserId(currentOptions.siteId);
+    localStore.set(impersonationStorageKey(currentOptions.siteId), trimmedUserId);
+  };
+
+  const clearImpersonation = () => {
+    const currentOptions = requireOptions("clearing impersonation");
+    localStore.remove(impersonationStorageKey(currentOptions.siteId));
+  };
+
+  const refreshAttribution = (siteId: string, attributionTtlDays: number) => {
+    localStore.set(sessionStorageKey, browser.crypto.randomUUID());
+    ensureProjectUserId(siteId);
+
+    const existingExpiration = localStore.get(expirationStorageKey);
     if (existingExpiration && Date.parse(existingExpiration) > getNow().getTime()) {
       return;
     }
@@ -51,30 +75,27 @@ export const createSargeClient = (browser: BrowserLike): SargeClient => {
     const aff = params.get("sarge_aff");
 
     if (ref) {
-      localStore.set("sarge_ref", ref);
+      localStore.set(refStorageKey, ref);
     }
 
     if (aff) {
-      localStore.set("sarge_aff", aff);
+      localStore.set(affiliateStorageKey, aff);
     }
 
-    localStore.set("sarge_exp", addDays(getNow(), attributionTtlDays).toISOString());
-    localStore.set("sarge_user", browser.crypto.randomUUID());
+    localStore.set(expirationStorageKey, addDays(getNow(), attributionTtlDays).toISOString());
   };
 
   const buildPayload = (siteId: string, name: string, properties?: EventProperties): EventPayload => {
-    const ref = localStore.get("sarge_ref") ?? undefined;
-    const aff = localStore.get("sarge_aff") ?? undefined;
-    const expiresAt = localStore.get("sarge_exp") ?? undefined;
-    const sessionId = localStore.get("sarge_sess") ?? browser.crypto.randomUUID();
-    const userId = localStore.get("sarge_user") ?? browser.crypto.randomUUID();
+    const ref = localStore.get(refStorageKey) ?? undefined;
+    const aff = localStore.get(affiliateStorageKey) ?? undefined;
+    const expiresAt = localStore.get(expirationStorageKey) ?? undefined;
+    const sessionId = localStore.get(sessionStorageKey) ?? browser.crypto.randomUUID();
+    const testerUserId = ensureProjectUserId(siteId);
+    const impersonatedUserId = localStore.get(impersonationStorageKey(siteId)) ?? undefined;
+    const userId = impersonatedUserId ?? testerUserId;
 
-    if (!localStore.get("sarge_sess")) {
-      localStore.set("sarge_sess", sessionId);
-    }
-
-    if (!localStore.get("sarge_user")) {
-      localStore.set("sarge_user", userId);
+    if (!localStore.get(sessionStorageKey)) {
+      localStore.set(sessionStorageKey, sessionId);
     }
 
     return {
@@ -96,7 +117,7 @@ export const createSargeClient = (browser: BrowserLike): SargeClient => {
         referrer: optionalString(browser.document.referrer),
         title: optionalString(browser.document.title)
       },
-      properties
+      properties: mergeImpersonationProperties(properties, testerUserId, impersonatedUserId)
     };
   };
 
@@ -124,9 +145,45 @@ export const createSargeClient = (browser: BrowserLike): SargeClient => {
     image.src = buildCompactUrl(endpoint, payload);
   };
 
+  const ensureProjectUserId = (siteId: string) => {
+    const key = userStorageKey(siteId);
+    const existingUserId = localStore.get(key);
+    if (existingUserId) return existingUserId;
+
+    const userId = browser.crypto.randomUUID();
+    localStore.set(key, userId);
+    return userId;
+  };
+
+  const requireOptions = (action: string) => {
+    if (!options) {
+      throw new Error(`Sarge must be initialized before ${action}`);
+    }
+
+    return options;
+  };
+
   return {
     init,
-    track
+    track,
+    impersonate,
+    clearImpersonation
+  };
+};
+
+const mergeImpersonationProperties = (
+  properties: EventProperties | undefined,
+  testerUserId: string,
+  impersonatedUserId: string | undefined
+) => {
+  if (!impersonatedUserId) return properties;
+
+  return {
+    ...properties,
+    sarge_test: true,
+    sarge_test_mode: "impersonation",
+    sarge_tester_user_id: testerUserId,
+    sarge_impersonated_user_id: impersonatedUserId
   };
 };
 

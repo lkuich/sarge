@@ -88,4 +88,4 @@ A team can move from standard hosted Sarge to dedicated hosting when:
 - procurement requires stricter operational controls
 - the team wants a custom domain and dedicated data plane
 
-The migration should preserve event names, site IDs, and installation snippets where possible.
+The migration should preserve event names and installation snippets where possible. For hosted projects, keep each Production, Staging, and Development environment mapped to its own tracking ID and event stream.

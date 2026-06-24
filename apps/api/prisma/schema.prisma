@@ -17,22 +17,46 @@ model Workspace {
 }
 
 model Site {
-  id                 String   @id @default(cuid())
-  workspaceId        String
-  slug               String
-  name               String
-  endpointHost       String   @unique
-  attributionTtlDays Int      @default(28)
-  pixelEnabled       Boolean  @default(true)
-  createdAt          DateTime @default(now())
-  events             Event[]
-  diagnosticRuns     DiagnosticRun[]
-  diagnosticFindings DiagnosticFinding[]
-  webhookEndpoints   WebhookEndpoint[]
+  id                    String              @id @default(cuid())
+  workspaceId           String
+  slug                  String
+  name                  String
+  endpointHost          String              @unique
+  attributionTtlDays    Int                 @default(28)
+  pixelEnabled          Boolean             @default(true)
+  serverEventSecretHash String?
+  postbackTokenHash     String?
+  createdAt             DateTime            @default(now())
+  events                Event[]
+  diagnosticRuns        DiagnosticRun[]
+  diagnosticFindings    DiagnosticFinding[]
+  webhookEndpoints      WebhookEndpoint[]
+  environments          SiteEnvironment[]
 
   workspace Workspace @relation(fields: [workspaceId], references: [id])
 
   @@unique([workspaceId, slug])
+}
+
+model SiteEnvironment {
+  id                    String              @id
+  siteId                String
+  environment           String
+  endpointHost          String              @unique
+  attributionTtlDays    Int                 @default(28)
+  pixelEnabled          Boolean             @default(true)
+  serverEventSecretHash String?
+  postbackTokenHash     String?
+  createdAt             DateTime            @default(now())
+  events                Event[]
+  diagnosticRuns        DiagnosticRun[]
+  diagnosticFindings    DiagnosticFinding[]
+  webhookEndpoints      WebhookEndpoint[]
+
+  site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@unique([siteId, environment])
+  @@index([environment, pixelEnabled])
 }
 
 model Affiliate {
@@ -43,8 +67,10 @@ model Affiliate {
 }
 
 model Event {
-  id                   String   @id @default(cuid())
+  id                   String    @id @default(cuid())
   siteId               String
+  siteEnvironmentId    String
+  source               String    @default("browser")
   name                 String
   occurredAt           DateTime
   sessionId            String
@@ -55,12 +81,15 @@ model Event {
   url                  String?
   referrer             String?
   title                String?
-  properties           Json     @default("{}")
-  receivedAt           DateTime @default(now())
+  properties           Json      @default("{}")
+  receivedAt           DateTime  @default(now())
 
-  site Site @relation(fields: [siteId], references: [id])
+  site            Site            @relation(fields: [siteId], references: [id])
+  siteEnvironment SiteEnvironment @relation(fields: [siteEnvironmentId], references: [id])
 
   @@index([siteId, occurredAt])
+  @@index([siteEnvironmentId, occurredAt])
+  @@index([siteId, source, occurredAt])
   @@index([name, occurredAt])
   @@index([sessionId])
   @@index([userId])
@@ -69,6 +98,7 @@ model Event {
 model DiagnosticRun {
   id               String              @id
   siteId           String
+  siteEnvironmentId String
   status           String
   eventWindowStart DateTime
   eventWindowEnd   DateTime
@@ -79,9 +109,11 @@ model DiagnosticRun {
   createdAt        DateTime            @default(now())
   findings         DiagnosticFinding[]
 
-  site Site @relation(fields: [siteId], references: [id])
+  site            Site            @relation(fields: [siteId], references: [id])
+  siteEnvironment SiteEnvironment @relation(fields: [siteEnvironmentId], references: [id])
 
   @@index([siteId, createdAt])
+  @@index([siteEnvironmentId, createdAt])
   @@index([status, createdAt])
 }
 
@@ -89,6 +121,7 @@ model DiagnosticFinding {
   id             String   @id
   runId          String
   siteId         String
+  siteEnvironmentId String
   ruleId         String
   severity       String
   title          String
@@ -98,10 +131,12 @@ model DiagnosticFinding {
   agentPrompt    String
   createdAt      DateTime @default(now())
 
-  run  DiagnosticRun @relation(fields: [runId], references: [id])
-  site Site          @relation(fields: [siteId], references: [id])
+  run             DiagnosticRun   @relation(fields: [runId], references: [id])
+  site            Site            @relation(fields: [siteId], references: [id])
+  siteEnvironment SiteEnvironment @relation(fields: [siteEnvironmentId], references: [id])
 
   @@index([siteId, createdAt])
+  @@index([siteEnvironmentId, createdAt])
   @@index([runId])
   @@index([ruleId, severity])
 }
@@ -109,6 +144,7 @@ model DiagnosticFinding {
 model WebhookEndpoint {
   id            String   @id
   siteId        String
+  siteEnvironmentId String
   name          String
   url           String
   eventNames    Json     @default("[]")
@@ -116,8 +152,10 @@ model WebhookEndpoint {
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
 
-  site Site @relation(fields: [siteId], references: [id])
+  site            Site            @relation(fields: [siteId], references: [id])
+  siteEnvironment SiteEnvironment @relation(fields: [siteEnvironmentId], references: [id])
 
   @@index([siteId, createdAt])
+  @@index([siteEnvironmentId, createdAt])
   @@index([isActive])
 }

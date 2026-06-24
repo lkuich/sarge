@@ -2,6 +2,8 @@
 
 Astro application for the Sarge web dashboard and public app shell. It uses Clerk for auth, shadcn/ui for interface components, and deploys to Cloudflare Workers through the Astro Cloudflare adapter.
 
+The dashboard includes project event streams, user/session flow exploration, webhook setup, AI review summaries, and real/test traffic filtering for page-console impersonation runs.
+
 Production URL:
 
 ```text

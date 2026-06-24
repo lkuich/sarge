@@ -1,7 +1,13 @@
 export {
   compactEventQuerySchema,
   eventPayloadSchema,
+  eventSourceSchema,
+  normalizePostbackEvent,
+  normalizeServerEvent,
   parseCompactEventQuery,
+  serverEventPayloadSchema,
+  type EventSource,
+  type ServerEventPayload,
   type EventPayload
 } from "./event-schema.js";
 
@@ -14,3 +20,5 @@ export {
   type TrackingPlan,
   type TrackingPlanEvent
 } from "./diagnostics.js";
+
+export { sha256Hex, tokenMatchesHash } from "./secrets.js";

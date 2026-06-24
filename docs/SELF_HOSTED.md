@@ -5,7 +5,7 @@ Self-hosted Sarge is for teams that want to run the event API and database in th
 ## What You Get
 
 - Sarge API Docker image
-- Prisma/Postgres schema and migrations
+- Prisma/Postgres schema and migrations, including persisted Production, Staging, and Development environments per site
 - Browser pixel bundle
 - Docker Compose example
 - Platform guides for hosts such as Fly.io, Render, Railway, and VPS deployments
@@ -57,9 +57,9 @@ NODE_ENV="production"
 2. Run Prisma migrations.
 3. Start the Sarge API container.
 4. Host the pixel bundle from your domain or CDN.
-5. Create a `Workspace` and `Site` record for each site you want to track.
-6. Install the pixel snippet on the target website or app.
-7. Send a test event and confirm it appears in the database.
+5. Create a `Workspace`, `Site`, and three `SiteEnvironment` rows for each site you want to track.
+6. Install the pixel snippet for the target environment on the target website or app.
+7. Send a test event and confirm it appears in the database with the matching `siteEnvironmentId`.
 
 ## Example Pixel Snippet
 
@@ -67,7 +67,7 @@ NODE_ENV="production"
 <script src="https://events.example.com/index.global.js"></script>
 <script>
   sarge('init', {
-    siteId: 'site_123',
+    siteId: 'env_123_development',
     endpoint: 'https://events.example.com',
     attributionTtlDays: 28
   });
@@ -82,7 +82,7 @@ NODE_ENV="production"
 curl -X POST "https://events.example.com/v2/events" \
   -H "content-type: application/json" \
   -d '{
-    "siteId": "site_123",
+    "siteId": "env_123_development",
     "name": "TestEvent",
     "occurredAt": "2026-06-19T12:00:00.000Z",
     "sessionId": "manual_test_session",
@@ -95,6 +95,35 @@ Expected response:
 
 ```json
 { "success": true }
+```
+
+## Server-Side and Postback Events
+
+For backend events, set `SiteEnvironment.serverEventSecretHash` to the SHA-256 hash of a per-environment secret and call:
+
+```bash
+curl -X POST "https://events.example.com/v2/server/events" \
+  -H "authorization: Bearer sarge_sk_example" \
+  -H "content-type: application/json" \
+  -d '{
+    "siteId": "env_123_production",
+    "name": "purchase.completed",
+    "eventId": "order_123",
+    "userId": "customer_123",
+    "properties": { "order_id": "order_123", "value": 129.99, "currency": "USD" }
+  }'
+```
+
+For affiliate or partner systems that only support URL callbacks, set `SiteEnvironment.postbackTokenHash` and use:
+
+```text
+https://events.example.com/v2/postback/env_123_production/postback_token_example?event=affiliate.conversion&click_id=click_123&order_id=order_123&value=42.50&currency=USD
+```
+
+Generate a token and hash:
+
+```bash
+node -e "const { createHash, randomBytes } = require('node:crypto'); const token = 'sarge_sk_' + randomBytes(32).toString('base64url'); console.log('token=' + token); console.log('sha256=' + createHash('sha256').update(token).digest('hex'));"
 ```
 
 ## Fly.io Deployment Guide Target
@@ -112,9 +141,10 @@ The Fly.io guide should include:
 ## Operational Notes
 
 - Sarge v2 does not preserve legacy `/pageView`, `/purchase`, or `/atc` routes.
-- The API stores events only for known `Site` IDs.
+- The API stores events only for known `SiteEnvironment` IDs. The request field is still named `siteId` for compatibility.
 - The current Docker Compose file is optimized for local development; production packaging should use a dedicated API image.
-- Rate limiting, auth, dashboard UI, watchdog capture, and LLM querying are future product layers.
+- Browser pixel ingestion is public by design. Server-side and postback ingestion use per-environment credential hashes.
+- Rate limiting, dashboard credential rotation UI, watchdog capture, and LLM querying are future product layers.
 
 ## Support Boundary
 

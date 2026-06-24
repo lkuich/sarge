@@ -6,6 +6,8 @@ Sarge's AI direction is agent-native debugging: the product should turn tracking
 
 The portal shows an AI review on each project detail screen. Reviews can come from the scheduled Worker pipeline when available, and fall back to deterministic live analysis of recent events before the first scheduled run.
 
+Projects have persisted Production, Staging, and Development environments. AI recommendations currently run for Production only. Staging and Development keep their own pixel URLs, event streams, user/session flows, debug streams, event hosts, and webhooks, but the AI review panel is disabled for those environments.
+
 The first rules cover:
 
 - checkout sessions that never emit `purchase.completed`
@@ -24,6 +26,8 @@ Each finding includes:
 
 This is intentionally deterministic before it is generative. The LLM layer should explain, prioritize, and propose changes, but it should not invent facts that are not visible in the event stream.
 
+Events marked with `properties.sarge_test === true` are test traffic. Reviews and LLM queries should be able to exclude them by default, include them for implementation debugging, or isolate them when a tester is using page-console impersonation.
+
 ## Scheduled Diagnostic Pipeline
 
 The hosted Worker has a Cloudflare Cron Trigger configured in `apps/worker/wrangler.jsonc`:
@@ -36,8 +40,8 @@ The hosted Worker has a Cloudflare Cron Trigger configured in `apps/worker/wrang
 
 Every scheduled run:
 
-1. Loads active sites from Neon.
-2. Reads recent events for each site.
+1. Loads active Production environments from Neon.
+2. Reads recent events for each production environment.
 3. Runs deterministic diagnostics from `@sarge/core`.
 4. Stores a `DiagnosticRun` and related `DiagnosticFinding` rows in Neon.
 5. Calls Cloudflare Workers AI only when findings exist.
@@ -79,8 +83,8 @@ The next layer should add an authenticated LLM interface that can query project 
 
 Recommended shape:
 
-- server-side tool for fetching recent events by project
-- server-side tool for fetching persisted diagnostic findings
+- server-side tool for fetching recent events by project and environment
+- server-side tool for fetching persisted diagnostic findings for production environments
 - prompt contract that requires citations to event IDs, sessions, and timestamps
 - read-only first release
 - optional "generate implementation brief" output for agentic coding tools
@@ -91,10 +95,12 @@ The LLM should answer questions like:
 - "Which sessions fired Meta but not Sarge?"
 - "What should I ask Cursor/Codex to change?"
 - "Is my checkout tracking ready for ads debugging?"
+- "Show only test traffic from my impersonation run."
 
 ## Guardrails
 
 - Do not expose raw database credentials to the model.
 - Do not let the model mutate scripts or project config without an explicit user action.
 - Keep deterministic findings visible beside model output.
+- Make test traffic filters explicit when evidence includes `sarge_test` events.
 - Require generated fix plans to cite observed events or clearly state that they are inferred.

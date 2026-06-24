@@ -43,6 +43,11 @@ const loop = [
     icon: Radio,
   },
   {
+    title: "Separate test traffic",
+    description: "Impersonate user IDs from the page console and mark those events as test traffic so real customer flows stay clean.",
+    icon: ShieldCheck,
+  },
+  {
     title: "Run scheduled reviews",
     description: "On a schedule, Sarge runs diagnostics across your events and uses AI to summarize only the real issues — so you skip the noise.",
     icon: Cloud,
@@ -106,7 +111,7 @@ const plans = [
     cta: "Sign up free",
     href: "/sign-up",
     variant: "outline" as const,
-    features: ["One tracked site", "Hosted pixel snippet", "Debug stream", "Meta, Google, and dataLayer watchdog"],
+    features: ["One tracked site", "Hosted pixel snippet", "Debug stream", "Test traffic filters", "Meta, Google, and dataLayer watchdog"],
   },
   {
     name: "Hosted",
@@ -118,7 +123,7 @@ const plans = [
     cta: "Sign up",
     href: "/sign-up",
     variant: "default" as const,
-    features: ["Hosted event intake", "Scheduled AI reviews", "Saved findings", "Agent-ready fix prompts"],
+    features: ["Hosted event intake", "Test traffic filters", "Scheduled AI reviews", "Saved findings", "Agent-ready fix prompts"],
   },
   {
     name: "Self-hosted",
@@ -134,7 +139,7 @@ const plans = [
 
 ---
 
-<SiteLayout title="Sarge | Agent-ready tracking diagnostics" shader>
+<SiteLayout title="Sarge | Agent-ready tracking diagnostics">
   <section class="relative mx-auto flex min-h-[calc(100svh-5rem)] w-full max-w-6xl flex-col justify-center px-4 pb-8 pt-12 md:px-6 md:pt-20">
     <div class="max-w-4xl">
       <h1 class="max-w-5xl text-5xl font-semibold leading-[0.95] md:text-7xl lg:text-8xl">

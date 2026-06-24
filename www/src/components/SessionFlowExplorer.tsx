@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 
 type FlowMode = "session" | "user";
 type EventFilter = "conversion" | "watchdog" | "page" | "custom";
+type TrafficFilter = "real" | "test" | "all";
 type TimePreset = "all" | "1h" | "24h" | "7d";
 
 interface FlowEvent {
@@ -65,13 +66,15 @@ export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
   const [selectedEventFilters, setSelectedEventFilters] = useState<EventFilter[]>(() =>
     eventFilters.map((filter) => filter.value),
   );
+  const [trafficFilter, setTrafficFilter] = useState<TrafficFilter>("real");
   const [startAt, setStartAt] = useState("");
   const [endAt, setEndAt] = useState("");
 
-  const sampleBounds = useMemo(() => getSampleBounds(events), [events]);
+  const trafficFilteredEvents = useMemo(() => filterEventsByTraffic(events, trafficFilter), [events, trafficFilter]);
+  const sampleBounds = useMemo(() => getSampleBounds(trafficFilteredEvents), [trafficFilteredEvents]);
   const timeFilteredEvents = useMemo(
-    () => filterEventsByTime(events, startAt, endAt),
-    [endAt, events, startAt],
+    () => filterEventsByTime(trafficFilteredEvents, startAt, endAt),
+    [endAt, startAt, trafficFilteredEvents],
   );
   const groups = useMemo(() => buildGroups(timeFilteredEvents, mode), [mode, timeFilteredEvents]);
   const filteredGroups = useMemo(
@@ -137,8 +140,9 @@ export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
           <Button
             className="h-7 gap-1.5 rounded-md px-2.5"
             size="sm"
-            variant={mode === "session" ? "secondary" : "ghost"}
+            variant={mode === "session" ? "default" : "ghost"}
             type="button"
+            aria-pressed={mode === "session"}
             onClick={() => {
               setMode("session");
               setSelectedGroupId(null);
@@ -151,8 +155,9 @@ export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
           <Button
             className="h-7 gap-1.5 rounded-md px-2.5"
             size="sm"
-            variant={mode === "user" ? "secondary" : "ghost"}
+            variant={mode === "user" ? "default" : "ghost"}
             type="button"
+            aria-pressed={mode === "user"}
             onClick={() => {
               setMode("user");
               setSelectedGroupId(null);
@@ -199,12 +204,29 @@ export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
             )}
           </label>
           <div className="flex flex-wrap gap-1">
+            {trafficFilters.map((filter) => (
+              <Button
+                key={filter.value}
+                className="h-8"
+                size="sm"
+                variant={trafficFilter === filter.value ? "default" : "outline"}
+                type="button"
+                aria-pressed={trafficFilter === filter.value}
+                onClick={() => {
+                  setTrafficFilter(filter.value);
+                  setSelectedGroupId(null);
+                  setSelectedEventId(null);
+                }}
+              >
+                {filter.label}
+              </Button>
+            ))}
             {eventFilters.map((filter) => (
               <Button
                 key={filter.value}
                 className="h-8"
                 size="sm"
-                variant={selectedEventFilters.includes(filter.value) ? "secondary" : "outline"}
+                variant={selectedEventFilters.includes(filter.value) ? "default" : "outline"}
                 type="button"
                 aria-pressed={selectedEventFilters.includes(filter.value)}
                 onClick={() => {
@@ -225,8 +247,9 @@ export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
                 key={preset.value}
                 className="h-8"
                 size="sm"
-                variant={isTimePresetActive(preset.value, startAt, endAt, sampleBounds.latest) ? "secondary" : "outline"}
+                variant={isTimePresetActive(preset.value, startAt, endAt, sampleBounds.latest) ? "default" : "outline"}
                 type="button"
+                aria-pressed={isTimePresetActive(preset.value, startAt, endAt, sampleBounds.latest)}
                 onClick={() => {
                   const range = getPresetTimeRange(preset.value, sampleBounds.latest);
                   setStartAt(range.startAt);
@@ -287,7 +310,7 @@ export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
         </div>
         <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
           <Badge variant="outline">
-            {timeFilteredEvents.length} of {events.length} events
+            {timeFilteredEvents.length} of {trafficFilteredEvents.length} events
           </Badge>
           <Badge variant="outline">{visibleGroups.length} visible</Badge>
           {sampleBounds.earliest && sampleBounds.latest && (
@@ -543,6 +566,12 @@ const filterEventsByTime = (events: FlowEvent[], startAt: string, endAt: string)
   });
 };
 
+const filterEventsByTraffic = (events: FlowEvent[], trafficFilter: TrafficFilter) => {
+  if (trafficFilter === "all") return events;
+
+  return events.filter((event) => (trafficFilter === "test" ? isTestTraffic(event) : !isTestTraffic(event)));
+};
+
 const getSampleBounds = (events: FlowEvent[]) => {
   const times = events
     .map((event) => Date.parse(event.occurredAt))
@@ -592,9 +621,12 @@ function EventDetailsModal({ event, onClose }: { event: FlowEvent; onClose: () =
       >
         <div className="flex items-start justify-between gap-3 border-b p-4">
           <div className="min-w-0">
-            <p id="flow-event-detail-title" className="truncate font-mono text-sm">
-              {event.name}
-            </p>
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <p id="flow-event-detail-title" className="truncate font-mono text-sm">
+                {event.name}
+              </p>
+              {isTestTraffic(event) && <Badge variant="secondary">Test</Badge>}
+            </div>
             <p className="mt-1 truncate text-xs text-muted-foreground">{event.url ?? "No URL recorded"}</p>
           </div>
           <Button className="size-7" size="icon-sm" variant="ghost" type="button" aria-label="Close event details" onClick={onClose}>
@@ -692,6 +724,14 @@ const getEventFilter = (name: string): EventFilter => {
   if (name === "page.view") return "page";
   return "custom";
 };
+
+const isTestTraffic = (event: FlowEvent) => event.properties.sarge_test === true;
+
+const trafficFilters: { value: TrafficFilter; label: string }[] = [
+  { value: "real", label: "Real traffic" },
+  { value: "test", label: "Test traffic" },
+  { value: "all", label: "All traffic" },
+];
 
 const eventFilters: { value: EventFilter; label: string }[] = [
   { value: "conversion", label: "Conversion" },

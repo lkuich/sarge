@@ -20,22 +20,30 @@ const createMemoryStore = () => {
     async findSiteByHost(host) {
       if (host === "acme.sarge.events") {
         return {
-          id: "site_123",
+          id: "env_123_production",
+          siteId: "site_123",
+          environment: "production",
           endpointHost: "acme.sarge.events",
           attributionTtlDays: 14,
-          pixelEnabled: true
+          pixelEnabled: true,
+          serverEventSecretHash: "82f1c19229bdefda9e677f85bcacf68d8a173a21dae2ac685dbb91ed54a83fd3",
+          postbackTokenHash: "22bf18421c010149a42fa386fe4a2fbd28e36da37ac813025b1293c9700c1e5b"
         };
       }
 
       return null;
     },
     async findSiteById(id) {
-      if (id === "site_shared") {
+      if (id === "env_shared_production") {
         return {
-          id: "site_shared",
+          id: "env_shared_production",
+          siteId: "site_shared",
+          environment: "production",
           endpointHost: "shared.sarge.events",
           attributionTtlDays: 28,
-          pixelEnabled: true
+          pixelEnabled: true,
+          serverEventSecretHash: "82f1c19229bdefda9e677f85bcacf68d8a173a21dae2ac685dbb91ed54a83fd3",
+          postbackTokenHash: "22bf18421c010149a42fa386fe4a2fbd28e36da37ac813025b1293c9700c1e5b"
         };
       }
 
@@ -44,15 +52,19 @@ const createMemoryStore = () => {
     async listActiveSitesForDiagnostics() {
       return [
         {
-          id: "site_shared",
+          id: "env_shared_production",
+          siteId: "site_shared",
+          environment: "production",
           endpointHost: "shared.sarge.events",
           attributionTtlDays: 28,
-          pixelEnabled: true
+          pixelEnabled: true,
+          serverEventSecretHash: "82f1c19229bdefda9e677f85bcacf68d8a173a21dae2ac685dbb91ed54a83fd3",
+          postbackTokenHash: "22bf18421c010149a42fa386fe4a2fbd28e36da37ac813025b1293c9700c1e5b"
         }
       ];
     },
-    async listRecentEventsForSite(siteId) {
-      return diagnosticEvents.filter((event) => event.siteId === siteId);
+    async listRecentEventsForSite(siteEnvironmentId) {
+      return diagnosticEvents.filter((event) => event.siteId === siteEnvironmentId);
     },
     async saveDiagnosticRun(run) {
       diagnosticRuns.push(run);
@@ -101,20 +113,20 @@ describe("Cloudflare Worker hosted API", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("application/javascript");
-    expect(body).toContain('"siteId":"site_123"');
+    expect(body).toContain('"siteId":"env_123_production"');
     expect(body).toContain('"endpoint":"https://acme.sarge.events"');
     expect(body).toContain("SargePixel");
   });
 
-  it("serves a shared-host pixel selected by site query parameter", async () => {
+  it("serves a shared-host pixel selected by environment query parameter", async () => {
     const { store } = createMemoryStore();
     const handler = createWorkerHandler({ store });
 
-    const response = await handler.fetch(new Request("https://sarge.events/pixel.js?site=site_shared"), createEnv());
+    const response = await handler.fetch(new Request("https://sarge.events/pixel.js?env=env_shared_production"), createEnv());
     const body = await response.text();
 
     expect(response.status).toBe(200);
-    expect(body).toContain('"siteId":"site_shared"');
+    expect(body).toContain('"siteId":"env_shared_production"');
     expect(body).toContain('"endpoint":"https://sarge.events"');
   });
 
@@ -127,7 +139,7 @@ describe("Cloudflare Worker hosted API", () => {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          siteId: "site_123",
+          siteId: "env_123_production",
           name: "Purchase",
           occurredAt: "2026-06-19T12:00:00.000Z",
           sessionId: "sess_123",
@@ -141,7 +153,7 @@ describe("Cloudflare Worker hosted API", () => {
     expect(response.status).toBe(202);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
-      siteId: "site_123",
+      siteId: "env_123_production",
       name: "Purchase"
     });
   });
@@ -155,7 +167,7 @@ describe("Cloudflare Worker hosted API", () => {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          siteId: "site_shared",
+          siteId: "env_shared_production",
           name: "Purchase",
           occurredAt: "2026-06-19T12:00:00.000Z",
           sessionId: "sess_123",
@@ -169,7 +181,7 @@ describe("Cloudflare Worker hosted API", () => {
     expect(response.status).toBe(202);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
-      siteId: "site_shared",
+      siteId: "env_shared_production",
       name: "Purchase"
     });
   });
@@ -197,6 +209,87 @@ describe("Cloudflare Worker hosted API", () => {
     expect(events).toHaveLength(0);
   });
 
+  it("stores authenticated server-side events on the shared host", async () => {
+    const { events, store } = createMemoryStore();
+    const handler = createWorkerHandler({ store });
+
+    const response = await handler.fetch(
+      new Request("https://sarge.events/v2/server/events", {
+        method: "POST",
+        headers: {
+          "authorization": "Bearer server_secret_123",
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          siteId: "env_shared_production",
+          name: "purchase.completed",
+          eventId: "order_123",
+          occurredAt: "2026-06-24T12:00:00.000Z",
+          userId: "customer_123",
+          properties: { value: 129.99, currency: "USD" }
+        })
+      }),
+      createEnv()
+    );
+
+    expect(response.status).toBe(202);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      siteId: "env_shared_production",
+      source: "server",
+      name: "purchase.completed",
+      sessionId: "server:order_123",
+      userId: "customer_123"
+    });
+  });
+
+  it("rejects server-side events without valid credentials", async () => {
+    const { events, store } = createMemoryStore();
+    const handler = createWorkerHandler({ store });
+
+    const response = await handler.fetch(
+      new Request("https://sarge.events/v2/server/events", {
+        method: "POST",
+        headers: {
+          "authorization": "Bearer wrong_secret",
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          siteId: "env_shared_production",
+          name: "purchase.completed"
+        })
+      }),
+      createEnv()
+    );
+
+    expect(response.status).toBe(401);
+    expect(events).toHaveLength(0);
+  });
+
+  it("stores tokenized postback URL events", async () => {
+    const { events, store } = createMemoryStore();
+    const handler = createWorkerHandler({ store });
+    const url = new URL("https://sarge.events/v2/postback/env_shared_production/postback_token_123");
+    url.searchParams.set("event", "affiliate.conversion");
+    url.searchParams.set("ts", "2026-06-24T12:05:00.000Z");
+    url.searchParams.set("click_id", "click_123");
+    url.searchParams.set("order_id", "order_123");
+    url.searchParams.set("value", "42.50");
+    url.searchParams.set("currency", "USD");
+
+    const response = await handler.fetch(new Request(url), createEnv());
+
+    expect(response.status).toBe(202);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      siteId: "env_shared_production",
+      source: "postback",
+      name: "affiliate.conversion",
+      sessionId: "postback:click_123",
+      userId: "click_123"
+    });
+  });
+
   it("returns 404 for unknown hosted domains", async () => {
     const { store } = createMemoryStore();
     const handler = createWorkerHandler({ store });
@@ -214,7 +307,7 @@ describe("Cloudflare Worker hosted API", () => {
     diagnosticEvents.push(
       {
         id: "evt_page",
-        siteId: "site_shared",
+        siteId: "env_shared_production",
         name: "page.view",
         occurredAt: "2026-06-19T12:00:00.000Z",
         sessionId: "sess_checkout",
@@ -225,7 +318,7 @@ describe("Cloudflare Worker hosted API", () => {
       },
       {
         id: "evt_checkout",
-        siteId: "site_shared",
+        siteId: "env_shared_production",
         name: "checkout.started",
         occurredAt: "2026-06-19T12:01:00.000Z",
         sessionId: "sess_checkout",
@@ -249,7 +342,7 @@ describe("Cloudflare Worker hosted API", () => {
     expect(aiCalls).toHaveLength(1);
     expect(diagnosticRuns).toHaveLength(1);
     expect(diagnosticRuns[0]).toMatchObject({
-      siteId: "site_shared",
+      siteId: "env_shared_production",
       status: "completed",
       findingCount: 1,
       aiSummary: "Checkout started but no purchase event arrived. Ask an agent to wire purchase.completed."
@@ -268,7 +361,7 @@ describe("Cloudflare Worker hosted API", () => {
     diagnosticEvents.push(
       {
         id: "evt_page",
-        siteId: "site_shared",
+        siteId: "env_shared_production",
         name: "page.view",
         occurredAt: "2026-06-19T12:00:00.000Z",
         sessionId: "sess_purchase",
@@ -279,7 +372,7 @@ describe("Cloudflare Worker hosted API", () => {
       },
       {
         id: "evt_purchase",
-        siteId: "site_shared",
+        siteId: "env_shared_production",
         name: "purchase.completed",
         occurredAt: "2026-06-19T12:03:00.000Z",
         sessionId: "sess_purchase",
@@ -290,7 +383,7 @@ describe("Cloudflare Worker hosted API", () => {
       },
       {
         id: "evt_meta",
-        siteId: "site_shared",
+        siteId: "env_shared_production",
         name: "meta.pixel.fire",
         occurredAt: "2026-06-19T12:03:01.000Z",
         sessionId: "sess_purchase",
@@ -314,7 +407,7 @@ describe("Cloudflare Worker hosted API", () => {
     expect(aiCalls).toHaveLength(0);
     expect(diagnosticRuns).toHaveLength(1);
     expect(diagnosticRuns[0]).toMatchObject({
-      siteId: "site_shared",
+      siteId: "env_shared_production",
       status: "completed",
       findingCount: 0,
       aiSummary: null,

@@ -4,6 +4,15 @@ import { analyzeProjectEvents, type ProjectDiagnostic } from './project-diagnost
 
 export type AccountRole = 'admin' | 'user';
 export type ProjectStatus = 'active' | 'paused' | 'draft';
+export type ProjectEnvironment = 'production' | 'staging' | 'development';
+
+export const environmentLabels: Record<ProjectEnvironment, string> = {
+  production: 'Production',
+  staging: 'Staging',
+  development: 'Development',
+};
+
+export const projectEnvironmentOptions = Object.keys(environmentLabels) as ProjectEnvironment[];
 
 export interface AccountMember {
   id: string;
@@ -35,15 +44,15 @@ export interface WebhookEndpoint {
   createdAt: string;
 }
 
-export interface SargeProject {
+export interface SargeProjectEnvironment {
   id: string;
-  slug: string;
-  name: string;
+  environment: ProjectEnvironment;
   endpointHost: string;
   pixelUrl: string;
   endpointHealthUrl: string;
   status: ProjectStatus;
-  environment: 'production' | 'staging';
+  serverEventSecretConfigured: boolean;
+  postbackTokenConfigured: boolean;
   eventCount24h: number;
   failedEvents24h: number;
   lastEventAt: string;
@@ -54,6 +63,12 @@ export interface SargeProject {
   diagnosticSummary: string | null;
   diagnosticRunAt: string | null;
   webhookEndpoints: WebhookEndpoint[];
+}
+
+export interface SargeProject extends SargeProjectEnvironment {
+  slug: string;
+  name: string;
+  environments: SargeProjectEnvironment[];
 }
 
 export interface SargeAccount {
@@ -68,7 +83,8 @@ export interface SargeAccount {
 }
 
 export interface PublicEventStream {
-  project: Pick<SargeProject, 'id' | 'slug' | 'name' | 'endpointHost' | 'pixelUrl' | 'endpointHealthUrl' | 'status'>;
+  project: Pick<SargeProjectEnvironment, 'id' | 'endpointHost' | 'pixelUrl' | 'endpointHealthUrl' | 'status'> &
+    Pick<SargeProject, 'slug' | 'name'>;
   events: SargeEvent[];
 }
 
@@ -87,6 +103,8 @@ export interface CreateWebhookInput {
   eventNames?: string;
 }
 
+export type EnvironmentCredentialKind = 'server' | 'postback';
+
 export type CreateProjectResult =
   | { success: true; project: SargeProject }
   | { success: false; error: string };
@@ -97,6 +115,10 @@ export type CreateWorkspaceResult =
 
 export type CreateWebhookResult =
   | { success: true; webhook: WebhookEndpoint; signingSecret: string }
+  | { success: false; error: string };
+
+export type CreateEnvironmentCredentialResult =
+  | { success: true; kind: EnvironmentCredentialKind; token: string; endpoint: string }
   | { success: false; error: string };
 
 export const hostedEndpointHost = 'track.sargetrack.app';
@@ -159,22 +181,35 @@ export const getViewerAccount = async (userId: string, databaseUrl?: string): Pr
       SELECT
         s.id,
         s.slug,
-        s.name,
-        s."endpointHost",
-        s."pixelEnabled",
-        COUNT(e.id) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL '24 hours')::int AS "eventCount24h",
-        MAX(e."occurredAt") AS "lastOccurredAt"
+        s.name
       FROM "Site" s
-      LEFT JOIN "Event" e ON e."siteId" = s.id
       WHERE s."workspaceId" = ${workspace.id}
-      GROUP BY s.id
       ORDER BY s."createdAt" ASC
     `) as SiteSummaryRow[];
+    const siteEnvironments = (await sql`
+      SELECT
+        se.id,
+        se."siteId",
+        se.environment,
+        se."endpointHost",
+        se."pixelEnabled",
+        se."serverEventSecretHash",
+        se."postbackTokenHash",
+        COUNT(e.id) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL '24 hours')::int AS "eventCount24h",
+        MAX(e."occurredAt") AS "lastOccurredAt"
+      FROM "SiteEnvironment" se
+      JOIN "Site" s ON s.id = se."siteId"
+      LEFT JOIN "Event" e ON e."siteEnvironmentId" = se.id
+      WHERE s."workspaceId" = ${workspace.id}
+      GROUP BY se.id
+      ORDER BY se."siteId" ASC, se."createdAt" ASC
+    `) as SiteEnvironmentSummaryRow[];
 
     const events = (await sql`
       SELECT
         e.id,
         e."siteId",
+        e."siteEnvironmentId",
         e.name,
         e."occurredAt",
         e."receivedAt",
@@ -191,21 +226,23 @@ export const getViewerAccount = async (userId: string, databaseUrl?: string): Pr
       LIMIT 200
     `) as EventRow[];
     const diagnosticRuns = (await sql`
-      SELECT DISTINCT ON (dr."siteId")
+      SELECT DISTINCT ON (dr."siteEnvironmentId")
         dr.id,
         dr."siteId",
+        dr."siteEnvironmentId",
         dr."aiSummary",
         dr."createdAt",
         dr."findingCount"
       FROM "DiagnosticRun" dr
       JOIN "Site" s ON s.id = dr."siteId"
       WHERE s."workspaceId" = ${workspace.id}
-      ORDER BY dr."siteId", dr."createdAt" DESC
+      ORDER BY dr."siteEnvironmentId", dr."createdAt" DESC
     `) as DiagnosticRunRow[];
     const diagnosticFindings = (await sql`
       SELECT
         df.id,
         df."runId",
+        df."siteEnvironmentId",
         df."ruleId",
         df.severity,
         df.title,
@@ -226,6 +263,7 @@ export const getViewerAccount = async (userId: string, databaseUrl?: string): Pr
         SELECT
           wh.id,
           wh."siteId",
+          wh."siteEnvironmentId",
           wh.name,
           wh.url,
           wh."eventNames",
@@ -240,18 +278,18 @@ export const getViewerAccount = async (userId: string, databaseUrl?: string): Pr
     } catch (error) {
       console.error('Unable to load webhook endpoints', error);
     }
-    const latestRunBySite = new Map(diagnosticRuns.map((run) => [run.siteId, run]));
+    const latestRunByEnvironment = new Map(diagnosticRuns.map((run) => [run.siteEnvironmentId, run]));
     const findingsByRun = new Map<string, ProjectDiagnostic[]>();
     for (const finding of diagnosticFindings) {
       const existingFindings = findingsByRun.get(finding.runId) ?? [];
       existingFindings.push(mapDiagnosticFinding(finding));
       findingsByRun.set(finding.runId, existingFindings);
     }
-    const webhookEndpointsBySite = new Map<string, WebhookEndpoint[]>();
+    const webhookEndpointsByEnvironment = new Map<string, WebhookEndpoint[]>();
     for (const webhookEndpoint of webhookEndpoints) {
-      const existingWebhookEndpoints = webhookEndpointsBySite.get(webhookEndpoint.siteId) ?? [];
+      const existingWebhookEndpoints = webhookEndpointsByEnvironment.get(webhookEndpoint.siteEnvironmentId) ?? [];
       existingWebhookEndpoints.push(mapWebhookEndpoint(webhookEndpoint));
-      webhookEndpointsBySite.set(webhookEndpoint.siteId, existingWebhookEndpoints);
+      webhookEndpointsByEnvironment.set(webhookEndpoint.siteEnvironmentId, existingWebhookEndpoints);
     }
 
     const isPlaceholderWorkspace = workspace.name === demoAccountName && sites.length === 0;
@@ -261,32 +299,32 @@ export const getViewerAccount = async (userId: string, databaseUrl?: string): Pr
       name: isPlaceholderWorkspace ? 'Set up workspace' : workspace.name,
       slug: workspace.slug,
       role,
-      plan: 'Hosted',
+      plan: 'Cloud',
       workspaceSetupComplete: !isPlaceholderWorkspace,
       projects: sites.map((site) => {
-        const recentEvents = events.filter((event) => event.siteId === site.id).map(mapEvent);
-        const latestRun = latestRunBySite.get(site.id);
-        const persistedDiagnostics = latestRun ? findingsByRun.get(latestRun.id) ?? [] : null;
+        const environments = siteEnvironments
+          .filter((environment) => environment.siteId === site.id)
+          .map((environment) => {
+            const recentEvents = events.filter((event) => event.siteEnvironmentId === environment.id).map(mapEvent);
+            const latestRun = latestRunByEnvironment.get(environment.id);
+            const persistedDiagnostics = latestRun ? findingsByRun.get(latestRun.id) ?? [] : null;
+
+            return mapProjectEnvironment(environment, {
+              recentEvents,
+              persistedDiagnostics,
+              latestRun,
+              webhookEndpoints: webhookEndpointsByEnvironment.get(environment.id) ?? [],
+            });
+          });
+        const productionEnvironment = environments.find((environment) => environment.environment === 'production') ?? environments[0];
+        const eventCount24h = environments.reduce((sum, environment) => sum + environment.eventCount24h, 0);
 
         return {
-          id: site.id,
+          ...productionEnvironment,
           slug: site.slug,
           name: site.name,
-          endpointHost: site.endpointHost,
-          pixelUrl: buildPixelUrl(site.id),
-          endpointHealthUrl: buildHealthUrl(),
-          status: site.pixelEnabled ? 'active' : 'paused',
-          environment: 'production',
-          eventCount24h: site.eventCount24h ?? 0,
-          failedEvents24h: 0,
-          lastEventAt: formatRelativeTime(site.lastOccurredAt),
-          pixelVersion: '0.1.0',
-          recentEvents,
-          eventHosts: summarizeEventHosts(recentEvents),
-          diagnostics: persistedDiagnostics ?? analyzeProjectEvents(recentEvents),
-          diagnosticSummary: latestRun?.aiSummary ?? null,
-          diagnosticRunAt: latestRun?.createdAt.toISOString() ?? null,
-          webhookEndpoints: webhookEndpointsBySite.get(site.id) ?? [],
+          eventCount24h,
+          environments,
         };
       }),
       members,
@@ -306,11 +344,13 @@ export const getPublicEventStream = async (
   try {
     const sql = neon(databaseUrl);
     const sites = (await sql`
-      SELECT id, slug, name, "endpointHost", "pixelEnabled"
-      FROM "Site"
-      WHERE id = ${siteId}
+      SELECT se.id, s.slug, s.name, se."endpointHost", se."pixelEnabled"
+      FROM "SiteEnvironment" se
+      JOIN "Site" s ON s.id = se."siteId"
+      WHERE se.id = ${siteId}
+        OR (se."siteId" = ${siteId} AND se.environment = 'production')
       LIMIT 1
-    `) as Pick<SiteSummaryRow, 'id' | 'slug' | 'name' | 'endpointHost' | 'pixelEnabled'>[];
+    `) as PublicSiteEnvironmentRow[];
     const site = sites.at(0);
     if (!site) return null;
 
@@ -328,7 +368,7 @@ export const getPublicEventStream = async (
         title,
         properties
       FROM "Event"
-      WHERE "siteId" = ${site.id}
+      WHERE "siteEnvironmentId" = ${site.id}
       ORDER BY "occurredAt" DESC
       LIMIT 30
     `) as EventRow[];
@@ -420,28 +460,16 @@ export const createProject = async (
       RETURNING id, slug, name, "endpointHost", "pixelEnabled"
     `) as Pick<SiteSummaryRow, 'id' | 'slug' | 'name' | 'endpointHost' | 'pixelEnabled'>[];
     const site = rows[0];
+    const environments = await createProjectEnvironments(sql, site, workspace.id);
+    const productionEnvironment = environments.find((environment) => environment.environment === 'production') ?? environments[0];
 
     return {
       success: true,
       project: {
-        id: site.id,
+        ...productionEnvironment,
         slug: site.slug,
         name: site.name,
-        endpointHost: site.endpointHost,
-        pixelUrl: buildPixelUrl(site.id),
-        endpointHealthUrl: buildHealthUrl(),
-        status: site.pixelEnabled ? 'active' : 'paused',
-        environment: 'production',
-        eventCount24h: 0,
-        failedEvents24h: 0,
-        lastEventAt: 'No events yet',
-        pixelVersion: '0.1.0',
-        recentEvents: [],
-        eventHosts: [],
-        diagnostics: [],
-        diagnosticSummary: null,
-        diagnosticRunAt: null,
-        webhookEndpoints: [],
+        environments,
       },
     };
   } catch (error) {
@@ -463,7 +491,7 @@ export const formatCount = (value: number) => new Intl.NumberFormat('en-US').for
 export const createWebhookEndpoint = async (
   userId: string,
   databaseUrl: string | undefined,
-  siteId: string,
+  siteEnvironmentId: string,
   input: CreateWebhookInput,
 ): Promise<CreateWebhookResult> => {
   const role = resolveRole(userId);
@@ -483,20 +511,23 @@ export const createWebhookEndpoint = async (
     const workspace = await getViewerWorkspace(sql, userId);
     if (!workspace) return { success: false, error: 'Account workspace was not found.' };
 
-    const sites = (await sql`
-      SELECT id
-      FROM "Site"
-      WHERE id = ${siteId}
-        AND "workspaceId" = ${workspace.id}
+    const siteEnvironments = (await sql`
+      SELECT se.id, se."siteId"
+      FROM "SiteEnvironment" se
+      JOIN "Site" s ON s.id = se."siteId"
+      WHERE se.id = ${siteEnvironmentId}
+        AND s."workspaceId" = ${workspace.id}
       LIMIT 1
-    `) as { id: string }[];
-    if (!sites.at(0)) return { success: false, error: 'Project was not found.' };
+    `) as { id: string; siteId: string }[];
+    const siteEnvironment = siteEnvironments.at(0);
+    if (!siteEnvironment) return { success: false, error: 'Project environment was not found.' };
 
     const signingSecret = createSigningSecret();
     const insertedRows = (await sql`
       INSERT INTO "WebhookEndpoint" (
         id,
         "siteId",
+        "siteEnvironmentId",
         name,
         url,
         "eventNames",
@@ -505,7 +536,8 @@ export const createWebhookEndpoint = async (
       )
       VALUES (
         ${crypto.randomUUID()},
-        ${siteId},
+        ${siteEnvironment.siteId},
+        ${siteEnvironment.id},
         ${name},
         ${url},
         ${JSON.stringify(eventNames)},
@@ -513,13 +545,13 @@ export const createWebhookEndpoint = async (
         true
       )
       RETURNING id, name, url, "eventNames", "isActive", "createdAt"
-    `) as Omit<WebhookEndpointRow, 'siteId'>[];
+    `) as Omit<WebhookEndpointRow, 'siteId' | 'siteEnvironmentId'>[];
     const webhook = insertedRows.at(0);
     if (!webhook) return { success: false, error: 'Webhook could not be created.' };
 
     return {
       success: true,
-      webhook: mapWebhookEndpoint({ ...webhook, siteId }),
+      webhook: mapWebhookEndpoint({ ...webhook, siteId: siteEnvironment.siteId, siteEnvironmentId: siteEnvironment.id }),
       signingSecret,
     };
   } catch (error) {
@@ -531,54 +563,96 @@ export const createWebhookEndpoint = async (
   }
 };
 
+export const createEnvironmentCredential = async (
+  userId: string,
+  databaseUrl: string | undefined,
+  siteEnvironmentId: string,
+  kind: EnvironmentCredentialKind,
+): Promise<CreateEnvironmentCredentialResult> => {
+  const role = resolveRole(userId);
+  if (role !== 'admin') return { success: false, error: 'Only admins can manage server-side credentials.' };
+  if (!databaseUrl) return { success: false, error: 'DATABASE_URL is not configured.' };
+
+  try {
+    const sql = neon(databaseUrl);
+    const workspace = await getViewerWorkspace(sql, userId);
+    if (!workspace) return { success: false, error: 'Account workspace was not found.' };
+
+    const siteEnvironments = (await sql`
+      SELECT se.id
+      FROM "SiteEnvironment" se
+      JOIN "Site" s ON s.id = se."siteId"
+      WHERE se.id = ${siteEnvironmentId}
+        AND s."workspaceId" = ${workspace.id}
+      LIMIT 1
+    `) as { id: string }[];
+    if (!siteEnvironments.at(0)) return { success: false, error: 'Project environment was not found.' };
+
+    const token = createCredentialToken(kind);
+    const tokenHash = await sha256Hex(token);
+
+    if (kind === 'server') {
+      await sql`
+        UPDATE "SiteEnvironment"
+        SET "serverEventSecretHash" = ${tokenHash}
+        WHERE id = ${siteEnvironmentId}
+      `;
+
+      return {
+        success: true,
+        kind,
+        token,
+        endpoint: `https://${hostedEndpointHost}/v2/server/events`,
+      };
+    }
+
+    await sql`
+      UPDATE "SiteEnvironment"
+      SET "postbackTokenHash" = ${tokenHash}
+      WHERE id = ${siteEnvironmentId}
+    `;
+
+    return {
+      success: true,
+      kind,
+      token,
+      endpoint: `https://${hostedEndpointHost}/v2/postback/${siteEnvironmentId}/${token}`,
+    };
+  } catch (error) {
+    console.error('Unable to create environment credential', error);
+    return {
+      success: false,
+      error: 'Credential could not be rotated. Confirm the database migration has been deployed.',
+    };
+  }
+};
+
 const getFallbackAccount = (role: AccountRole): SargeAccount => ({
   id: 'acct_demo',
   name: demoAccountName,
   slug: 'demo',
   role,
-  plan: 'Hosted',
+  plan: 'Cloud',
   workspaceSetupComplete: true,
   projects: [
-    {
+    buildFallbackProject({
       id: 'site_demo',
       slug: 'demo-site',
       name: 'Demo Site',
-      endpointHost: 'demo.sargetrack.app',
-      pixelUrl: buildPixelUrl('site_demo'),
-      endpointHealthUrl: buildHealthUrl(),
       status: 'active',
-      environment: 'production',
       eventCount24h: 184,
       failedEvents24h: 2,
       lastEventAt: '2 minutes ago',
-      pixelVersion: '0.1.0',
-      recentEvents: [],
-      eventHosts: [],
-      diagnostics: [],
-      diagnosticSummary: null,
-      diagnosticRunAt: null,
-      webhookEndpoints: [],
-    },
-    {
+    }),
+    buildFallbackProject({
       id: 'site_checkout',
       slug: 'checkout-lab',
       name: 'Checkout Lab',
-      endpointHost: 'checkout.sargetrack.app',
-      pixelUrl: buildPixelUrl('site_checkout'),
-      endpointHealthUrl: buildHealthUrl(),
       status: 'draft',
-      environment: 'staging',
       eventCount24h: 0,
       failedEvents24h: 0,
       lastEventAt: 'No events yet',
-      pixelVersion: '0.1.0',
-      recentEvents: [],
-      eventHosts: [],
-      diagnostics: [],
-      diagnosticSummary: null,
-      diagnosticRunAt: null,
-      webhookEndpoints: [],
-    },
+    }),
   ],
   members,
 });
@@ -628,6 +702,127 @@ const mapWebhookEndpoint = (webhookEndpoint: WebhookEndpointRow): WebhookEndpoin
   createdAt: webhookEndpoint.createdAt.toISOString(),
 });
 
+const mapProjectEnvironment = (
+  environment: SiteEnvironmentSummaryRow,
+  data: {
+    recentEvents: SargeEvent[];
+    persistedDiagnostics: ProjectDiagnostic[] | null;
+    latestRun?: DiagnosticRunRow;
+    webhookEndpoints: WebhookEndpoint[];
+  },
+): SargeProjectEnvironment => ({
+  id: environment.id,
+  environment: environment.environment,
+  endpointHost: environment.endpointHost,
+  pixelUrl: buildPixelUrl(environment.id),
+  endpointHealthUrl: buildHealthUrl(),
+  status: environment.pixelEnabled ? 'active' : 'paused',
+  serverEventSecretConfigured: Boolean(environment.serverEventSecretHash),
+  postbackTokenConfigured: Boolean(environment.postbackTokenHash),
+  eventCount24h: environment.eventCount24h ?? 0,
+  failedEvents24h: 0,
+  lastEventAt: formatRelativeTime(environment.lastOccurredAt),
+  pixelVersion: '0.1.0',
+  recentEvents: data.recentEvents,
+  eventHosts: summarizeEventHosts(data.recentEvents),
+  diagnostics: environment.environment === 'production' ? data.persistedDiagnostics ?? analyzeProjectEvents(data.recentEvents) : [],
+  diagnosticSummary: environment.environment === 'production' ? data.latestRun?.aiSummary ?? null : null,
+  diagnosticRunAt: environment.environment === 'production' ? data.latestRun?.createdAt.toISOString() ?? null : null,
+  webhookEndpoints: data.webhookEndpoints,
+});
+
+const createProjectEnvironments = async (
+  sql: SqlClient,
+  site: Pick<SiteSummaryRow, 'id' | 'slug' | 'endpointHost' | 'pixelEnabled'>,
+  workspaceId: string,
+): Promise<SargeProjectEnvironment[]> => {
+  const environmentRows = await Promise.all(
+    projectEnvironmentOptions.map(async (environment) => {
+      const id = `env_${crypto.randomUUID()}`;
+      const endpointHost =
+        environment === 'production' ? site.endpointHost : buildScopedEnvironmentHost(site.slug, environment, workspaceId);
+      const rows = (await sql`
+        INSERT INTO "SiteEnvironment" (
+          id,
+          "siteId",
+          environment,
+          "endpointHost",
+          "attributionTtlDays",
+          "pixelEnabled"
+        )
+        VALUES (
+          ${id},
+          ${site.id},
+          ${environment},
+          ${endpointHost},
+          28,
+          true
+        )
+        RETURNING id, "siteId", environment, "endpointHost", "pixelEnabled", "serverEventSecretHash", "postbackTokenHash", 0::int AS "eventCount24h", NULL::timestamp AS "lastOccurredAt"
+      `) as SiteEnvironmentSummaryRow[];
+
+      return rows[0];
+    }),
+  );
+
+  return environmentRows.map((environment) =>
+    mapProjectEnvironment(environment, {
+      recentEvents: [],
+      persistedDiagnostics: null,
+      webhookEndpoints: [],
+    }),
+  );
+};
+
+const buildFallbackProject = (input: {
+  id: string;
+  slug: string;
+  name: string;
+  status: ProjectStatus;
+  eventCount24h: number;
+  failedEvents24h: number;
+  lastEventAt: string;
+}): SargeProject => {
+  const environments = projectEnvironmentOptions.map((environment) => {
+    const id = `${input.id}_${environment}`;
+
+    return {
+      id,
+      environment,
+      endpointHost:
+        environment === 'production'
+          ? `${input.slug}.sargetrack.app`
+          : `${input.slug}-${environment}.sargetrack.app`,
+      pixelUrl: buildPixelUrl(id),
+      endpointHealthUrl: buildHealthUrl(),
+      status: input.status,
+      serverEventSecretConfigured: false,
+      postbackTokenConfigured: false,
+      eventCount24h: environment === 'production' ? input.eventCount24h : 0,
+      failedEvents24h: environment === 'production' ? input.failedEvents24h : 0,
+      lastEventAt: environment === 'production' ? input.lastEventAt : 'No events yet',
+      pixelVersion: '0.1.0',
+      recentEvents: [],
+      eventHosts: [],
+      diagnostics: [],
+      diagnosticSummary: null,
+      diagnosticRunAt: null,
+      webhookEndpoints: [],
+    } satisfies SargeProjectEnvironment;
+  });
+  const productionEnvironment = environments.find((environment) => environment.environment === 'production') ?? environments[0];
+
+  return {
+    ...productionEnvironment,
+    slug: input.slug,
+    name: input.name,
+    eventCount24h: input.eventCount24h,
+    failedEvents24h: input.failedEvents24h,
+    lastEventAt: input.lastEventAt,
+    environments,
+  };
+};
+
 const formatRelativeTime = (date: Date | null) => {
   if (!date) return 'No events yet';
 
@@ -644,7 +839,7 @@ const formatRelativeTime = (date: Date | null) => {
   return `${days} days ago`;
 };
 
-const buildPixelUrl = (siteId: string) => `https://${hostedEndpointHost}/pixel.js?site=${encodeURIComponent(siteId)}`;
+const buildPixelUrl = (siteEnvironmentId: string) => `https://${hostedEndpointHost}/pixel.js?env=${encodeURIComponent(siteEnvironmentId)}`;
 
 const buildHealthUrl = () => `https://${hostedEndpointHost}/healthz`;
 
@@ -653,6 +848,11 @@ const buildViewerWorkspaceSlug = (userId: string) => `demo-${normalizeSlug(userI
 const buildScopedEndpointHost = (projectSlug: string, workspaceId: string) => {
   const workspaceToken = normalizeSlug(workspaceId).slice(-8) || 'account';
   return `${projectSlug}-${workspaceToken}.sargetrack.app`;
+};
+
+const buildScopedEnvironmentHost = (projectSlug: string, environment: ProjectEnvironment, workspaceId: string) => {
+  const workspaceToken = normalizeSlug(workspaceId).slice(-8) || 'account';
+  return `${projectSlug}-${environment}-${workspaceToken}.sargetrack.app`;
 };
 
 const normalizeSlug = (value: string) =>
@@ -693,6 +893,24 @@ const createSigningSecret = () => {
   return `whsec_${encoded}`;
 };
 
+const createCredentialToken = (kind: EnvironmentCredentialKind) => {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  const encoded = btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
+
+  return `${kind === 'server' ? 'sarge_sk' : 'sarge_pb'}_${encoded}`;
+};
+
+const sha256Hex = async (value: string) => {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+};
+
 interface WorkspaceRow {
   id: string;
   slug: string;
@@ -705,13 +923,32 @@ interface SiteSummaryRow {
   name: string;
   endpointHost: string;
   pixelEnabled: boolean;
+}
+
+interface SiteEnvironmentSummaryRow {
+  id: string;
+  siteId: string;
+  environment: ProjectEnvironment;
+  endpointHost: string;
+  pixelEnabled: boolean;
+  serverEventSecretHash: string | null;
+  postbackTokenHash: string | null;
   eventCount24h: number;
   lastOccurredAt: Date | null;
+}
+
+interface PublicSiteEnvironmentRow {
+  id: string;
+  slug: string;
+  name: string;
+  endpointHost: string;
+  pixelEnabled: boolean;
 }
 
 interface EventRow {
   id: string;
   siteId: string;
+  siteEnvironmentId: string;
   name: string;
   occurredAt: Date;
   receivedAt: Date;
@@ -726,6 +963,7 @@ interface EventRow {
 interface DiagnosticRunRow {
   id: string;
   siteId: string;
+  siteEnvironmentId: string;
   aiSummary: string | null;
   createdAt: Date;
   findingCount: number;
@@ -734,6 +972,7 @@ interface DiagnosticRunRow {
 interface DiagnosticFindingRow {
   id: string;
   runId: string;
+  siteEnvironmentId: string;
   ruleId: string;
   severity: ProjectDiagnostic['severity'];
   title: string;
@@ -746,6 +985,7 @@ interface DiagnosticFindingRow {
 interface WebhookEndpointRow {
   id: string;
   siteId: string;
+  siteEnvironmentId: string;
   name: string;
   url: string;
   eventNames: unknown;

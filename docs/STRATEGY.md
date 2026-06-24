@@ -37,6 +37,7 @@ The first modern version should focus on:
 - a clean `sarge('track', eventName, properties)` API
 - real-time event ingestion
 - reliable event storage
+- project-scoped tester identities and test-traffic filters
 - easy local development
 - a backend foundation that can support future dashboards and querying
 
@@ -55,6 +56,10 @@ The script should eventually observe other tracking behavior on the page:
 
 The goal is not to replace those tools. The goal is to show a timeline of what happened and flag missing, duplicated, malformed, or inconsistent events.
 
+### Test Traffic and Impersonation
+
+Sarge should make testing flows explicit instead of letting QA events pollute production debugging data. Each project can assign a tester-specific identity, let that tester impersonate a target `userId` from the page console, and mark the resulting events with `sarge_test` metadata. The event stream and flow explorer should default to real traffic while letting users switch to test-only or all-traffic views.
+
 ### Custom Script Deployment
 
 The backend should eventually support versioned custom scripts per site. An LLM coding workflow could help generate or adjust scripts for specific installs, such as Shopify checkout tracking, form tracking, or SPA route tracking.
@@ -67,6 +72,7 @@ The LLM should answer questions over structured event data, with links back to a
 - "Which pages fire AddToCart without product IDs?"
 - "Are we double-firing Lead?"
 - "Show sessions where Meta received Purchase but Google did not."
+- "Hide test traffic and show only real purchases for customer_123."
 
 The LLM should be an explanation/query layer, not the source of truth.
 
@@ -97,9 +103,11 @@ This modernization phase only builds the foundation:
 
 - TypeScript API
 - TypeScript pixel
+- page-console impersonation and test-traffic metadata
+- user/session flow filtering for real versus test traffic
 - pnpm workspace
 - Prisma/Postgres
 - local Docker Compose
 - v2 event ingestion contract
 
-Dashboard UI, watchdog interception, script editor, deployment, auth, billing, and LLM querying are future phases.
+Script editor, deployment, auth, billing, and LLM querying are future phases.

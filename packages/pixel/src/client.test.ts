@@ -170,6 +170,63 @@ describe("Sarge pixel", () => {
     });
   });
 
+  it("keeps generated user ids scoped to each project", () => {
+    const randomUUID = vi
+      .fn()
+      .mockReturnValueOnce("sess_site_a")
+      .mockReturnValueOnce("user_site_a")
+      .mockReturnValueOnce("sess_site_b")
+      .mockReturnValueOnce("user_site_b");
+    const { browser, sendBeacon, storage } = createBrowser({
+      crypto: {
+        randomUUID
+      }
+    });
+    const client = createSargeClient(browser);
+
+    client.init({ siteId: "site_a", endpoint: "https://events.example.com" });
+    client.track("Page View");
+    client.init({ siteId: "site_b", endpoint: "https://events.example.com" });
+    client.track("Page View");
+
+    const payloads = sendBeacon.mock.calls.map(([, body]) => JSON.parse(String(body)));
+    expect(payloads[0]).toMatchObject({ siteId: "site_a", userId: "user_site_a" });
+    expect(payloads[1]).toMatchObject({ siteId: "site_b", userId: "user_site_b" });
+    expect(storage.values.get("sarge_user:site_a")).toBe("user_site_a");
+    expect(storage.values.get("sarge_user:site_b")).toBe("user_site_b");
+  });
+
+  it("marks impersonated traffic while using the impersonated user id", () => {
+    const { browser, sendBeacon, storage } = createBrowser();
+    const client = createSargeClient(browser);
+
+    client.init({ siteId: "site_123", endpoint: "https://events.example.com" });
+    client.impersonate("abc123");
+    client.track("Purchase", {
+      currency: "USD",
+      sarge_test: false
+    });
+    client.clearImpersonation();
+    client.track("Page View");
+
+    const payloads = sendBeacon.mock.calls.map(([, body]) => JSON.parse(String(body)));
+    expect(storage.values.get("sarge_impersonate:site_123")).toBeUndefined();
+    expect(payloads[0]).toMatchObject({
+      userId: "abc123",
+      properties: {
+        currency: "USD",
+        sarge_test: true,
+        sarge_test_mode: "impersonation",
+        sarge_tester_user_id: "user_123",
+        sarge_impersonated_user_id: "abc123"
+      }
+    });
+    expect(payloads[1]).toMatchObject({
+      userId: "user_123"
+    });
+    expect(payloads[1].properties).toBeUndefined();
+  });
+
   it("omits empty context fields from outgoing events", () => {
     const { browser, sendBeacon } = createBrowser({
       document: {
@@ -223,5 +280,40 @@ describe("Sarge pixel", () => {
     expect(url.searchParams.get("sid")).toBe("site_123");
     expect(url.searchParams.get("n")).toBe("Lead");
     expect(url.searchParams.get("p")).toBe(JSON.stringify({ form: "contact" }));
+  });
+
+  it("exposes page-console helpers for impersonation", async () => {
+    vi.resetModules();
+    const { browser, sendBeacon } = createBrowser({
+      __SARGE_CONFIG__: {
+        siteId: "site_hosted",
+        endpoint: "https://sarge.example.com",
+        attributionTtlDays: 28
+      }
+    } as Partial<BrowserLike>);
+
+    vi.stubGlobal("window", browser);
+    await import("./index.js");
+
+    window.impersonate("console_user");
+    window.sarge("track", "Page View");
+    window.clear_impersonation();
+    window.sarge("track", "Page View");
+
+    const payloads = sendBeacon.mock.calls.map(([, body]) => JSON.parse(String(body)));
+    expect(payloads[0]).toMatchObject({
+      userId: "console_user",
+      properties: {
+        sarge_test: true,
+        sarge_test_mode: "impersonation",
+        sarge_tester_user_id: "user_123",
+        sarge_impersonated_user_id: "console_user"
+      }
+    });
+    expect(payloads[1]).toMatchObject({
+      userId: "user_123"
+    });
+
+    vi.unstubAllGlobals();
   });
 });

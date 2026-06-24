@@ -1,6 +1,6 @@
 ---
 import { env } from "cloudflare:workers";
-import { Bot, Copy, ExternalLink, Globe2, Plus, Radio, Search, TerminalSquare, Webhook } from "lucide-react";
+import { Bot, ChevronDown, Copy, ExternalLink, Globe2, KeyRound, Plus, Radio, RefreshCw, Search, TerminalSquare, UserRound, Webhook } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,16 @@ import InstallPanel from "@/components/InstallPanel";
 import { SessionFlowExplorer } from "@/components/SessionFlowExplorer";
 import { Separator } from "@/components/ui/separator";
 import AppLayout from "@/layouts/AppLayout.astro";
-import { canAdministerAccount, createWebhookEndpoint, getProject, getViewerAccount } from "@/lib/sarge-demo";
+import {
+  canAdministerAccount,
+  createEnvironmentCredential,
+  createWebhookEndpoint,
+  environmentLabels,
+  getProject,
+  getViewerAccount,
+  hostedEndpointHost,
+  projectEnvironmentOptions,
+} from "@/lib/sarge-demo";
 
 export const prerender = false;
 
@@ -20,12 +29,31 @@ if (!userId) return Astro.redirect("/sign-in");
 
 const account = await getViewerAccount(userId, env.DATABASE_URL);
 const project = getProject(account, Astro.params.projectId ?? "");
-if (!project) return Astro.redirect("/app/projects");
+if (!project) return Astro.redirect("/app");
+
+const requestedEnvironment = Astro.url.searchParams.get("environment");
+const selectedEnvironment =
+  project.environments.find((environment) => environment.environment === requestedEnvironment) ??
+  project.environments.find((environment) => environment.environment === "production") ??
+  project.environments[0] ??
+  project;
+const selectedEnvironmentLabel = environmentLabels[selectedEnvironment.environment];
+const environmentOptions = projectEnvironmentOptions.map((environment) => ({
+  label: environmentLabels[environment],
+  href: environment === "production" ? `/app/projects/${project.slug}` : `/app/projects/${project.slug}?environment=${environment}`,
+  selected: environment === selectedEnvironment.environment,
+}));
 
 const canCreateWebhooks = canAdministerAccount(account);
+const canManageCredentials = canAdministerAccount(account);
 let webhookError = "";
 let createdWebhookSecret = "";
 let createdWebhookName = "";
+let credentialError = "";
+let createdServerCredentialToken = "";
+let createdServerCredentialEndpoint = "";
+let createdPostbackCredentialToken = "";
+let createdPostbackCredentialEndpoint = "";
 let webhookValues = {
   name: "",
   url: "",
@@ -46,10 +74,10 @@ if (Astro.request.method === "POST") {
     if (!canCreateWebhooks) {
       webhookError = "Only admins can create webhooks.";
     } else {
-      const result = await createWebhookEndpoint(userId, env.DATABASE_URL, project.id, webhookValues);
+      const result = await createWebhookEndpoint(userId, env.DATABASE_URL, selectedEnvironment.id, webhookValues);
 
       if (result.success) {
-        project.webhookEndpoints = [result.webhook, ...project.webhookEndpoints];
+        selectedEnvironment.webhookEndpoints = [result.webhook, ...selectedEnvironment.webhookEndpoints];
         createdWebhookSecret = result.signingSecret;
         createdWebhookName = result.webhook.name;
         webhookValues = { name: "", url: "", eventNames: "" };
@@ -58,15 +86,38 @@ if (Astro.request.method === "POST") {
       }
     }
   }
+
+  if (intent === "rotate-server-credential" || intent === "rotate-postback-token") {
+    if (!canManageCredentials) {
+      credentialError = "Only admins can manage server-side credentials.";
+    } else {
+      const kind = intent === "rotate-server-credential" ? "server" : "postback";
+      const result = await createEnvironmentCredential(userId, env.DATABASE_URL, selectedEnvironment.id, kind);
+
+      if (result.success) {
+        if (result.kind === "server") {
+          createdServerCredentialToken = result.token;
+          createdServerCredentialEndpoint = result.endpoint;
+          selectedEnvironment.serverEventSecretConfigured = true;
+        } else {
+          createdPostbackCredentialToken = result.token;
+          createdPostbackCredentialEndpoint = result.endpoint;
+          selectedEnvironment.postbackTokenConfigured = true;
+        }
+      } else {
+        credentialError = result.error;
+      }
+    }
+  }
 }
 
 const snippet = `<script>
   window._sarge = { queue: [["track", "page.view"]] };
 </script>
-<script async src="${project.pixelUrl}"></script>`;
-const publicVerifyUrl = `/verify/${project.id}`;
+<script async src="${selectedEnvironment.pixelUrl}"></script>`;
+const publicVerifyUrl = `/verify/${selectedEnvironment.id}`;
 const publicVerifyAbsoluteUrl = `https://sargetrack.app${publicVerifyUrl}`;
-const llmInstallPrompt = `Add Sarge tracking for ${project.name}.
+const llmInstallPrompt = `Add Sarge tracking for ${project.name} ${selectedEnvironmentLabel}.
 
 Read these docs first:
 - https://sargetrack.app/llms.txt
@@ -78,18 +129,28 @@ Install this pixel snippet as early as possible in the page:
 ${snippet}
 
 Then emit window.sarge("track", "event.name", properties) for page, product, cart, checkout, and purchase actions. Keep existing Meta, Google, or analytics pixels in place. After wiring, open ${publicVerifyAbsoluteUrl} and verify the expected events appear in the public Sarge event stream.`;
-const endpointHealthUrl = project.endpointHealthUrl;
-const pixelUrl = project.pixelUrl;
+const endpointHealthUrl = selectedEnvironment.endpointHealthUrl;
+const pixelUrl = selectedEnvironment.pixelUrl;
+const serverEventEndpoint = `https://${hostedEndpointHost}/v2/server/events`;
+const postbackEndpointTemplate = `https://${hostedEndpointHost}/v2/postback/${selectedEnvironment.id}/{postbackToken}`;
 
-const recentEvents = project.recentEvents.slice(0, 12);
-const flowEvents = project.recentEvents;
-const eventHosts = project.eventHosts;
-const webhookEndpoints = project.webhookEndpoints;
-const diagnostics = project.diagnostics;
-const endpointHealth = project.status === "active" ? "healthy" : "pending";
+const recentEvents = selectedEnvironment.recentEvents.slice(0, 12);
+const flowEvents = selectedEnvironment.recentEvents;
+const eventHosts = selectedEnvironment.eventHosts;
+const webhookEndpoints = selectedEnvironment.webhookEndpoints;
+const projectTesterUserId = buildProjectTesterUserId(selectedEnvironment.id, userId);
+const recentUserOptions = buildRecentUserOptions(selectedEnvironment.recentEvents, projectTesterUserId);
+const impersonationConsoleSnippet = buildImpersonationConsoleSnippet(projectTesterUserId);
+const isAiReviewEnabled = selectedEnvironment.environment === "production";
+const diagnostics = isAiReviewEnabled ? selectedEnvironment.diagnostics : [];
+const hasSelectedEnvironmentEvents =
+  selectedEnvironment.eventCount24h > 0 || selectedEnvironment.recentEvents.length > 0;
+const pixelInstallStatus = getPixelInstallStatus(selectedEnvironment.status, hasSelectedEnvironmentEvents);
+const endpointHealth = pixelInstallStatus === "active" ? "healthy" : "pending";
+const isPixelActive = pixelInstallStatus === "active";
 const criticalFindings = diagnostics.filter((finding) => finding.severity === "critical").length;
 const warningFindings = diagnostics.filter((finding) => finding.severity === "warning").length;
-const diagnosticRunLabel = project.diagnosticRunAt ? new Date(project.diagnosticRunAt).toLocaleString() : "Pending first scheduled run";
+const diagnosticRunLabel = selectedEnvironment.diagnosticRunAt ? new Date(selectedEnvironment.diagnosticRunAt).toLocaleString() : "Pending first scheduled run";
 const severityVariant = (severity: string) => {
   if (severity === "critical") return "destructive";
   if (severity === "warning") return "secondary";
@@ -103,6 +164,10 @@ const severityClass = (severity: string) => {
 const isWatchdogEvent = (name: string) =>
   name === "meta.pixel.fire" || name === "google.tag.fire" || name === "data_layer.push";
 
+function isTestTraffic(properties: Record<string, unknown>) {
+  return properties.sarge_test === true;
+}
+
 const formatEventTime = (value: string) =>
   new Intl.DateTimeFormat("en-US", {
     hour: "numeric",
@@ -111,6 +176,59 @@ const formatEventTime = (value: string) =>
   }).format(new Date(value));
 
 const formatEventPayload = (value: Record<string, unknown>) => JSON.stringify(value, null, 2);
+
+function buildProjectTesterUserId(projectId: string, viewerUserId: string) {
+  return `sarge_test_${hashId(`${projectId}:${viewerUserId}`)}`;
+}
+
+function buildRecentUserOptions(events: typeof selectedEnvironment.recentEvents, currentUserId: string) {
+  const usersById = new Map<string, { userId: string; eventCount: number; lastEventAt: string }>();
+
+  for (const event of events) {
+    if (!event.userId || event.userId === currentUserId || isTestTraffic(event.properties)) continue;
+
+    const existing = usersById.get(event.userId);
+    if (!existing) {
+      usersById.set(event.userId, {
+        userId: event.userId,
+        eventCount: 1,
+        lastEventAt: event.occurredAt,
+      });
+      continue;
+    }
+
+    existing.eventCount += 1;
+    if (Date.parse(event.occurredAt) > Date.parse(existing.lastEventAt)) {
+      existing.lastEventAt = event.occurredAt;
+    }
+  }
+
+  return Array.from(usersById.values())
+    .sort((left, right) => Date.parse(right.lastEventAt) - Date.parse(left.lastEventAt))
+    .slice(0, 8);
+}
+
+function buildImpersonationConsoleSnippet(userId: string) {
+  return `impersonate('${escapeConsoleString(userId)}');`;
+}
+
+function escapeConsoleString(value: string) {
+  return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
+function getPixelInstallStatus(configStatus: typeof selectedEnvironment.status, hasEvents: boolean) {
+  if (configStatus !== "active") return configStatus;
+  return hasEvents ? "active" : "pending";
+}
+
+function hashId(value: string) {
+  let hash = 5381;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 33) ^ value.charCodeAt(index);
+  }
+
+  return (hash >>> 0).toString(36).padStart(6, "0");
+}
 ---
 
 <AppLayout
@@ -119,30 +237,48 @@ const formatEventPayload = (value: Record<string, unknown>) => JSON.stringify(va
   eyebrow="Project"
   heading={project.name}
   description="Copy install snippets, check project health, and watch for media/debug events."
-  active="projects"
+  active="overview"
   breadcrumbs={[
-    { label: "Projects", href: "/app/projects" },
+    { label: "Overview", href: "/app" },
     { label: project.name },
   ]}
 >
   <div class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-2">
     <div class="inline-flex rounded-md bg-muted p-1">
-      <button class="h-7 rounded-md bg-background px-3 text-sm font-medium shadow-sm" type="button">Production</button>
-      <button class="h-7 rounded-md px-3 text-sm font-medium text-muted-foreground" type="button" disabled>Staging</button>
+      {
+        environmentOptions.map((environmentOption) => (
+          <a
+            class:list={[
+              "inline-flex h-7 items-center rounded-md px-3 text-sm font-medium transition-colors",
+              environmentOption.selected
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:bg-background/70 hover:text-foreground",
+            ]}
+            href={environmentOption.href}
+            aria-current={environmentOption.selected ? "page" : undefined}
+          >
+            {environmentOption.label}
+          </a>
+        ))
+      }
     </div>
-    <p class="text-xs text-muted-foreground">Staging is planned; production is active for this project.</p>
+    <p class="text-xs text-muted-foreground">Viewing {selectedEnvironmentLabel} for this project.</p>
   </div>
 
-  <section class="grid gap-4 lg:grid-cols-[1fr_340px]">
-    <div class="grid gap-4">
-      <Card>
-        <CardHeader>
-          <div class="flex items-start justify-between gap-3">
-            <CardTitle>Install pixel</CardTitle>
-            <Badge>{project.status}</Badge>
-          </div>
-        </CardHeader>
-        <CardContent>
+  <section class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <details
+        class="group/install flex flex-col gap-4 overflow-hidden rounded-xl bg-card py-4 text-sm text-card-foreground ring-1 ring-foreground/10 lg:col-span-2"
+        data-install-pixel-details
+        open={!isPixelActive}
+      >
+        <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 outline-none transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
+          <span class="font-heading text-base leading-snug font-medium">Install pixel</span>
+          <span class="inline-flex items-center gap-2">
+            <Badge>{pixelInstallStatus}</Badge>
+            <ChevronDown className="size-4 text-muted-foreground transition-transform group-open/install:rotate-180" />
+          </span>
+        </summary>
+        <div class="px-4">
           <pre class="overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{snippet}</code></pre>
           <div class="mt-4 flex flex-wrap gap-2">
             <Button data-copy-snippet data-snippet={snippet}>
@@ -198,13 +334,13 @@ const formatEventPayload = (value: Record<string, unknown>) => JSON.stringify(va
               prompt={llmInstallPrompt}
             />
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </details>
 
-      <Card>
+      <Card className="min-w-0 lg:col-span-2" data-ai-review-card>
         <CardHeader>
-          <div class="flex flex-wrap items-start justify-between gap-3">
-            <div>
+          <div class="flex min-w-0 flex-wrap items-start justify-between gap-3">
+            <div class="min-w-0">
               <CardTitle className="flex items-center gap-2">
                 <Bot className="size-4" /> AI review
               </CardTitle>
@@ -218,22 +354,30 @@ const formatEventPayload = (value: Record<string, unknown>) => JSON.stringify(va
             </div>
           </div>
         </CardHeader>
-        <CardContent className="grid gap-3">
+        <CardContent className="grid min-w-0 gap-3">
           {
-            project.diagnosticSummary && (
-              <div class="rounded-md border bg-muted p-4 text-sm">
+            isAiReviewEnabled && selectedEnvironment.diagnosticSummary && (
+              <div class="min-w-0 rounded-md border bg-muted p-4 text-sm">
                 <p class="text-xs font-medium text-muted-foreground">AI summary</p>
-                <p class="mt-1 leading-6">{project.diagnosticSummary}</p>
+                <p class="mt-1 leading-6">{selectedEnvironment.diagnosticSummary}</p>
               </div>
             )
           }
-          <p class="text-xs text-muted-foreground">Last scheduled review: {diagnosticRunLabel}</p>
           {
-            diagnostics.length > 0 ? (
+            isAiReviewEnabled ? (
+              <p class="text-xs text-muted-foreground">Last scheduled review: {diagnosticRunLabel}</p>
+            ) : (
+              <div class="rounded-md border border-dashed p-6 text-sm text-muted-foreground">
+                AI recommendations are available for Production. {selectedEnvironmentLabel} still has its own pixel, session flows, debug stream, event hosts, and webhooks.
+              </div>
+            )
+          }
+          {
+            isAiReviewEnabled && diagnostics.length > 0 ? (
               diagnostics.map((finding) => (
-                <div class={`rounded-md border p-4 ${severityClass(finding.severity)}`}>
-                  <div class="flex flex-wrap items-start justify-between gap-3">
-                    <div>
+                <div class={`rounded-md border p-4 min-w-0 overflow-hidden ${severityClass(finding.severity)}`}>
+                  <div class="flex min-w-0 flex-wrap items-start justify-between gap-3">
+                    <div class="min-w-0 flex-1">
                       <div class="flex flex-wrap items-center gap-2">
                         <p class="font-medium">{finding.title}</p>
                         <Badge variant={severityVariant(finding.severity)}>{finding.severity}</Badge>
@@ -249,31 +393,31 @@ const formatEventPayload = (value: Record<string, unknown>) => JSON.stringify(va
                       <Copy className="size-3" /> <span data-prompt-label>Copy prompt</span>
                     </button>
                   </div>
-                  <div class="mt-3 grid gap-3 text-sm md:grid-cols-2">
-                    <div>
+                  <div class="mt-3 grid min-w-0 gap-3 text-sm md:grid-cols-2">
+                    <div class="min-w-0">
                       <p class="text-xs font-medium text-muted-foreground">Evidence</p>
                       <ul class="mt-1 list-disc space-y-1 pl-4 text-muted-foreground">
                         {finding.evidence.map((item) => <li>{item}</li>)}
                       </ul>
                     </div>
-                    <div>
+                    <div class="min-w-0">
                       <p class="text-xs font-medium text-muted-foreground">Recommendation</p>
                       <p class="mt-1 text-muted-foreground">{finding.recommendation}</p>
                     </div>
                   </div>
-                  <pre class="mt-3 overflow-x-auto rounded-md border bg-background p-3 text-xs leading-5"><code>{finding.agentPrompt}</code></pre>
+                  <pre class="mt-3 max-w-full overflow-x-auto rounded-md border bg-background p-3 text-xs leading-5"><code>{finding.agentPrompt}</code></pre>
                 </div>
               ))
-            ) : (
+            ) : isAiReviewEnabled ? (
               <div class="rounded-md border border-dashed p-6 text-sm text-muted-foreground">
                 No findings yet. Sarge needs recent events before it can review this project.
               </div>
-            )
+            ) : null
           }
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="lg:col-span-2">
         <CardHeader>
           <CardTitle>User and session flows</CardTitle>
         </CardHeader>
@@ -281,6 +425,196 @@ const formatEventPayload = (value: Record<string, unknown>) => JSON.stringify(va
           <SessionFlowExplorer events={flowEvents} client:visible />
         </CardContent>
       </Card>
+
+      <div class="grid gap-4 lg:col-span-2 xl:grid-cols-2">
+        <Card data-test-impersonation-card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><UserRound className="size-4" /> Test impersonation</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4 text-sm">
+            <div class="grid gap-2">
+              <p class="text-xs text-muted-foreground">Your project test user ID</p>
+              <div class="flex min-w-0 items-center gap-2 rounded-md border bg-muted p-2">
+                <code class="min-w-0 flex-1 truncate font-mono text-xs" data-project-tester-id>{projectTesterUserId}</code>
+                <button
+                  class="inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md border bg-background px-2 text-xs font-medium hover:bg-muted"
+                  type="button"
+                  data-copy-tester-id
+                  data-tester-id={projectTesterUserId}
+                >
+                  <Copy className="size-3" /> <span data-copy-tester-id-label>Copy</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="grid gap-2">
+              <Label htmlFor="impersonationUserId">User to impersonate</Label>
+              <Input
+                id="impersonationUserId"
+                value={projectTesterUserId}
+                data-impersonation-user-input
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <p class="text-xs text-muted-foreground">Paste this on the tracked site page console before running the flow. Use <code class="font-mono">clear_impersonation()</code> when finished.</p>
+            </div>
+
+            <div class="grid gap-2">
+              <p class="text-xs text-muted-foreground">Recent users</p>
+              {
+                recentUserOptions.length > 0 ? (
+                  <div class="flex max-h-36 flex-wrap gap-1.5 overflow-auto rounded-md border bg-background p-2">
+                    {recentUserOptions.map((recentUser) => (
+                      <button
+                        class="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-md border bg-muted px-2 py-1 text-left font-mono text-xs hover:bg-background"
+                        type="button"
+                        data-recent-impersonation-user
+                        data-user-id={recentUser.userId}
+                        title={`${recentUser.userId} · ${recentUser.eventCount} events`}
+                      >
+                        <span class="truncate">{recentUser.userId}</span>
+                        <Badge variant="outline">{recentUser.eventCount}</Badge>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div class="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+                    Recent users will appear after this project receives events.
+                  </div>
+                )
+              }
+            </div>
+
+            <div class="grid gap-2">
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-xs text-muted-foreground">Console line</p>
+                <button
+                  class="inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md border bg-background px-2 text-xs font-medium hover:bg-muted"
+                  type="button"
+                  data-copy-impersonation-code
+                >
+                  <Copy className="size-3" /> <span data-copy-impersonation-code-label>Copy code</span>
+                </button>
+              </div>
+              <pre class="max-w-full overflow-x-auto rounded-md border bg-muted p-3 text-xs leading-5"><code data-impersonation-code>{impersonationConsoleSnippet}</code></pre>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+          <CardTitle className="flex items-center gap-2"><KeyRound className="size-4" /> Server-side calls</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 text-sm">
+          {
+            credentialError && (
+              <Alert variant="destructive">
+                  <AlertTitle>Credential was not rotated</AlertTitle>
+                  <AlertDescription>{credentialError}</AlertDescription>
+                </Alert>
+              )
+            }
+
+            <div class="grid gap-3">
+              <div class="rounded-md border p-3">
+                <div class="flex items-start justify-between gap-2">
+                  <div class="min-w-0">
+                    <p class="font-medium">Server event secret</p>
+                    <p class="mt-1 break-all font-mono text-xs text-muted-foreground">{serverEventEndpoint}</p>
+                  </div>
+                  <Badge variant={selectedEnvironment.serverEventSecretConfigured ? "default" : "secondary"}>
+                    {selectedEnvironment.serverEventSecretConfigured ? "configured" : "not set"}
+                  </Badge>
+                </div>
+                {
+                  createdServerCredentialToken && (
+                    <Alert className="mt-3">
+                      <AlertTitle>Server event secret rotated</AlertTitle>
+                      <AlertDescription>
+                        <p>Copy this value now. Sarge stores only the hash and will not show it again.</p>
+                        <div class="mt-2 grid gap-2 rounded-md border bg-muted p-2">
+                          <div class="flex min-w-0 items-center gap-2">
+                            <code class="min-w-0 flex-1 truncate font-mono text-xs">{createdServerCredentialToken}</code>
+                            <button
+                              class="inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md border bg-background px-2 text-xs font-medium hover:bg-muted"
+                              type="button"
+                              data-copy-credential
+                              data-credential={createdServerCredentialToken}
+                            >
+                              <Copy className="size-3" /> <span data-credential-label>Copy</span>
+                            </button>
+                          </div>
+                          <p class="break-all font-mono text-xs text-muted-foreground">{createdServerCredentialEndpoint}</p>
+                        </div>
+                      </AlertDescription>
+                    </Alert>
+                  )
+                }
+                {
+                  canManageCredentials ? (
+                    <form method="post" class="mt-3">
+                      <input type="hidden" name="intent" value="rotate-server-credential" />
+                      <Button type="submit" variant="outline">
+                        <RefreshCw className="mr-2 size-4" /> {selectedEnvironment.serverEventSecretConfigured ? "Rotate secret" : "Create secret"}
+                      </Button>
+                    </form>
+                  ) : (
+                    <p class="mt-3 text-xs text-muted-foreground">Ask an account admin to rotate this secret.</p>
+                  )
+                }
+              </div>
+
+              <div class="rounded-md border p-3">
+                <div class="flex items-start justify-between gap-2">
+                  <div class="min-w-0">
+                    <p class="font-medium">Postback token</p>
+                    <p class="mt-1 break-all font-mono text-xs text-muted-foreground">{postbackEndpointTemplate}</p>
+                  </div>
+                  <Badge variant={selectedEnvironment.postbackTokenConfigured ? "default" : "secondary"}>
+                    {selectedEnvironment.postbackTokenConfigured ? "configured" : "not set"}
+                  </Badge>
+                </div>
+                {
+                  createdPostbackCredentialToken && (
+                    <Alert className="mt-3">
+                      <AlertTitle>Postback token rotated</AlertTitle>
+                      <AlertDescription>
+                        <p>Copy this value now. Sarge stores only the hash and will not show it again.</p>
+                        <div class="mt-2 grid gap-2 rounded-md border bg-muted p-2">
+                          <div class="flex min-w-0 items-center gap-2">
+                            <code class="min-w-0 flex-1 truncate font-mono text-xs">{createdPostbackCredentialToken}</code>
+                            <button
+                              class="inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md border bg-background px-2 text-xs font-medium hover:bg-muted"
+                              type="button"
+                              data-copy-credential
+                              data-credential={createdPostbackCredentialToken}
+                            >
+                              <Copy className="size-3" /> <span data-credential-label>Copy</span>
+                            </button>
+                          </div>
+                          <p class="break-all font-mono text-xs text-muted-foreground">{createdPostbackCredentialEndpoint}</p>
+                        </div>
+                      </AlertDescription>
+                    </Alert>
+                  )
+                }
+                {
+                  canManageCredentials ? (
+                    <form method="post" class="mt-3">
+                      <input type="hidden" name="intent" value="rotate-postback-token" />
+                      <Button type="submit" variant="outline">
+                        <RefreshCw className="mr-2 size-4" /> {selectedEnvironment.postbackTokenConfigured ? "Rotate token" : "Create token"}
+                      </Button>
+                    </form>
+                  ) : (
+                    <p class="mt-3 text-xs text-muted-foreground">Ask an account admin to rotate this token.</p>
+                  )
+                }
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       <Card>
         <CardHeader>
@@ -300,7 +634,10 @@ const formatEventPayload = (value: Record<string, unknown>) => JSON.stringify(va
                       )
                     }
                     <div class="min-w-0">
-                      <p class="font-mono text-sm">{event.name}</p>
+                      <div class="flex min-w-0 flex-wrap items-center gap-2">
+                        <p class="font-mono text-sm">{event.name}</p>
+                        {isTestTraffic(event.properties) && <Badge variant="secondary">Test</Badge>}
+                      </div>
                       <p class="truncate text-xs text-muted-foreground">
                         {event.title ?? event.url ?? "Untitled event"} · {formatEventTime(event.occurredAt)}
                       </p>
@@ -316,7 +653,10 @@ const formatEventPayload = (value: Record<string, unknown>) => JSON.stringify(va
                   </div>
                   <dialog id={`event-${event.id}`} class="w-[min(720px,calc(100vw-2rem))] rounded-lg border bg-card p-0 text-card-foreground shadow-xl backdrop:bg-black/20">
                     <div class="border-b p-4">
-                      <p class="font-mono text-sm">{event.name}</p>
+                      <div class="flex min-w-0 flex-wrap items-center gap-2">
+                        <p class="font-mono text-sm">{event.name}</p>
+                        {isTestTraffic(event.properties) && <Badge variant="secondary">Test</Badge>}
+                      </div>
                       <p class="mt-1 text-xs text-muted-foreground">{event.url ?? "No URL recorded"}</p>
                     </div>
                     <div class="grid gap-4 p-4 text-sm">
@@ -357,9 +697,7 @@ const formatEventPayload = (value: Record<string, unknown>) => JSON.stringify(va
           }
         </CardContent>
       </Card>
-    </div>
-
-    <aside class="grid gap-4">
+    <aside class="grid content-start gap-4">
       <Card>
         <CardHeader>
           <CardTitle>Install details</CardTitle>
@@ -367,7 +705,7 @@ const formatEventPayload = (value: Record<string, unknown>) => JSON.stringify(va
         <CardContent className="space-y-3 text-sm">
           <div>
             <p class="text-xs text-muted-foreground">Tracking domain</p>
-            <p class="font-mono">{project.endpointHost}</p>
+            <p class="font-mono">{selectedEnvironment.endpointHost}</p>
           </div>
           <Separator />
           <div>
@@ -376,15 +714,15 @@ const formatEventPayload = (value: Record<string, unknown>) => JSON.stringify(va
           </div>
           <div>
             <p class="text-xs text-muted-foreground">Install URL</p>
-            <p class="break-all font-mono text-xs">{project.pixelUrl}</p>
+            <p class="break-all font-mono text-xs">{selectedEnvironment.pixelUrl}</p>
           </div>
           <div>
             <p class="text-xs text-muted-foreground">Environment</p>
-            <p>{project.environment}</p>
+            <p>{selectedEnvironmentLabel}</p>
           </div>
           <div>
             <p class="text-xs text-muted-foreground">Snippet version</p>
-            <p>{project.pixelVersion}</p>
+            <p>{selectedEnvironment.pixelVersion}</p>
           </div>
         </CardContent>
       </Card>
@@ -589,6 +927,64 @@ const formatEventPayload = (value: Record<string, unknown>) => JSON.stringify(va
         } catch {
           if (label) label.textContent = "Copy failed";
         }
+      });
+    });
+
+    const escapeImpersonationUserId = (value: string) => value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    const buildImpersonationCode = (userId: string) => `impersonate('${escapeImpersonationUserId(userId)}');`;
+
+    const copyTextWithLabel = async (text: string, label: Element | null, fallback: string) => {
+      try {
+        await navigator.clipboard.writeText(text);
+        const originalText = label?.textContent ?? fallback;
+        if (label) label.textContent = "Copied";
+        window.setTimeout(() => {
+          if (label) label.textContent = originalText;
+        }, 1600);
+      } catch {
+        if (label) label.textContent = "Copy failed";
+      }
+    };
+
+    document.querySelectorAll<HTMLButtonElement>("[data-copy-credential]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const credential = button.dataset.credential;
+        if (!credential) return;
+
+        await copyTextWithLabel(credential, button.querySelector("[data-credential-label]"), "Copy");
+      });
+    });
+
+    document.querySelectorAll<HTMLElement>("[data-test-impersonation-card]").forEach((panel) => {
+      const input = panel.querySelector<HTMLInputElement>("[data-impersonation-user-input]");
+      const code = panel.querySelector<HTMLElement>("[data-impersonation-code]");
+      if (!input || !code) return;
+
+      const updateImpersonationCode = () => {
+        code.textContent = buildImpersonationCode(input.value.trim());
+      };
+
+      input.addEventListener("input", updateImpersonationCode);
+
+      panel.querySelectorAll<HTMLButtonElement>("[data-recent-impersonation-user]").forEach((button) => {
+        button.addEventListener("click", () => {
+          input.value = button.dataset.userId ?? "";
+          updateImpersonationCode();
+          input.focus();
+        });
+      });
+
+      panel.querySelector<HTMLButtonElement>("[data-copy-tester-id]")?.addEventListener("click", async (event) => {
+        const button = event.currentTarget;
+        const testerId = button.dataset.testerId;
+        if (!testerId) return;
+        await copyTextWithLabel(testerId, button.querySelector("[data-copy-tester-id-label]"), "Copy");
+      });
+
+      panel.querySelector<HTMLButtonElement>("[data-copy-impersonation-code]")?.addEventListener("click", async (event) => {
+        updateImpersonationCode();
+        const button = event.currentTarget;
+        await copyTextWithLabel(code.textContent ?? "", button.querySelector("[data-copy-impersonation-code-label]"), "Copy code");
       });
     });
   </script>

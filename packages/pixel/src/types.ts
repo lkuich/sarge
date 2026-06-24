@@ -57,4 +57,6 @@ export interface EventPayload {
 export interface SargeClient {
   init(options?: InitOptions): void;
   track(name: string, properties?: EventProperties): void;
+  impersonate(userId: string): void;
+  clearImpersonation(): void;
 }

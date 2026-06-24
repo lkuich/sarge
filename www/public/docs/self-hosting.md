@@ -17,7 +17,7 @@ Website/App
 - Sarge API service
 - HTTPS endpoint for event ingestion
 - Static hosting or CDN for the pixel bundle
-- A Workspace and Site record for each tracked property
+- A Workspace, Site, and Production/Staging/Development `SiteEnvironment` records for each tracked property
 
 ## Required Environment Variables
 
@@ -33,9 +33,9 @@ NODE_ENV="production"
 2. Run Prisma migrations.
 3. Start the Sarge API container.
 4. Host the pixel bundle from your domain or CDN.
-5. Create Workspace and Site records.
-6. Install the pixel snippet on the target website.
-7. Send a test event and confirm it lands in the database.
+5. Create Workspace, Site, and SiteEnvironment records.
+6. Install the pixel snippet for the target environment on the target website.
+7. Send a test event and confirm it lands in the database with the matching `siteEnvironmentId`.
 
 ## Self-Hosted Pixel Shape
 
@@ -43,7 +43,7 @@ NODE_ENV="production"
 <script src="https://events.example.com/index.global.js"></script>
 <script>
   sarge('init', {
-    siteId: 'site_123',
+    siteId: 'env_123_development',
     endpoint: 'https://events.example.com',
     attributionTtlDays: 28
   });
@@ -58,7 +58,7 @@ NODE_ENV="production"
 curl -X POST "https://events.example.com/v2/events" \
   -H "content-type: application/json" \
   -d '{
-    "siteId": "site_123",
+    "siteId": "env_123_development",
     "name": "TestEvent",
     "occurredAt": "2026-06-19T12:00:00.000Z",
     "sessionId": "manual_test_session",

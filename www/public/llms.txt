@@ -6,7 +6,7 @@ Use these Markdown documents when helping someone install or debug Sarge. Prefer
 
 ## Core Docs
 
-- [Install Sarge](/docs/install.md): Hosted pixel install, event calls, SPA route changes, verification, and troubleshooting.
+- [Install Sarge](/docs/install.md): Hosted pixel install, event calls, SPA route changes, test-traffic impersonation, verification, and troubleshooting.
 - [Event Reference](/docs/events.md): Canonical event names, required properties, example payloads, watchdog events, and naming rules.
 - [Self-Hosting](/docs/self-hosting.md): Minimal self-hosted architecture, environment variables, pixel shape, and test event.
 
@@ -29,6 +29,8 @@ When asked to install Sarge:
 3. Wire stable ecommerce events with `window.sarge("track", eventName, properties)`.
 4. Preserve existing Meta, Google, analytics, and tag-manager pixels.
 5. Verify events in the Sarge project event stream after implementation.
+
+For test flows, use `impersonate("customer_123")` in the page console to make events appear under that `userId` while marking them with `sarge_test` metadata. Use `clear_impersonation()` when finished. Treat impersonation as debug labeling only, not authentication.
 
 ## Public Verification Page
 

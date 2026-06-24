@@ -6,6 +6,17 @@ import type { EventRepository } from "./event-repository.js";
 const createMemoryRepository = () => {
   const events: unknown[] = [];
   const repository: EventRepository = {
+    async findSiteById(siteId) {
+      if (siteId !== "site_123") return null;
+
+      return {
+        id: "site_123",
+        siteId: "site_parent_123",
+        environment: "production",
+        serverEventSecretHash: "82f1c19229bdefda9e677f85bcacf68d8a173a21dae2ac685dbb91ed54a83fd3",
+        postbackTokenHash: "22bf18421c010149a42fa386fe4a2fbd28e36da37ac813025b1293c9700c1e5b"
+      };
+    },
     async createEvent(event) {
       events.push(event);
     }
@@ -101,6 +112,83 @@ describe("Sarge API v2", () => {
       },
       properties: {
         form: "contact"
+      }
+    });
+  });
+
+  it("accepts authenticated server-side event calls", async () => {
+    const { events, repository } = createMemoryRepository();
+    const app = createApp({ repository });
+
+    const response = await request(app)
+      .post("/v2/server/events")
+      .set("authorization", "Bearer server_secret_123")
+      .send({
+        siteId: "site_123",
+        name: "purchase.completed",
+        eventId: "order_123",
+        occurredAt: "2026-06-24T12:00:00.000Z",
+        userId: "customer_123",
+        properties: {
+          order_id: "order_123",
+          value: 129.99,
+          currency: "USD"
+        }
+      });
+
+    expect(response.status).toBe(202);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      siteId: "site_123",
+      source: "server",
+      name: "purchase.completed",
+      sessionId: "server:order_123",
+      userId: "customer_123"
+    });
+  });
+
+  it("rejects server-side event calls with invalid credentials", async () => {
+    const { events, repository } = createMemoryRepository();
+    const app = createApp({ repository });
+
+    const response = await request(app)
+      .post("/v2/server/events")
+      .set("authorization", "Bearer wrong_secret")
+      .send({
+        siteId: "site_123",
+        name: "purchase.completed"
+      });
+
+    expect(response.status).toBe(401);
+    expect(events).toHaveLength(0);
+  });
+
+  it("accepts tokenized postback URLs", async () => {
+    const { events, repository } = createMemoryRepository();
+    const app = createApp({ repository });
+
+    const response = await request(app).get("/v2/postback/site_123/postback_token_123").query({
+      event: "affiliate.conversion",
+      ts: "2026-06-24T12:05:00.000Z",
+      click_id: "click_123",
+      order_id: "order_123",
+      value: "42.50",
+      currency: "USD"
+    });
+
+    expect(response.status).toBe(202);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      siteId: "site_123",
+      source: "postback",
+      name: "affiliate.conversion",
+      sessionId: "postback:click_123",
+      userId: "click_123",
+      properties: {
+        click_id: "click_123",
+        order_id: "order_123",
+        value: 42.5,
+        currency: "USD"
       }
     });
   });

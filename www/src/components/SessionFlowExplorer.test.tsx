@@ -50,6 +50,38 @@ describe("SessionFlowExplorer event filters", () => {
     expect(buttonNamed("Watchdog")?.getAttribute("aria-pressed")).toBe("true");
     expect(buttonNamed("Custom")?.getAttribute("aria-pressed")).toBe("true");
   });
+
+  it("uses color to distinguish selected flow toggles", () => {
+    render(<SessionFlowExplorer events={events} />);
+
+    expect(buttonNamed("Session")?.className).toContain("bg-primary");
+    expect(buttonNamed("Session")?.getAttribute("aria-pressed")).toBe("true");
+    expect(buttonNamed("User")?.className).not.toContain("bg-primary");
+    expect(buttonNamed("User")?.getAttribute("aria-pressed")).toBe("false");
+    expect(buttonNamed("Conversion")?.className).toContain("bg-primary");
+    expect(buttonNamed("All time")?.className).toContain("bg-primary");
+    expect(buttonNamed("All time")?.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("defaults to real traffic and can switch to impersonation test traffic", () => {
+    render(<SessionFlowExplorer events={[...trafficEvents("real-flow"), ...trafficEvents("test-flow", true)]} />);
+
+    expect(container?.textContent).toContain("1 of 1 sessions");
+    expect(container?.textContent).toContain("real-flow");
+    expect(container?.textContent).not.toContain("test-flow");
+    expect(buttonNamed("Real traffic")?.getAttribute("aria-pressed")).toBe("true");
+    expect(buttonNamed("Test traffic")?.getAttribute("aria-pressed")).toBe("false");
+
+    act(() => {
+      buttonNamed("Test traffic")?.click();
+    });
+
+    expect(container?.textContent).toContain("1 of 1 sessions");
+    expect(container?.textContent).toContain("test-flow");
+    expect(container?.textContent).not.toContain("real-flow");
+    expect(buttonNamed("Real traffic")?.getAttribute("aria-pressed")).toBe("false");
+    expect(buttonNamed("Test traffic")?.getAttribute("aria-pressed")).toBe("true");
+  });
 });
 
 function render(ui: React.ReactNode) {
@@ -85,4 +117,23 @@ function event(id: string, name: string, sessionId: string, minute: number) {
     url: `https://example.com/${sessionId}`,
     properties: {},
   };
+}
+
+function trafficEvents(sessionId: string, testTraffic = false) {
+  return [
+    event(`${sessionId}-page`, "page.view", sessionId, 0),
+    event(`${sessionId}-conversion`, "checkout.started", sessionId, 1),
+    event(`${sessionId}-watchdog`, "meta.pixel.fire", sessionId, 2),
+    event(`${sessionId}-custom`, "discount.applied", sessionId, 3),
+  ].map((flowEvent) => ({
+    ...flowEvent,
+    properties: testTraffic
+      ? {
+          sarge_test: true,
+          sarge_test_mode: "impersonation",
+          sarge_tester_user_id: "tester-123",
+          sarge_impersonated_user_id: sessionId,
+        }
+      : {},
+  }));
 }

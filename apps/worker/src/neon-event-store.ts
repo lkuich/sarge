@@ -11,8 +11,8 @@ export class NeonEventStore implements EventStore {
 
   async findSiteByHost(host: string): Promise<SiteRecord | null> {
     const rows = (await this.sql`
-      SELECT id, "endpointHost", "attributionTtlDays", "pixelEnabled"
-      FROM "Site"
+      SELECT id, "siteId", environment, "endpointHost", "attributionTtlDays", "pixelEnabled", "serverEventSecretHash", "postbackTokenHash"
+      FROM "SiteEnvironment"
       WHERE "endpointHost" = ${host}
       LIMIT 1
     `) as unknown[];
@@ -20,9 +20,13 @@ export class NeonEventStore implements EventStore {
     const row = rows.at(0) as
       | {
           id: string;
+          siteId: string;
+          environment: "production" | "staging" | "development";
           endpointHost: string;
           attributionTtlDays: number;
           pixelEnabled: boolean;
+          serverEventSecretHash: string | null;
+          postbackTokenHash: string | null;
         }
       | undefined;
 
@@ -31,18 +35,23 @@ export class NeonEventStore implements EventStore {
 
   async findSiteById(id: string): Promise<SiteRecord | null> {
     const rows = (await this.sql`
-      SELECT id, "endpointHost", "attributionTtlDays", "pixelEnabled"
-      FROM "Site"
+      SELECT id, "siteId", environment, "endpointHost", "attributionTtlDays", "pixelEnabled", "serverEventSecretHash", "postbackTokenHash"
+      FROM "SiteEnvironment"
       WHERE id = ${id}
+        OR ("siteId" = ${id} AND environment = 'production')
       LIMIT 1
     `) as unknown[];
 
     const row = rows.at(0) as
       | {
           id: string;
+          siteId: string;
+          environment: "production" | "staging" | "development";
           endpointHost: string;
           attributionTtlDays: number;
           pixelEnabled: boolean;
+          serverEventSecretHash: string | null;
+          postbackTokenHash: string | null;
         }
       | undefined;
 
@@ -50,10 +59,15 @@ export class NeonEventStore implements EventStore {
   }
 
   async createEvent(event: EventPayload): Promise<void> {
+    const site = await this.findSiteById(event.siteId);
+    if (!site) throw new Error(`Unknown site environment: ${event.siteId}`);
+
     await this.sql`
       INSERT INTO "Event" (
         "id",
         "siteId",
+        "siteEnvironmentId",
+        "source",
         "name",
         "occurredAt",
         "sessionId",
@@ -68,7 +82,9 @@ export class NeonEventStore implements EventStore {
       )
       VALUES (
         ${crypto.randomUUID()},
-        ${event.siteId},
+        ${site.siteId},
+        ${site.id},
+        ${event.source},
         ${event.name},
         ${new Date(event.occurredAt).toISOString()},
         ${event.sessionId},
@@ -86,9 +102,10 @@ export class NeonEventStore implements EventStore {
 
   async listActiveSitesForDiagnostics(limit: number): Promise<SiteRecord[]> {
     const rows = (await this.sql`
-      SELECT id, "endpointHost", "attributionTtlDays", "pixelEnabled"
-      FROM "Site"
+      SELECT id, "siteId", environment, "endpointHost", "attributionTtlDays", "pixelEnabled"
+      FROM "SiteEnvironment"
       WHERE "pixelEnabled" = true
+        AND environment = 'production'
       ORDER BY "createdAt" ASC
       LIMIT ${limit}
     `) as unknown[];
@@ -100,7 +117,7 @@ export class NeonEventStore implements EventStore {
     const rows = (await this.sql`
       SELECT
         id,
-        "siteId",
+        "siteEnvironmentId",
         name,
         "occurredAt",
         "sessionId",
@@ -109,7 +126,7 @@ export class NeonEventStore implements EventStore {
         title,
         properties
       FROM "Event"
-      WHERE "siteId" = ${siteId}
+      WHERE "siteEnvironmentId" = ${siteId}
         AND "occurredAt" >= ${since.toISOString()}
       ORDER BY "occurredAt" DESC
       LIMIT ${limit}
@@ -117,7 +134,7 @@ export class NeonEventStore implements EventStore {
 
     return rows.map((row) => ({
       id: row.id,
-      siteId: row.siteId,
+      siteId: row.siteEnvironmentId,
       name: row.name,
       occurredAt: row.occurredAt.toISOString(),
       sessionId: row.sessionId,
@@ -133,6 +150,7 @@ export class NeonEventStore implements EventStore {
       INSERT INTO "DiagnosticRun" (
         id,
         "siteId",
+        "siteEnvironmentId",
         status,
         "eventWindowStart",
         "eventWindowEnd",
@@ -143,6 +161,7 @@ export class NeonEventStore implements EventStore {
       )
       VALUES (
         ${run.id},
+        ${(await this.findSiteById(run.siteId))?.siteId ?? run.siteId},
         ${run.siteId},
         ${run.status},
         ${run.eventWindowStart},
@@ -160,6 +179,7 @@ export class NeonEventStore implements EventStore {
           id,
           "runId",
           "siteId",
+          "siteEnvironmentId",
           "ruleId",
           severity,
           title,
@@ -171,6 +191,7 @@ export class NeonEventStore implements EventStore {
         VALUES (
           ${crypto.randomUUID()},
           ${run.id},
+          ${(await this.findSiteById(run.siteId))?.siteId ?? run.siteId},
           ${run.siteId},
           ${finding.ruleId},
           ${finding.severity},
@@ -187,7 +208,7 @@ export class NeonEventStore implements EventStore {
 
 interface EventRow {
   id: string;
-  siteId: string;
+  siteEnvironmentId: string;
   name: string;
   occurredAt: Date;
   sessionId: string;

@@ -24,10 +24,22 @@ const install = () => {
       return;
     }
 
+    if (method === "impersonate") {
+      client.impersonate(args[0] as string);
+      return;
+    }
+
+    if (method === "clear_impersonation") {
+      client.clearImpersonation();
+      return;
+    }
+
     throw new Error(`Unknown Sarge method: ${method}`);
   };
 
   window._sarge = window.sarge;
+  window.impersonate = (userId: string) => client.impersonate(userId);
+  window.clear_impersonation = () => client.clearImpersonation();
   installWatchdogs(client);
 
   for (const call of queued as QueuedCall[]) {
@@ -83,6 +95,8 @@ declare global {
     __SARGE_CONFIG__?: InitOptions;
     sarge: ((method: string, ...args: unknown[]) => void) & { queue?: QueuedCall[] };
     _sarge?: ((method: string, ...args: unknown[]) => void) & { queue?: QueuedCall[] };
+    impersonate: (userId: string) => void;
+    clear_impersonation: () => void;
     fbq?: (...args: unknown[]) => unknown;
     gtag?: (...args: unknown[]) => unknown;
     dataLayer?: DataLayer;

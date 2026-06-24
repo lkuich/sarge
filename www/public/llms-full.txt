@@ -49,6 +49,33 @@ data_layer.push
 
 Properties must be JSON-serializable.
 
+## Test Traffic and User Impersonation
+
+For test flows, open the target page console and run:
+
+```js
+impersonate('customer_123');
+```
+
+Future browser events in that project use `customer_123` as `userId` and include Sarge-owned test metadata:
+
+```json
+{
+  "sarge_test": true,
+  "sarge_test_mode": "impersonation",
+  "sarge_tester_user_id": "project-scoped-tester-id",
+  "sarge_impersonated_user_id": "customer_123"
+}
+```
+
+Clear the override with:
+
+```js
+clear_impersonation();
+```
+
+This is debug labeling only. It does not authenticate as the target user or grant application permissions.
+
 ## Verify Installation
 
 1. Open the target site in a browser.

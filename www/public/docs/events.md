@@ -159,7 +159,7 @@ Sarge stores events in an envelope like:
 
 ```json
 {
-  "siteId": "site_123",
+  "siteId": "env_123_production",
   "name": "purchase.completed",
   "occurredAt": "2026-06-20T12:00:00.000Z",
   "sessionId": "sess_123",
@@ -172,6 +172,8 @@ Sarge stores events in an envelope like:
   "properties": {}
 }
 ```
+
+The `siteId` field is the selected environment ID. Production, Staging, and Development have separate values and separate event streams.
 
 ## AI Diagnostics Expectations
 

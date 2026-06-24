@@ -1,6 +1,8 @@
 # Installing Sarge
 
-Sarge is installed as a small hosted browser script. Each project has an endpoint host, and that host serves a customized `pixel.js` with the project ID and ingest endpoint already embedded.
+Sarge is installed as a small hosted browser script. Each project has persisted Production, Staging, and Development environments. Every environment has its own pixel URL, event stream, user/session flows, debug stream, event hosts, webhooks, and public verify URL.
+
+AI recommendations currently run for Production only. Staging and Development still collect their own events and show their own flows/debug streams, but the AI review panel is disabled there.
 
 ## Hosted Install
 
@@ -10,10 +12,10 @@ Use the snippet from the project detail screen in the portal:
 <script>
   window._sarge = { queue: [["track", "page.view"]] };
 </script>
-<script async src="https://track.sargetrack.app/pixel.js?site={siteId}"></script>
+<script async src="https://track.sargetrack.app/pixel.js?env={siteEnvironmentId}"></script>
 ```
 
-Use the exact snippet from the project detail screen. The `site` query parameter identifies the project while the shared hosted endpoint delivers the script.
+Use the exact snippet from the selected environment tab on the project detail screen. The `env` query parameter identifies the persisted environment. The browser payload field is still called `siteId`, but the value is the selected environment ID.
 
 Place the snippet in the document `<head>` or as early as possible in the page body. The queued `page.view` call is replayed after `pixel.js` loads.
 
@@ -94,6 +96,33 @@ window.sarge("track", "page.view", {
 });
 ```
 
+## Test Traffic and User Impersonation
+
+To test checkout, account, or lifecycle flows without mixing those events into real traffic, open the target page console and run:
+
+```js
+impersonate('customer_123');
+```
+
+Future events in that project will use `customer_123` as the event `userId`, so the Sarge user/session flow shows the path as that user. Sarge also marks each event as test traffic:
+
+```json
+{
+  "sarge_test": true,
+  "sarge_test_mode": "impersonation",
+  "sarge_tester_user_id": "project-scoped-tester-id",
+  "sarge_impersonated_user_id": "customer_123"
+}
+```
+
+Clear the override when testing is finished:
+
+```js
+clear_impersonation();
+```
+
+The console can hide test traffic, show only test traffic, or show all traffic. Impersonation is debug metadata only; it does not sign you into the target application or grant any permissions.
+
 ## Attribution Parameters
 
 The pixel reads these URL parameters and stores them in `localStorage`:
@@ -114,13 +143,13 @@ https://shop.example.com/?sarge_ref=summer-campaign&sarge_aff=partner-42
 1. Open the target site in a browser.
 2. Open the Sarge portal.
 3. Go to `Projects`.
-4. Open the project that owns the endpoint host.
-5. Confirm events appear in the debug stream.
+4. Open the project and select the matching Production, Staging, or Development tab.
+5. Confirm events appear in that environment's debug stream.
 
 You can also open these project URLs directly from the portal:
 
 - `https://track.sargetrack.app/healthz` checks the endpoint Worker.
-- `https://track.sargetrack.app/pixel.js?site={siteId}` checks script delivery.
+- `https://track.sargetrack.app/pixel.js?env={siteEnvironmentId}` checks script delivery.
 
 ## Agentic Install
 
@@ -136,8 +165,8 @@ Give the agent the exact pixel URL from the project detail screen and ask it to 
 
 | Symptom | Check |
 | --- | --- |
-| No events appear | Confirm the snippet uses the project endpoint host. |
-| Script 404s | Confirm the endpoint host exists as a `Site.endpointHost` in Neon. |
+| No events appear | Confirm the snippet came from the same environment tab you are testing. |
+| Script 404s | Confirm the environment exists as a `SiteEnvironment` row in Neon. |
 | Events reject | Confirm the payload properties are JSON-serializable and event names are non-empty. |
 | SPA page views missing | Emit `page.view` on route changes, not just initial page load. |
 | Other media pixels fire but Sarge does not show them | Confirm Sarge loads before the call you expect to observe. |

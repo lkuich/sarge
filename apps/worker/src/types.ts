@@ -16,9 +16,13 @@ export interface WorkerEnv {
 
 export interface SiteRecord {
   id: string;
+  siteId: string;
+  environment: "production" | "staging" | "development";
   endpointHost: string;
   attributionTtlDays: number;
   pixelEnabled: boolean;
+  serverEventSecretHash?: string | null;
+  postbackTokenHash?: string | null;
 }
 
 export interface EventStore {

@@ -6,7 +6,7 @@ This spec describes the standard hosted Sarge option: customers deploy with us, 
 
 - Provision a new customer workspace in minutes.
 - Give each customer a simple endpoint such as `https://acme.sargetrack.app`.
-- Serve a customized pixel that already knows its endpoint and site ID.
+- Serve a customized pixel that already knows its endpoint and environment ID.
 - Store events in shared Postgres with strong tenant scoping.
 - Keep pricing aggressive by avoiding per-customer infrastructure by default.
 - Use Cloudflare's domain, CDN, Worker, and platform features as the hosted foundation.
@@ -37,7 +37,7 @@ Example snippet:
 The pixel served from `acme.sargetrack.app` is customized with:
 
 - API endpoint: `https://acme.sargetrack.app`
-- site ID
+- environment ID
 - attribution TTL
 - feature flags
 - future watchdog settings
@@ -131,19 +131,19 @@ siteId String
 site   Site @relation(fields: [siteId], references: [id])
 ```
 
-The current hosted schema uses `Workspace` and `Site` as the product concepts. `Event.siteId` references `Site.id`.
+The current hosted schema uses `Workspace` and `Site` as the product concepts, with persisted `SiteEnvironment` rows for Production, Staging, and Development. `Event.siteId` keeps the parent project for grouping, while `Event.siteEnvironmentId` references the environment that owns the pixel, debug stream, flows, webhooks, and public verify URL.
 
 ## Request Routing
 
 Tenant resolution rules:
 
 1. Read `Host` header.
-2. Match host to `Site.endpointHost`.
-3. For `/pixel.js`, serve a generated pixel configuration for that site.
-4. For `/v2/events`, require payload `siteId` to match the resolved site.
-5. For `/v2/e`, ignore any mismatched `sid` if host resolution is present and use the resolved site ID.
+2. Match host to `SiteEnvironment.endpointHost`.
+3. For `/pixel.js`, serve a generated pixel configuration for that environment.
+4. For `/v2/events`, require payload `siteId` to match the resolved environment ID.
+5. For `/v2/e`, ignore any mismatched `sid` if host resolution is present and use the resolved environment ID.
 6. Return `404` for unknown hosts.
-7. Return `403` for known hosts with mismatched site IDs.
+7. Return `403` for known hosts with mismatched environment IDs.
 
 This prevents one customer endpoint from submitting events for another site.
 
@@ -166,7 +166,7 @@ Generated shape:
 
 ```js
 window.__SARGE_CONFIG__ = {
-  siteId: "site_123",
+  siteId: "env_123_production",
   endpoint: "https://acme.sargetrack.app",
   attributionTtlDays: 28
 };
@@ -190,10 +190,10 @@ Keep current v2 endpoints:
 
 Add hosted behavior:
 
-- resolve site from `Host`
+- resolve environment from `Host`
 - reject unknown hosts
-- reject host/site mismatches
-- include workspace/site IDs in logs
+- reject host/environment mismatches
+- include workspace/site/environment IDs in logs
 - prepare for event-stream subscriptions later
 
 Add provisioning endpoints in a protected admin API:
@@ -236,12 +236,12 @@ Custom domains later:
 Baseline controls:
 
 - tenant resolution by host
-- site ID mismatch rejection
+- environment ID mismatch rejection
 - request body size limits
-- per-site rate limits
+- per-environment rate limits
 - CORS allowed for ingestion routes
 - admin routes protected
-- structured logs include workspace/site IDs
+- structured logs include workspace/site/environment IDs
 
 Privacy controls to add before public hosted launch:
 
@@ -257,10 +257,10 @@ Privacy controls to add before public hosted launch:
 
 - Add `Workspace` and `Site` models.
 - Migrate current `Client` concept to `Site`.
-- Add host-based site resolver middleware.
+- Add host-based environment resolver middleware.
 - Add `/pixel.js` route.
 - Let `sarge('init')` read generated config.
-- Add tests for host/site matching.
+- Add tests for host/environment matching.
 
 ### Phase 2: Provisioning
 
@@ -284,11 +284,11 @@ Privacy controls to add before public hosted launch:
 
 - unknown host returns `404`
 - known host serves `/pixel.js`
-- generated pixel config includes endpoint, site ID, and TTL
+- generated pixel config includes endpoint, environment ID, and TTL
 - `sarge('init')` works with generated config and no explicit options
-- event payload with matching host and site ID is accepted
-- event payload with mismatched host and site ID returns `403`
-- compact GET fallback resolves site from host
+- event payload with matching host and environment ID is accepted
+- event payload with mismatched host and environment ID returns `403`
+- compact GET fallback resolves environment from host
 - provisioning creates workspace, site, endpoint host, and snippet
 - duplicate workspace/site slugs are rejected
 

@@ -163,7 +163,7 @@ const watchdogEvents = [
           <Radio className="size-5 text-primary" />
           <h2 class="mt-5 font-semibold">Event envelope</h2>
           <pre class="mt-4 overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{`{
-  siteId: "site_123",
+  siteId: "env_123_production",
   name: "purchase.completed",
   occurredAt: "2026-06-20T12:00:00.000Z",
   sessionId: "sess_123",
@@ -175,6 +175,9 @@ const watchdogEvents = [
   },
   properties: {}
 }`}</code></pre>
+          <p class="mt-3 text-xs leading-5 text-muted-foreground">
+            The `siteId` field is the selected environment ID. Production, Staging, and Development have separate values and separate event streams.
+          </p>
         </section>
 
         <section class="rounded-lg border bg-card p-5">

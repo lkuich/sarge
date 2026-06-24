@@ -1,6 +1,6 @@
 ---
 import { env } from "cloudflare:workers";
-import { AlertTriangle, CheckCircle2, FolderPlus, Radio } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FolderPlus, Plus, Radio } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import AppLayout from "@/layouts/AppLayout.astro";
-import { createWorkspace, formatCount, getViewerAccount } from "@/lib/sarge-demo";
+import { canAdministerAccount, createWorkspace, environmentLabels, formatCount, getViewerAccount } from "@/lib/sarge-demo";
 
 const { userId } = Astro.locals.auth();
 if (!userId) return Astro.redirect("/sign-in");
@@ -41,12 +41,14 @@ const failedEvents = account.projects.reduce((sum, project) => sum + project.fai
 const hasProjects = account.projects.length > 0;
 const needsWorkspaceSetup = !account.workspaceSetupComplete;
 const shouldShowSetupGuide = needsWorkspaceSetup || !hasProjects;
+const canCreateProjects = canAdministerAccount(account);
+const projectCountLabel = `${account.projects.length} ${account.projects.length === 1 ? "project" : "projects"} under ${account.name}`;
 ---
 
 <AppLayout
   account={account}
   title="Dashboard | Sarge"
-  heading={needsWorkspaceSetup ? "Create your workspace" : "Account overview"}
+  heading={needsWorkspaceSetup ? "Create your workspace" : "Overview"}
   description={needsWorkspaceSetup
     ? "Start by naming the workspace that will own your Sarge projects."
     : "Projects are grouped under your account. Admins manage access and setup; users inspect assigned projects and event flow."}
@@ -178,6 +180,75 @@ const shouldShowSetupGuide = needsWorkspaceSetup || !hasProjects;
               <p class="text-xs text-muted-foreground">needs inspection</p>
             </CardContent>
           </Card>
+        </section>
+
+        <section class="mt-6">
+          <div class="mb-4 flex items-center justify-between gap-3">
+            <p class="text-sm text-muted-foreground">{projectCountLabel}</p>
+            {
+              canCreateProjects && (
+                <a
+                  class="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-primary px-2.5 text-sm font-medium whitespace-nowrap text-primary-foreground transition-all hover:bg-primary/80 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                  href="/app/projects/new"
+                >
+                  <Plus className="size-4" /> New project
+                </a>
+              )
+            }
+          </div>
+
+          {
+            hasProjects ? (
+              <div class="grid gap-4 md:grid-cols-2">
+                {account.projects.map((project) => (
+                  <Card>
+                    <CardHeader>
+                      <div class="flex items-start justify-between gap-3">
+                        <div>
+                          <CardTitle><a href={`/app/projects/${project.slug}`}>{project.name}</a></CardTitle>
+                          <p class="mt-1 font-mono text-xs text-muted-foreground">{project.endpointHost}</p>
+                        </div>
+                        <Badge variant={project.status === "active" ? "default" : "secondary"}>{project.status}</Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div class="grid grid-cols-3 gap-3 text-sm">
+                        <div>
+                          <p class="text-xs text-muted-foreground">Environment</p>
+                          <p class="font-medium">{environmentLabels[project.environment]}</p>
+                        </div>
+                        <div>
+                          <p class="text-xs text-muted-foreground">24h Events</p>
+                          <p class="font-medium">{formatCount(project.eventCount24h)}</p>
+                        </div>
+                        <div>
+                          <p class="text-xs text-muted-foreground">Snippet</p>
+                          <p class="font-medium">{project.pixelVersion}</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <div class="flex flex-col items-start gap-3 rounded-md border border-dashed p-5">
+                <div>
+                  <p class="font-medium">No projects yet</p>
+                  <p class="mt-1 text-sm text-muted-foreground">Add a project to get install details, a tracking domain, and an event stream.</p>
+                </div>
+                {
+                  canCreateProjects && (
+                    <a
+                      class="inline-flex h-8 items-center justify-center gap-1.5 rounded-md bg-primary px-2.5 text-sm font-medium text-primary-foreground transition hover:bg-primary/80"
+                      href="/app/projects/new"
+                    >
+                      <FolderPlus className="size-4" /> Add project
+                    </a>
+                  )
+                }
+              </div>
+            )
+          }
         </section>
 
         <Card className="mt-6">

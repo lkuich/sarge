@@ -9,7 +9,7 @@ const requirements = [
   "Sarge API service",
   "HTTPS endpoint for event ingestion",
   "Static hosting or CDN for the pixel bundle",
-  "A Workspace and Site record for each tracked property",
+  "A Workspace, Site, and Production/Staging/Development SiteEnvironment records for each tracked property",
 ];
 
 const steps = [
@@ -17,9 +17,9 @@ const steps = [
   "Run Prisma migrations.",
   "Start the Sarge API container.",
   "Host the pixel bundle from your domain or CDN.",
-  "Create Workspace and Site records.",
-  "Install the pixel snippet on the target website.",
-  "Send a test event and confirm it lands in the database.",
+  "Create Workspace, Site, and SiteEnvironment records.",
+  "Install the pixel snippet for the target environment on the target website.",
+  "Send a test event and confirm it lands in the database with the matching siteEnvironmentId.",
 ];
 
 const hostingOptions = [
@@ -80,7 +80,7 @@ NODE_ENV="production"`}</code></pre>
           <pre class="mt-4 overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{`<script src="https://events.example.com/index.global.js"></script>
 <script>
   sarge('init', {
-    siteId: 'site_123',
+    siteId: 'env_123_development',
     endpoint: 'https://events.example.com',
     attributionTtlDays: 28
   });
@@ -94,7 +94,7 @@ NODE_ENV="production"`}</code></pre>
           <pre class="mt-4 overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{`curl -X POST "https://events.example.com/v2/events" \\
   -H "content-type: application/json" \\
   -d '{
-    "siteId": "site_123",
+    "siteId": "env_123_development",
     "name": "TestEvent",
     "occurredAt": "2026-06-19T12:00:00.000Z",
     "sessionId": "manual_test_session",

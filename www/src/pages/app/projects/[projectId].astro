@@ -64,6 +64,8 @@ const snippet = `<script>
   window._sarge = { queue: [["track", "page.view"]] };
 </script>
 <script async src="${project.pixelUrl}"></script>`;
+const publicVerifyUrl = `/verify/${project.id}`;
+const publicVerifyAbsoluteUrl = `https://sargetrack.app${publicVerifyUrl}`;
 const llmInstallPrompt = `Add Sarge tracking for ${project.name}.
 
 Read these docs first:
@@ -75,7 +77,7 @@ Install this pixel snippet as early as possible in the page:
 
 ${snippet}
 
-Then emit window.sarge("track", "event.name", properties) for page, product, cart, checkout, and purchase actions. Keep existing Meta, Google, or analytics pixels in place. After wiring, verify events reach the Sarge project event stream.`;
+Then emit window.sarge("track", "event.name", properties) for page, product, cart, checkout, and purchase actions. Keep existing Meta, Google, or analytics pixels in place. After wiring, open ${publicVerifyAbsoluteUrl} and verify the expected events appear in the public Sarge event stream.`;
 const endpointHealthUrl = project.endpointHealthUrl;
 const pixelUrl = project.pixelUrl;
 
@@ -162,6 +164,14 @@ const formatEventPayload = (value: Record<string, unknown>) => JSON.stringify(va
               rel="noreferrer"
             >
               <ExternalLink className="size-4" /> Open pixel
+            </a>
+            <a
+              class="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-sm font-medium whitespace-nowrap transition-all hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+              href={publicVerifyUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <ExternalLink className="size-4" /> Public verify
             </a>
           </div>
           <div class="mt-4 rounded-md border bg-card p-4 text-sm">

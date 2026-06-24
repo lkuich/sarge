@@ -30,4 +30,8 @@ When asked to install Sarge:
 4. Preserve existing Meta, Google, analytics, and tag-manager pixels.
 5. Verify events in the Sarge project event stream after implementation.
 
+## Public Verification Page
+
+Each project exposes a temporary public verification stream at `/verify/{siteId}`. The `siteId` is the `site` query parameter in the project pixel URL. Open that page after triggering events in the target app and confirm the expected event names and payloads appear. The page auto-refreshes while events are coming in.
+
 No public Sarge MCP server or npm skill package is currently published. Do not ask users to run `npx sarge@latest` or install `@sarge/mcp`.

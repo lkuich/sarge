@@ -67,6 +67,11 @@ export interface SargeAccount {
   members: AccountMember[];
 }
 
+export interface PublicEventStream {
+  project: Pick<SargeProject, 'id' | 'slug' | 'name' | 'endpointHost' | 'pixelUrl' | 'endpointHealthUrl' | 'status'>;
+  events: SargeEvent[];
+}
+
 export interface CreateWorkspaceInput {
   name: string;
 }
@@ -289,6 +294,60 @@ export const getViewerAccount = async (userId: string, databaseUrl?: string): Pr
   } catch (error) {
     console.error('Unable to load live Sarge account data', error);
     return getFallbackAccount(role);
+  }
+};
+
+export const getPublicEventStream = async (
+  siteId: string,
+  databaseUrl?: string,
+): Promise<PublicEventStream | null> => {
+  if (!databaseUrl || !siteId.trim()) return null;
+
+  try {
+    const sql = neon(databaseUrl);
+    const sites = (await sql`
+      SELECT id, slug, name, "endpointHost", "pixelEnabled"
+      FROM "Site"
+      WHERE id = ${siteId}
+      LIMIT 1
+    `) as Pick<SiteSummaryRow, 'id' | 'slug' | 'name' | 'endpointHost' | 'pixelEnabled'>[];
+    const site = sites.at(0);
+    if (!site) return null;
+
+    const events = (await sql`
+      SELECT
+        id,
+        "siteId",
+        name,
+        "occurredAt",
+        "receivedAt",
+        "sessionId",
+        "userId",
+        url,
+        referrer,
+        title,
+        properties
+      FROM "Event"
+      WHERE "siteId" = ${site.id}
+      ORDER BY "occurredAt" DESC
+      LIMIT 30
+    `) as EventRow[];
+
+    return {
+      project: {
+        id: site.id,
+        slug: site.slug,
+        name: site.name,
+        endpointHost: site.endpointHost,
+        pixelUrl: buildPixelUrl(site.id),
+        endpointHealthUrl: buildHealthUrl(),
+        status: site.pixelEnabled ? 'active' : 'paused',
+      },
+      events: events.map(mapEvent),
+    };
+  } catch (error) {
+    console.error('Unable to load public Sarge event stream', error);
+    return null;
   }
 };
 

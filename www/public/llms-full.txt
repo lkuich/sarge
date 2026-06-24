@@ -57,6 +57,8 @@ Properties must be JSON-serializable.
 4. Open the project that owns the pixel.
 5. Confirm events appear in the project event stream.
 
+For agentic verification, open `https://sargetrack.app/verify/{siteId}`. The `siteId` is the `site` query parameter in the pixel URL. The page shows recent events and auto-refreshes while the agent exercises the target app.
+
 No public Sarge MCP server or npm skill package is currently published. Do not run `npx sarge@latest` or install `@sarge/mcp`.
 
 ---

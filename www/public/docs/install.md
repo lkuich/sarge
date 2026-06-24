@@ -120,6 +120,14 @@ https://shop.example.com/?sarge_ref=summer-campaign&sarge_aff=partner-42
 4. Open the project that owns the pixel.
 5. Confirm events appear in the project event stream.
 
+For agentic verification, use the temporary public stream:
+
+```text
+https://sargetrack.app/verify/{siteId}
+```
+
+The `siteId` is the `site` query parameter in the project pixel URL. The verification page shows the latest events and auto-refreshes every few seconds while an agent exercises the target app.
+
 You can also open these project URLs from the portal:
 
 - `https://track.sargetrack.app/healthz` checks the endpoint Worker.
@@ -131,6 +139,7 @@ When using a coding agent, give it:
 
 - The exact pixel snippet from the project detail screen.
 - The event names and required properties from `/docs/events.md`.
+- The public verification URL `/verify/{siteId}`.
 - Instructions to preserve existing Meta, Google, analytics, and tag-manager pixels.
 - A verification step that confirms events arrive in the Sarge project event stream.
 

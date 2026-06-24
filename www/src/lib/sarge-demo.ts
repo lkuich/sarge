@@ -86,6 +86,8 @@ export type CreateWebhookResult =
   | { success: false; error: string };
 
 export const hostedEndpointHost = 'track.sargetrack.app';
+const demoAccountName = 'Demo Account';
+type SqlClient = ReturnType<typeof neon>;
 
 const adminIds = new Set(
   (import.meta.env.SARGE_ADMIN_USER_IDS ?? '')
@@ -116,6 +118,33 @@ const resolveRole = (userId: string): AccountRole => {
   return adminIds.has(userId) ? 'admin' : 'user';
 };
 
+const getViewerWorkspace = async (sql: SqlClient, userId: string) => {
+  const workspaces = (await sql`
+    SELECT id, slug, name
+    FROM "Workspace"
+    WHERE "ownerUserId" = ${userId}
+    LIMIT 1
+  `) as WorkspaceRow[];
+
+  return workspaces.at(0) ?? null;
+};
+
+const getOrCreateViewerWorkspace = async (sql: SqlClient, userId: string) => {
+  const existingWorkspace = await getViewerWorkspace(sql, userId);
+  if (existingWorkspace) return existingWorkspace;
+
+  const id = `wrk_${crypto.randomUUID()}`;
+  const slug = buildViewerWorkspaceSlug(userId);
+  const workspaces = (await sql`
+    INSERT INTO "Workspace" (id, slug, name, "ownerUserId")
+    VALUES (${id}, ${slug}, ${demoAccountName}, ${userId})
+    ON CONFLICT ("ownerUserId") DO UPDATE SET name = EXCLUDED.name
+    RETURNING id, slug, name
+  `) as WorkspaceRow[];
+
+  return workspaces[0];
+};
+
 export const getViewerAccount = async (userId: string, databaseUrl?: string): Promise<SargeAccount> => {
   const role = resolveRole(userId);
 
@@ -125,17 +154,7 @@ export const getViewerAccount = async (userId: string, databaseUrl?: string): Pr
 
   try {
     const sql = neon(databaseUrl);
-    const workspaces = (await sql`
-      SELECT id, slug, name
-      FROM "Workspace"
-      WHERE slug = 'demo'
-      LIMIT 1
-    `) as WorkspaceRow[];
-    const workspace = workspaces.at(0);
-
-    if (!workspace) {
-      return getFallbackAccount(role);
-    }
+    const workspace = await getOrCreateViewerWorkspace(sql, userId);
 
     const sites = (await sql`
       SELECT
@@ -241,7 +260,7 @@ export const getViewerAccount = async (userId: string, databaseUrl?: string): Pr
       name: workspace.name,
       slug: workspace.slug,
       role,
-      plan: 'Hosted shared',
+      plan: 'Hosted',
       projects: sites.map((site) => {
         const recentEvents = events.filter((event) => event.siteId === site.id).map(mapEvent);
         const latestRun = latestRunBySite.get(site.id);
@@ -292,23 +311,10 @@ export const createProject = async (
 
   try {
     const sql = neon(databaseUrl);
-    await sql`
-      INSERT INTO "Workspace" (id, slug, name)
-      VALUES ('wrk_demo', 'demo', 'Demo Account')
-      ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
-    `;
-
-    const workspaces = (await sql`
-      SELECT id
-      FROM "Workspace"
-      WHERE slug = 'demo'
-      LIMIT 1
-    `) as { id: string }[];
-    const workspace = workspaces.at(0);
-    if (!workspace) return { success: false, error: 'Demo workspace is not available.' };
+    const workspace = await getOrCreateViewerWorkspace(sql, userId);
 
     const id = `site_${crypto.randomUUID()}`;
-    const endpointHost = `${slug}.sargetrack.app`;
+    const endpointHost = buildScopedEndpointHost(slug, workspace.id);
     const rows = (await sql`
       INSERT INTO "Site" (id, "workspaceId", slug, name, "endpointHost", "attributionTtlDays", "pixelEnabled")
       VALUES (${id}, ${workspace.id}, ${slug}, ${name}, ${endpointHost}, 28, true)
@@ -343,7 +349,7 @@ export const createProject = async (
     console.error('Unable to create Sarge project', error);
     return {
       success: false,
-      error: 'Project could not be created. The slug may already be in use.',
+      error: 'Project could not be created. The slug may already be in use for this account.',
     };
   }
 };
@@ -375,10 +381,14 @@ export const createWebhookEndpoint = async (
 
   try {
     const sql = neon(databaseUrl);
+    const workspace = await getViewerWorkspace(sql, userId);
+    if (!workspace) return { success: false, error: 'Account workspace was not found.' };
+
     const sites = (await sql`
       SELECT id
       FROM "Site"
       WHERE id = ${siteId}
+        AND "workspaceId" = ${workspace.id}
       LIMIT 1
     `) as { id: string }[];
     if (!sites.at(0)) return { success: false, error: 'Project was not found.' };
@@ -424,10 +434,10 @@ export const createWebhookEndpoint = async (
 
 const getFallbackAccount = (role: AccountRole): SargeAccount => ({
   id: 'acct_demo',
-  name: 'Demo Account',
+  name: demoAccountName,
   slug: 'demo',
   role,
-  plan: 'Hosted shared',
+  plan: 'Hosted',
   projects: [
     {
       id: 'site_demo',
@@ -526,6 +536,13 @@ const formatRelativeTime = (date: Date | null) => {
 const buildPixelUrl = (siteId: string) => `https://${hostedEndpointHost}/pixel.js?site=${encodeURIComponent(siteId)}`;
 
 const buildHealthUrl = () => `https://${hostedEndpointHost}/healthz`;
+
+const buildViewerWorkspaceSlug = (userId: string) => `demo-${normalizeSlug(userId).slice(0, 56) || 'account'}`;
+
+const buildScopedEndpointHost = (projectSlug: string, workspaceId: string) => {
+  const workspaceToken = normalizeSlug(workspaceId).slice(-8) || 'account';
+  return `${projectSlug}-${workspaceToken}.sargetrack.app`;
+};
 
 const normalizeSlug = (value: string) =>
   value

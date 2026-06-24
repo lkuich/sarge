@@ -8,17 +8,18 @@ datasource db {
 }
 
 model Workspace {
-  id        String   @id @default(cuid())
-  slug      String   @unique
-  name      String
-  createdAt DateTime @default(now())
-  sites     Site[]
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  ownerUserId String?  @unique
+  createdAt   DateTime @default(now())
+  sites       Site[]
 }
 
 model Site {
   id                 String   @id @default(cuid())
   workspaceId        String
-  slug               String   @unique
+  slug               String
   name               String
   endpointHost       String   @unique
   attributionTtlDays Int      @default(28)
@@ -30,6 +31,8 @@ model Site {
   webhookEndpoints   WebhookEndpoint[]
 
   workspace Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@unique([workspaceId, slug])
 }
 
 model Affiliate {

@@ -15,26 +15,26 @@ const account = await getViewerAccount(userId, env.DATABASE_URL);
 if (!canAdministerAccount(account)) return Astro.redirect("/app");
 
 const currentCapabilities = [
-  "Clerk sign-in and protected dashboard routes",
-  "Live project/event reads from Neon for the demo workspace",
-  "Hosted pixel endpoint and Cloudflare Worker deployment",
+  "Sign-in and protected dashboard routes",
+  "Live project and event reads for the demo workspace",
+  "Hosted pixel and event collection",
   "Sample ecommerce site producing real debug and purchase events",
-  "Admin project creation flow backed by Neon Site records",
+  "Admin project creation flow",
 ];
 
 const missingCapabilities = [
   {
-    area: "Project provisioning",
+    area: "Project setup",
     priority: "P0",
     status: "Partial",
-    gap: "Admins can create Neon-backed projects, but dedicated endpoint DNS and environment-specific provisioning are not automated yet.",
-    next: "Add domain validation and optional custom endpoint provisioning for projects that need dedicated hosts.",
+    gap: "Admins can create projects, but custom tracking domains and environment-specific setup are not automated yet.",
+    next: "Add domain validation and optional custom tracking domains for projects that need them.",
   },
   {
     area: "Account membership",
     priority: "P0",
     status: "Stubbed",
-    gap: "Members and roles are static; Clerk users are not mapped to workspaces or permissions in Neon.",
+    gap: "Members and roles are static; signed-in users are not mapped to workspaces or permissions yet.",
     next: "Add workspace membership tables, admin/user role checks, and invite management.",
   },
   {
@@ -62,15 +62,15 @@ const missingCapabilities = [
     area: "Environment management",
     priority: "P1",
     status: "Missing",
-    gap: "Production and staging are display labels only; there is no environment model, token separation, or endpoint lifecycle.",
-    next: "Model environments under projects and scope events, endpoint hosts, and script config to each environment.",
+    gap: "Production and staging are display labels only; there is no environment model, token separation, or tracking-domain lifecycle.",
+    next: "Model environments under projects and scope events, tracking domains, and snippet config to each environment.",
   },
   {
     area: "Operational health",
     priority: "P1",
     status: "Missing",
-    gap: "The admin surface does not show ingestion errors, route health, database migration state, or Worker secret checks.",
-    next: "Add health probes for Cloudflare route, pixel endpoint, Neon connectivity, and recent ingest failures.",
+    gap: "The admin surface does not show event collection errors, route health, database migration state, or secret checks.",
+    next: "Add health probes for event collection, pixel delivery, database connectivity, and recent ingest failures.",
   },
   {
     area: "Billing and plan controls",
@@ -83,7 +83,7 @@ const missingCapabilities = [
     area: "Audit logs",
     priority: "P2",
     status: "Missing",
-    gap: "Admin actions are not recorded, so provisioning, role changes, and script edits cannot be reviewed later.",
+    gap: "Admin actions are not recorded, so setup changes, role changes, and snippet edits cannot be reviewed later.",
     next: "Add append-only account audit events for all admin mutations.",
   },
 ];
@@ -94,8 +94,8 @@ const buildOrder = [
     detail: "Replace static role/member data with workspace-scoped users, invites, and permission checks.",
   },
   {
-    title: "Automate dedicated endpoints",
-    detail: "Layer domain validation and DNS provisioning on top of the shared endpoint project model.",
+    title: "Automate custom domains",
+    detail: "Add domain validation and tracking-domain setup for projects that need a dedicated domain.",
   },
   {
     title: "Upgrade event inspection",
@@ -103,7 +103,7 @@ const buildOrder = [
   },
   {
     title: "Add health checks",
-    detail: "Show whether endpoint DNS, Worker route, Neon, and script delivery are healthy for each project.",
+    detail: "Show whether event collection, tracking domains, database connectivity, and script delivery are healthy for each project.",
   },
 ];
 
@@ -118,7 +118,7 @@ const statusVariant = (status: string) => {
   account={account}
   title="Admin | Sarge"
   heading="Admin console"
-  description="Provision projects, inspect infrastructure state, and prepare account-level controls."
+  description="Set up projects, inspect account health, and prepare account-level controls."
   active="admin"
   breadcrumbs={[{ label: "Admin" }]}
 >
@@ -126,26 +126,26 @@ const statusVariant = (status: string) => {
     <AlertCircle className="size-4" />
     <AlertTitle>Admin audit</AlertTitle>
     <AlertDescription>
-      This screen now tracks the gap between the current demo portal and the admin functionality needed for a usable hosted product.
+      This screen tracks the gap between the current demo portal and the admin functionality needed for a usable hosted product.
     </AlertDescription>
   </Alert>
 
   <section class="grid gap-4 md:grid-cols-2">
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2"><ServerCog className="size-4" /> Provisioning</CardTitle>
+        <CardTitle className="flex items-center gap-2"><ServerCog className="size-4" /> Project setup</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
         <div class="flex items-center justify-between rounded-md border p-3">
-          <span>Cloudflare Worker route</span>
+          <span>Event collection</span>
           <Badge>live</Badge>
         </div>
         <div class="flex items-center justify-between rounded-md border p-3">
-          <span>Hosted endpoint DNS</span>
+          <span>Hosted tracking domain</span>
           <Badge>live</Badge>
         </div>
         <div class="flex items-center justify-between rounded-md border p-3">
-          <span>Tenant subdomain certificates</span>
+          <span>Custom tracking domains</span>
           <Badge variant="secondary">pending</Badge>
         </div>
       </CardContent>
@@ -162,7 +162,7 @@ const statusVariant = (status: string) => {
         </div>
         <div class="rounded-md border p-3">
           <p class="font-medium">Project</p>
-          <p class="text-muted-foreground">Owns endpoint host, pixel config, and event streams.</p>
+          <p class="text-muted-foreground">Owns tracking domain, snippet settings, and event streams.</p>
         </div>
       </CardContent>
     </Card>

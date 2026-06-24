@@ -103,7 +103,7 @@ const formatEventPayload = (value: Record<string, unknown>) => JSON.stringify(va
   title={`${project.name} | Sarge`}
   eyebrow="Project"
   heading={project.name}
-  description="Inspect endpoint health, copy install snippets, and watch for media/debug events."
+  description="Copy install snippets, check project health, and watch for media/debug events."
   active="projects"
   breadcrumbs={[
     { label: "Projects", href: "/app/projects" },
@@ -115,7 +115,7 @@ const formatEventPayload = (value: Record<string, unknown>) => JSON.stringify(va
       <button class="h-7 rounded-md bg-background px-3 text-sm font-medium shadow-sm" type="button">Production</button>
       <button class="h-7 rounded-md px-3 text-sm font-medium text-muted-foreground" type="button" disabled>Staging</button>
     </div>
-    <p class="text-xs text-muted-foreground">Staging endpoints are planned; production is active for this project.</p>
+    <p class="text-xs text-muted-foreground">Staging is planned; production is active for this project.</p>
   </div>
 
   <section class="grid gap-4 lg:grid-cols-[1fr_340px]">
@@ -140,7 +140,7 @@ const formatEventPayload = (value: Record<string, unknown>) => JSON.stringify(va
               target="_blank"
               rel="noreferrer"
             >
-              <ExternalLink className="size-4" /> Open endpoint
+              <ExternalLink className="size-4" /> Check status
             </a>
             <a
               class="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-sm font-medium whitespace-nowrap transition-all hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
@@ -191,7 +191,7 @@ const formatEventPayload = (value: Record<string, unknown>) => JSON.stringify(va
           {
             project.diagnosticSummary && (
               <div class="rounded-md border bg-muted p-4 text-sm">
-                <p class="text-xs font-medium text-muted-foreground">Cloudflare AI summary</p>
+                <p class="text-xs font-medium text-muted-foreground">AI summary</p>
                 <p class="mt-1 leading-6">{project.diagnosticSummary}</p>
               </div>
             )
@@ -331,20 +331,20 @@ const formatEventPayload = (value: Record<string, unknown>) => JSON.stringify(va
     <aside class="grid gap-4">
       <Card>
         <CardHeader>
-          <CardTitle>Endpoint</CardTitle>
+          <CardTitle>Install details</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           <div>
-            <p class="text-xs text-muted-foreground">Assigned host</p>
+            <p class="text-xs text-muted-foreground">Tracking domain</p>
             <p class="font-mono">{project.endpointHost}</p>
           </div>
           <Separator />
           <div>
-            <p class="text-xs text-muted-foreground">Endpoint health</p>
+            <p class="text-xs text-muted-foreground">Connection status</p>
             <p class="mt-1"><Badge variant={endpointHealth === "healthy" ? "default" : "secondary"}>{endpointHealth}</Badge></p>
           </div>
           <div>
-            <p class="text-xs text-muted-foreground">Script URL</p>
+            <p class="text-xs text-muted-foreground">Install URL</p>
             <p class="break-all font-mono text-xs">{project.pixelUrl}</p>
           </div>
           <div>
@@ -352,7 +352,7 @@ const formatEventPayload = (value: Record<string, unknown>) => JSON.stringify(va
             <p>{project.environment}</p>
           </div>
           <div>
-            <p class="text-xs text-muted-foreground">Pixel version</p>
+            <p class="text-xs text-muted-foreground">Snippet version</p>
             <p>{project.pixelVersion}</p>
           </div>
         </CardContent>

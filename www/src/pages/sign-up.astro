@@ -5,7 +5,7 @@ import SiteLayout from "@/layouts/SiteLayout.astro";
 
 <SiteLayout title="Sign up | Sarge">
   <section class="auth-page">
-    <SignUp />
+    <SignUp forceRedirectUrl="/app" fallbackRedirectUrl="/app" signInUrl="/sign-in" />
   </section>
 </SiteLayout>
 

@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import AppLayout from "@/layouts/AppLayout.astro";
-import { canAdministerAccount, createProject, getViewerAccount, hostedEndpointHost } from "@/lib/sarge-demo";
+import { canAdministerAccount, createProject, getViewerAccount } from "@/lib/sarge-demo";
 
 const { userId } = Astro.locals.auth();
 if (!userId) return Astro.redirect("/sign-in");
@@ -42,7 +42,7 @@ if (Astro.request.method === "POST") {
   title="New project | Sarge"
   eyebrow="Project"
   heading="New project"
-  description="Create a hosted project, generate its script endpoint, and start collecting events through the shared Cloudflare Worker."
+  description="Create a project, get its install snippet, and start collecting events."
   active="projects"
   breadcrumbs={[
     { label: "Projects", href: "/app/projects" },
@@ -71,7 +71,7 @@ if (Astro.request.method === "POST") {
           <div class="grid gap-2">
             <Label htmlFor="slug">Slug</Label>
             <Input id="slug" name="slug" value={values.slug} placeholder="checkout-qa" />
-            <p class="text-xs text-muted-foreground">Used for the portal URL and a reserved endpoint label. Leave blank to generate it from the name.</p>
+            <p class="text-xs text-muted-foreground">Used for the portal URL and install link. Leave blank to generate it from the name.</p>
           </div>
 
           <div class="flex flex-wrap gap-2">
@@ -90,15 +90,15 @@ if (Astro.request.method === "POST") {
     <aside class="grid content-start gap-4">
       <Card>
         <CardHeader>
-          <CardTitle>Provisioning model</CardTitle>
+          <CardTitle>What happens next</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-muted-foreground">
-          <p>New projects are created in Neon immediately and served through the shared hosted endpoint.</p>
-          <div class="rounded-md border bg-card p-3">
-            <p class="text-xs uppercase tracking-wide">Shared script host</p>
-            <p class="mt-1 font-mono text-foreground">{hostedEndpointHost}</p>
+          <p>Your project is ready immediately. Add the install snippet to your site, then watch events arrive in Sarge.</p>
+          <div class="grid gap-2 rounded-md border bg-card p-3">
+            <p class="font-medium text-foreground">Included</p>
+            <p>Hosted pixel, live event stream, scheduled reviews, and webhook destinations.</p>
           </div>
-          <p>Dedicated customer domains can be layered on later without changing the event model.</p>
+          <p>Custom tracking domains can be added later without changing your event setup.</p>
         </CardContent>
       </Card>
     </aside>

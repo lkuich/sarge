@@ -1,6 +1,6 @@
 ---
 import { env } from "cloudflare:workers";
-import { AlertTriangle, Radio } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Code2, FolderPlus, Radio, Send, Webhook } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -13,16 +13,112 @@ if (!userId) return Astro.redirect("/sign-in");
 const account = await getViewerAccount(userId, env.DATABASE_URL);
 const totalEvents = account.projects.reduce((sum, project) => sum + project.eventCount24h, 0);
 const failedEvents = account.projects.reduce((sum, project) => sum + project.failedEvents24h, 0);
+const hasProjects = account.projects.length > 0;
+const hasEvents = totalEvents > 0;
+const hasWebhook = account.projects.some((project) => project.webhookEndpoints.length > 0);
+const shouldShowSetupGuide = !hasProjects || !hasEvents;
+const setupSteps = [
+  {
+    title: "Create your first project",
+    description: "Name the site or store you want Sarge to watch.",
+    href: "/app/projects/new",
+    action: "Create project",
+    complete: hasProjects,
+    icon: FolderPlus,
+  },
+  {
+    title: "Install the tracking script",
+    description: "Copy the project script into your storefront or app.",
+    href: hasProjects ? `/app/projects/${account.projects[0].slug}` : "/app/projects/new",
+    action: "Open install details",
+    complete: hasEvents,
+    icon: Code2,
+  },
+  {
+    title: "Send a test event",
+    description: "Load a page, start checkout, or trigger a purchase in your test flow.",
+    href: hasProjects ? `/app/projects/${account.projects[0].slug}` : "/app/projects/new",
+    action: "View event stream",
+    complete: hasEvents,
+    icon: Send,
+  },
+  {
+    title: "Add webhooks later",
+    description: "Forward verified events to your warehouse, alerting, or attribution stack.",
+    href: hasProjects ? `/app/projects/${account.projects[0].slug}` : "/app/projects/new",
+    action: "Configure webhooks",
+    complete: hasWebhook,
+    icon: Webhook,
+  },
+];
 ---
 
 <AppLayout
   account={account}
   title="Dashboard | Sarge"
   heading="Account overview"
-  description="Projects are grouped under your account. Admins manage access and provisioning; users inspect assigned projects and event flow."
+  description="Projects are grouped under your account. Admins manage access and setup; users inspect assigned projects and event flow."
   active="overview"
   breadcrumbs={[{ label: "Overview" }]}
 >
+  {
+    shouldShowSetupGuide && (
+      <section class="mb-6">
+        <div class="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Setup guide</p>
+            <h2 class="mt-1 text-xl font-semibold tracking-tight">Start tracking your first project</h2>
+          </div>
+          <Badge variant={hasProjects ? "secondary" : "outline"}>{hasProjects ? "Project ready" : "New account"}</Badge>
+        </div>
+        <div class="grid gap-3 md:grid-cols-2">
+          {setupSteps.map((step, index) => {
+            const Icon = step.complete ? CheckCircle2 : step.icon;
+            const isCurrent = !step.complete && setupSteps.slice(0, index).every((previousStep) => previousStep.complete);
+
+            return (
+              <Card className={isCurrent ? "border-primary/70" : ""}>
+                <CardHeader className="pb-3">
+                  <div class="flex items-start gap-3">
+                    <span
+                      class:list={[
+                        "grid size-9 shrink-0 place-items-center rounded-md border",
+                        step.complete
+                          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                          : isCurrent
+                            ? "border-primary/40 bg-primary/10 text-primary"
+                            : "bg-secondary text-muted-foreground",
+                      ]}
+                    >
+                      <Icon className="size-4" />
+                    </span>
+                    <div class="min-w-0">
+                      <CardTitle className="text-base">{step.title}</CardTitle>
+                      <p class="mt-1 text-sm leading-5 text-muted-foreground">{step.description}</p>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <a
+                    class:list={[
+                      "inline-flex h-8 items-center justify-center rounded-md px-2.5 text-sm font-medium transition",
+                      step.complete
+                        ? "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                        : "bg-primary text-primary-foreground hover:bg-primary/80",
+                    ]}
+                    href={step.href}
+                  >
+                    {step.complete ? "Review" : step.action}
+                  </a>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      </section>
+    )
+  }
+
   <section class="grid gap-4 md:grid-cols-2">
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -51,31 +147,43 @@ const failedEvents = account.projects.reduce((sum, project) => sum + project.fai
       <CardTitle>Recent project activity</CardTitle>
     </CardHeader>
     <CardContent>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Project</TableHead>
-            <TableHead>Endpoint</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead className="text-right">24h Events</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {
-            account.projects.map((project) => (
+      {
+        hasProjects ? (
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell>
-                  <a class="font-medium hover:underline" href={`/app/projects/${project.slug}`}>{project.name}</a>
-                  <p class="text-xs text-muted-foreground">{project.lastEventAt}</p>
-                </TableCell>
-                <TableCell className="font-mono text-xs">{project.endpointHost}</TableCell>
-                <TableCell><Badge variant="outline">{project.status}</Badge></TableCell>
-                <TableCell className="text-right">{formatCount(project.eventCount24h)}</TableCell>
+                <TableHead>Project</TableHead>
+                <TableHead>Tracking domain</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">24h Events</TableHead>
               </TableRow>
-            ))
-          }
-        </TableBody>
-      </Table>
+            </TableHeader>
+            <TableBody>
+              {account.projects.map((project) => (
+                <TableRow>
+                  <TableCell>
+                    <a class="font-medium hover:underline" href={`/app/projects/${project.slug}`}>{project.name}</a>
+                    <p class="text-xs text-muted-foreground">{project.lastEventAt}</p>
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">{project.endpointHost}</TableCell>
+                  <TableCell><Badge variant="outline">{project.status}</Badge></TableCell>
+                  <TableCell className="text-right">{formatCount(project.eventCount24h)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        ) : (
+          <div class="flex flex-col items-start gap-3 rounded-md border border-dashed p-5">
+            <div>
+              <p class="font-medium">No projects yet</p>
+              <p class="mt-1 text-sm text-muted-foreground">Create a project to get install details, a tracking domain, and an event stream for this account.</p>
+            </div>
+            <a class="inline-flex h-8 items-center justify-center gap-1.5 rounded-md bg-primary px-2.5 text-sm font-medium text-primary-foreground transition hover:bg-primary/80" href="/app/projects/new">
+              <FolderPlus className="size-4" /> Create project
+            </a>
+          </div>
+        )
+      }
     </CardContent>
   </Card>
 </AppLayout>

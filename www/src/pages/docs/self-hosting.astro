@@ -6,14 +6,14 @@ import SiteLayout from "@/layouts/SiteLayout.astro";
 
 const requirements = [
   "Postgres database",
-  "Sarge API container or Worker/API service",
+  "Sarge API service",
   "HTTPS endpoint for event ingestion",
   "Static hosting or CDN for the pixel bundle",
   "A Workspace and Site record for each tracked property",
 ];
 
 const steps = [
-  "Provision Postgres.",
+  "Set up Postgres.",
   "Run Prisma migrations.",
   "Start the Sarge API container.",
   "Host the pixel bundle from your domain or CDN.",
@@ -22,26 +22,26 @@ const steps = [
   "Send a test event and confirm it lands in the database.",
 ];
 
-const providers = [
+const hostingOptions = [
   {
-    name: "Cloudflare",
-    role: "Best for the pixel edge and hosted endpoint",
-    note: "Use Workers for ingestion, CDN/caching for the pixel, DNS for endpoint hosts, and Workers AI later if you want scheduled diagnostics close to the edge.",
+    name: "Event collection",
+    role: "Keep it close to your users",
+    note: "Choose a runtime that can handle high-volume HTTPS requests, route custom tracking domains, and return the pixel quickly.",
   },
   {
-    name: "Neon",
-    role: "Preferred Postgres",
-    note: "Use Neon for the event store, branching, pooled connections, and a low-maintenance Postgres control plane.",
+    name: "Event storage",
+    role: "Keep it boring and durable",
+    note: "Use managed Postgres or an existing database platform with backups, connection pooling, migrations, and clear retention controls.",
   },
   {
-    name: "Fly.io",
-    role: "Simple API container hosting",
-    note: "Good fit when you want to run the Sarge API as a normal container with regional placement and straightforward custom domains.",
+    name: "Pixel delivery",
+    role: "Make the script fast",
+    note: "Serve the pixel from a stable HTTPS URL with caching, compression, and a rollout path for future snippet versions.",
   },
   {
-    name: "Vercel",
-    role: "Good for portal or docs surfaces",
-    note: "Use Vercel for the frontend/admin app if your team prefers its deploy workflow. Keep high-volume ingestion on Cloudflare or Fly unless you have a specific reason.",
+    name: "Dashboard",
+    role: "Match your team's deploy flow",
+    note: "Host the portal where your team already ships web apps, while keeping event collection and storage sized for traffic.",
   },
 ];
 ---
@@ -55,7 +55,7 @@ const providers = [
     <div class="mt-8 grid gap-8 lg:grid-cols-[1fr_340px]">
       <div>
         <Badge variant="outline">Self-hosted</Badge>
-        <h1 class="mt-4 max-w-3xl text-4xl font-semibold md:text-6xl">Run Sarge in your own infrastructure.</h1>
+        <h1 class="mt-4 max-w-3xl text-4xl font-semibold md:text-6xl">Run Sarge in your own stack.</h1>
         <p class="mt-4 max-w-2xl text-sm leading-6 text-muted-foreground">
           Self-hosted Sarge is for teams that want the event API and database in their own cloud while keeping the same lightweight browser pixel and tracking model.
         </p>
@@ -105,17 +105,17 @@ NODE_ENV="production"`}</code></pre>
         </div>
 
         <div class="mt-6 rounded-lg border bg-card p-5">
-          <h2 class="text-lg font-semibold">Preferred provider suggestions</h2>
+          <h2 class="text-lg font-semibold">Hosting checklist</h2>
           <p class="mt-2 text-sm leading-6 text-muted-foreground">
-            The cleanest self-hosted setup keeps the database boring, the ingest endpoint close to users, and the portal deploy flow familiar.
+            The cleanest self-hosted setup keeps storage boring, event collection close to users, and the portal deploy flow familiar.
           </p>
           <div class="mt-5 grid gap-3 md:grid-cols-2">
             {
-              providers.map((provider) => (
+              hostingOptions.map((option) => (
                 <article class="rounded-md border bg-background p-4">
-                  <p class="font-semibold">{provider.name}</p>
-                  <p class="mt-1 text-xs font-medium uppercase text-muted-foreground">{provider.role}</p>
-                  <p class="mt-3 text-sm leading-6 text-muted-foreground">{provider.note}</p>
+                  <p class="font-semibold">{option.name}</p>
+                  <p class="mt-1 text-xs font-medium uppercase text-muted-foreground">{option.role}</p>
+                  <p class="mt-3 text-sm leading-6 text-muted-foreground">{option.note}</p>
                 </article>
               ))
             }

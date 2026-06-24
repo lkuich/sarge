@@ -16,7 +16,7 @@ const account = await getViewerAccount(userId, env.DATABASE_URL);
   account={account}
   title="Projects | Sarge"
   heading="Projects"
-  description="Each project gets its own install details, endpoint host, event stream, and debugging surface."
+  description="Each project gets its own install details, event stream, and debugging surface."
   active="projects"
   breadcrumbs={[{ label: "Projects" }]}
 >
@@ -58,7 +58,7 @@ const account = await getViewerAccount(userId, env.DATABASE_URL);
                 <p class="font-medium">{formatCount(project.eventCount24h)}</p>
               </div>
               <div>
-                <p class="text-xs text-muted-foreground">Pixel</p>
+                <p class="text-xs text-muted-foreground">Snippet</p>
                 <p class="font-medium">{project.pixelVersion}</p>
               </div>
             </div>

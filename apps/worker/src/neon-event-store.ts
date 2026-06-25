@@ -1,6 +1,8 @@
 import { neon } from "@neondatabase/serverless";
-import type { EventPayload } from "@sarge/core";
+import { buildPlanEventLimitSqlCase, UsageLimitExceededError, type EventPayload } from "@sarge/core";
 import type { EventStore, SiteRecord, StoredDiagnosticRun, StoredEvent } from "./types.js";
+
+const planEventLimitSqlCase = buildPlanEventLimitSqlCase('w."planId"');
 
 export class NeonEventStore implements EventStore {
   private readonly sql: ReturnType<typeof neon>;
@@ -62,7 +64,37 @@ export class NeonEventStore implements EventStore {
     const site = await this.findSiteById(event.siteId);
     if (!site) throw new Error(`Unknown site environment: ${event.siteId}`);
 
-    await this.sql`
+    const rows = (await this.sql`
+      WITH site_environment AS (
+        SELECT se.id, se."siteId", s."workspaceId"
+        FROM "SiteEnvironment" se
+        JOIN "Site" s ON s.id = se."siteId"
+        WHERE se.id = ${site.id}
+        LIMIT 1
+      ),
+      updated_workspace AS (
+        UPDATE "Workspace" w
+        SET
+          "currentPeriodStart" = CASE
+            WHEN w."currentPeriodStart" + INTERVAL '1 month' <= NOW() THEN NOW()
+            ELSE w."currentPeriodStart"
+          END,
+          "currentPeriodEventCount" = CASE
+            WHEN w."currentPeriodStart" + INTERVAL '1 month' <= NOW() THEN 1
+            ELSE w."currentPeriodEventCount" + 1
+          END
+        FROM site_environment se
+        WHERE w.id = se."workspaceId"
+          AND (
+            ${this.sql.unsafe(planEventLimitSqlCase)} IS NULL
+            OR CASE
+              WHEN w."currentPeriodStart" + INTERVAL '1 month' <= NOW() THEN 0
+              ELSE w."currentPeriodEventCount"
+            END < ${this.sql.unsafe(planEventLimitSqlCase)}
+          )
+        RETURNING w.id
+      ),
+      inserted_event AS (
       INSERT INTO "Event" (
         "id",
         "siteId",
@@ -80,10 +112,10 @@ export class NeonEventStore implements EventStore {
         "title",
         "properties"
       )
-      VALUES (
+        SELECT
         ${crypto.randomUUID()},
-        ${site.siteId},
-        ${site.id},
+          se."siteId",
+          se.id,
         ${event.source},
         ${event.name},
         ${new Date(event.occurredAt).toISOString()},
@@ -95,9 +127,23 @@ export class NeonEventStore implements EventStore {
         ${event.context?.url ?? null},
         ${event.context?.referrer ?? null},
         ${event.context?.title ?? null},
-        ${JSON.stringify(event.properties ?? {})}
+        ${JSON.stringify(event.properties ?? {})}::jsonb
+        FROM site_environment se
+        JOIN updated_workspace uw ON true
+        RETURNING id
       )
-    `;
+      SELECT
+        (SELECT COUNT(*)::int FROM site_environment) AS "siteCount",
+        (SELECT COUNT(*)::int FROM updated_workspace) AS "updatedCount",
+        (SELECT COUNT(*)::int FROM inserted_event) AS "insertedCount"
+    `) as UsageInsertResult[];
+    const usageInsert = rows.at(0);
+    if (!usageInsert || usageInsert.siteCount === 0) {
+      throw new Error(`Unknown site environment: ${site.id}`);
+    }
+    if (usageInsert.updatedCount === 0 || usageInsert.insertedCount === 0) {
+      throw new UsageLimitExceededError();
+    }
   }
 
   async listActiveSitesForDiagnostics(limit: number): Promise<SiteRecord[]> {
@@ -216,4 +262,10 @@ interface EventRow {
   url: string | null;
   title: string | null;
   properties: unknown;
+}
+
+interface UsageInsertResult {
+  siteCount: number;
+  updatedCount: number;
+  insertedCount: number;
 }

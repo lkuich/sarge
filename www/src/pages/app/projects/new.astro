@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import AppLayout from "@/layouts/AppLayout.astro";
-import { canAdministerAccount, createProject, getViewerAccount } from "@/lib/sarge-demo";
+import { canAdministerAccount, canCreateProjectForPlan, createProject, getViewerAccount } from "@/lib/sarge-demo";
 
 const { userId } = Astro.locals.auth();
 if (!userId) return Astro.redirect("/sign-in");
@@ -17,6 +17,7 @@ const viewerEmails = currentUser?.emailAddresses.map((email) => email.emailAddre
 const account = await getViewerAccount(userId, env.DATABASE_URL, { viewerEmails });
 if (!account.workspaceSetupComplete) return Astro.redirect("/app");
 if (!canAdministerAccount(account)) return Astro.redirect("/app");
+const canCreateMoreProjects = canCreateProjectForPlan(account);
 
 let error = "";
 let values = {
@@ -30,13 +31,17 @@ if (Astro.request.method === "POST") {
     name: String(formData.get("name") ?? ""),
     slug: String(formData.get("slug") ?? ""),
   };
-  const result = await createProject(userId, env.DATABASE_URL, values);
+  if (!canCreateMoreProjects) {
+    error = "Upgrade to add more projects.";
+  } else {
+    const result = await createProject(userId, env.DATABASE_URL, values);
 
-  if (result.success) {
-    return Astro.redirect(`/app/projects/${result.project.slug}`, 303);
+    if (result.success) {
+      return Astro.redirect(`/app/projects/${result.project.slug}`, 303);
+    }
+
+    error = result.error;
   }
-
-  error = result.error;
 }
 ---
 
@@ -64,6 +69,12 @@ if (Astro.request.method === "POST") {
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
+        {!canCreateMoreProjects && (
+          <Alert className="mb-4">
+            <AlertTitle>Project limit reached</AlertTitle>
+            <AlertDescription>Upgrade to add more projects.</AlertDescription>
+          </Alert>
+        )}
 
         <form method="post" class="grid gap-4">
           <div class="grid gap-2">
@@ -78,7 +89,7 @@ if (Astro.request.method === "POST") {
           </div>
 
           <div class="flex flex-wrap gap-2">
-            <Button type="submit"><Plus className="mr-2 size-4" /> Create project</Button>
+            <Button type="submit" disabled={!canCreateMoreProjects}><Plus className="mr-2 size-4" /> Create project</Button>
             <a
               class="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-sm font-medium whitespace-nowrap transition-all hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
               href="/app"

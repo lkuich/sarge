@@ -6,7 +6,7 @@
   "scripts": {
     "build": "pnpm --filter @sarge/core build && pnpm prisma:generate && pnpm --filter @sarge/pixel build && pnpm --filter @sarge/api build && pnpm --filter @sarge/worker build",
     "dev": "pnpm --filter @sarge/api dev",
-    "test": "pnpm --filter @sarge/core build && pnpm prisma:generate && pnpm --filter @sarge/pixel build && node scripts/embed-pixel.mjs && vitest run",
+    "test": "pnpm --filter @sarge/core build && pnpm prisma:generate && pnpm --filter @sarge/pixel build && node scripts/embed-pixel.mjs && vitest run && pnpm --dir www test",
     "typecheck": "pnpm --filter @sarge/core build && pnpm prisma:generate && pnpm --filter @sarge/pixel build && node scripts/embed-pixel.mjs && pnpm -r typecheck",
     "prisma:generate": "pnpm --filter @sarge/api prisma:generate",
     "prisma:migrate": "pnpm --filter @sarge/api prisma:migrate",

@@ -22,3 +22,14 @@ export {
 } from "./diagnostics.js";
 
 export { sha256Hex, tokenMatchesHash } from "./secrets.js";
+
+export {
+  UsageLimitExceededError,
+  buildPlanEventLimitSqlCase,
+  evaluateWorkspaceEventUsage,
+  getPlanEventLimit,
+  planEventLimits,
+  shouldResetUsagePeriod,
+  type WorkspaceUsageDecision,
+  type WorkspaceUsageState
+} from "./usage-limits.js";

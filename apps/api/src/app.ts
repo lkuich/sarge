@@ -5,7 +5,8 @@ import {
   normalizePostbackEvent,
   normalizeServerEvent,
   parseCompactEventQuery,
-  tokenMatchesHash
+  tokenMatchesHash,
+  UsageLimitExceededError
 } from "@sarge/core";
 import { ZodError } from "zod";
 import type { EventRepository } from "./event-repository.js";
@@ -113,6 +114,11 @@ const readBearerToken = (header: string | undefined) => {
 const handleIngestError = (error: unknown, res: express.Response) => {
   if (error instanceof ZodError || error instanceof SyntaxError) {
     res.status(400).json({ success: false, error: "Invalid event payload" });
+    return;
+  }
+
+  if (error instanceof UsageLimitExceededError) {
+    res.status(429).json({ success: false, error: error.message });
     return;
   }
 

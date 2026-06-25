@@ -1047,35 +1047,6 @@ function resolveTrackedSiteDomain(value: string) {
         </CardContent>
       </Card>
     <aside class="grid content-start gap-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>Install details</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm">
-          <div>
-            <p class="text-xs text-muted-foreground">Tracking domain</p>
-            <p class="font-mono">{displayedTrackingDomain}</p>
-          </div>
-          <Separator />
-          <div>
-            <p class="text-xs text-muted-foreground">Connection status</p>
-            <p class="mt-1"><Badge variant={endpointHealth === "healthy" ? "default" : "secondary"}>{endpointHealth}</Badge></p>
-          </div>
-          <div>
-            <p class="text-xs text-muted-foreground">Install URL</p>
-            <p class="break-all font-mono text-xs">{selectedEnvironment.pixelUrl}</p>
-          </div>
-          <div>
-            <p class="text-xs text-muted-foreground">Environment</p>
-            <p>{selectedEnvironmentLabel}</p>
-          </div>
-          <div>
-            <p class="text-xs text-muted-foreground">Snippet version</p>
-            <p>{selectedEnvironment.pixelVersion}</p>
-          </div>
-        </CardContent>
-      </Card>
-
       <Card data-affiliate-tracking-card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Link2 className="size-4" /> Affiliate tracking</CardTitle>

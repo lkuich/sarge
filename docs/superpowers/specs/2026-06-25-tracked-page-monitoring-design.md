@@ -1,7 +1,7 @@
 # Tracked Page Monitoring Design
 
-**Status:** Approved design direction, pending user review  
-**Date:** 2026-06-25  
+**Status:** Approved design direction, pending user review
+**Date:** 2026-06-25
 **Scope:** Add active health monitoring for pages that previously emitted Sarge tracking events, surfaced as part of the regular scheduled AI review.
 
 ## Goal
@@ -140,7 +140,7 @@ Add source or UI tests for:
 
 ## Implementation Defaults
 
-- Exact per-run URL cap: start with 25 unless implementation shows Worker limits need a lower default.
+- Exact per-run URL cap: start with 10 by default, with an environment override for paid Worker deployments that can handle more checks.
 - Exact timeout: start with 5 seconds.
 - Whether `403` should be considered healthy. First version should treat it as inconclusive and not report it unless the final URL clearly indicates an error page.
 

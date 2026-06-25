@@ -23,7 +23,7 @@ const DEFAULT_SITE_LIMIT = 50;
 const DEFAULT_AI_MODEL = "@cf/meta/llama-3.1-8b-instruct";
 const DEFAULT_PAGE_HEALTH_URL_LIMIT = 25;
 const DEFAULT_PAGE_HEALTH_TIMEOUT_MS = 5_000;
-const DEFAULT_PAGE_HEALTH_RUN_URL_LIMIT = 100;
+const DEFAULT_PAGE_HEALTH_RUN_URL_LIMIT = 10;
 
 export type PageHealthChecker = (
   candidates: TrackedPageCandidate[],

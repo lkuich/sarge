@@ -41,6 +41,22 @@ export interface PlanDefinition {
   features: PlanFeature[];
 }
 
+export type LimitUsagePromptLevel = "warning" | "urgent" | "blocked";
+
+export interface LimitUsagePrompt {
+  level: LimitUsagePromptLevel;
+  percentUsed: number;
+  targetPlanName: string | null;
+  message: string;
+}
+
+export interface LimitUsagePromptInput {
+  used: number;
+  limit: number | null;
+  noun: "events" | "projects";
+  planId: PlanId;
+}
+
 export const planDefinitions: PlanDefinition[] = [
   {
     id: "free",
@@ -154,6 +170,13 @@ export const planDefinitions: PlanDefinition[] = [
 export const getPlanDefinition = (planId: PlanId) =>
   planDefinitions.find((plan) => plan.id === planId) ?? planDefinitions[0];
 
+export const getUpgradeTargetPlan = (planId: PlanId) => {
+  const currentIndex = planDefinitions.findIndex((plan) => plan.id === planId);
+  if (currentIndex === -1) return planDefinitions[1] ?? null;
+
+  return planDefinitions.slice(currentIndex + 1).find((plan) => plan.id !== "free") ?? null;
+};
+
 export const canUseFeature = (planId: PlanId, feature: PlanFeature) =>
   getPlanDefinition(planId).features.includes(feature);
 
@@ -174,4 +197,45 @@ export const buildPlanLimitSqlCase = (limit: keyof PlanLimits, planIdExpression:
             ${branches}
             ELSE ${planDefinitions[0].limits[limit]}
           END`;
+};
+
+export const getLimitUsagePrompt = ({ used, limit, noun, planId }: LimitUsagePromptInput): LimitUsagePrompt | null => {
+  if (limit === null || limit <= 0) return null;
+
+  const percentUsed = Math.min(100, Math.floor((Math.max(0, used) / limit) * 100));
+  if (percentUsed < 80) return null;
+
+  const targetPlanName = getUpgradeTargetPlan(planId)?.name ?? null;
+  const level: LimitUsagePromptLevel = percentUsed >= 100 ? "blocked" : percentUsed >= 95 ? "urgent" : "warning";
+
+  if (level === "blocked") {
+    return {
+      level,
+      percentUsed,
+      targetPlanName,
+      message:
+        noun === "events"
+          ? "Monthly event limit reached. Upgrade to resume event intake."
+          : "Project limit reached. Upgrade to add more projects.",
+    };
+  }
+
+  if (level === "urgent") {
+    return {
+      level,
+      percentUsed,
+      targetPlanName,
+      message:
+        noun === "events"
+          ? "You are close to your event limit. Upgrade before tracking starts rejecting events."
+          : "You are close to your project limit. Upgrade before adding the next project.",
+    };
+  }
+
+  return {
+    level,
+    percentUsed,
+    targetPlanName,
+    message: `You have used ${percentUsed}% of your ${noun} limit.`,
+  };
 };

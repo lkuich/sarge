@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import AppLayout from "@/layouts/AppLayout.astro";
+import { getLimitUsagePrompt } from "@/lib/pricing";
 import { canAdministerAccount, createWorkspace, deleteWorkspace, environmentLabels, formatCount, getAccountUsage, getViewerAccount } from "@/lib/sarge-demo";
 
 const { userId } = Astro.locals.auth();
@@ -46,6 +47,19 @@ if (Astro.request.method === "POST") {
 
 const account = await getViewerAccount(userId, env.DATABASE_URL, { viewerEmails });
 const accountUsage = getAccountUsage(account);
+const eventUsagePrompt = getLimitUsagePrompt({
+  used: accountUsage.eventsThisPeriod,
+  limit: accountUsage.eventLimit,
+  noun: "events",
+  planId: account.planId,
+});
+const projectUsagePrompt = getLimitUsagePrompt({
+  used: accountUsage.projects,
+  limit: accountUsage.projectLimit,
+  noun: "projects",
+  planId: account.planId,
+});
+const usagePrompts = [eventUsagePrompt, projectUsagePrompt].filter((prompt) => prompt !== null);
 const totalEvents = account.projects.reduce((sum, project) => sum + project.eventCount24h, 0);
 const failedEvents = account.projects.reduce((sum, project) => sum + project.failedEvents24h, 0);
 const hasProjects = account.projects.length > 0;
@@ -64,6 +78,8 @@ const failureRate = totalEvents > 0 ? Math.round((failedEvents / totalEvents) * 
 const busiestProject = [...account.projects].sort((left, right) => right.eventCount24h - left.eventCount24h).at(0);
 const projectDistribution = buildProjectDistribution(account.projects);
 const projectActivityScale = Math.max(1, ...account.projects.map((project) => project.eventCount24h));
+const eventUsagePercent = accountUsage.eventLimit === null ? 0 : Math.min(100, Math.round((accountUsage.eventsThisPeriod / accountUsage.eventLimit) * 100));
+const projectUsagePercent = accountUsage.projectLimit === null ? 0 : Math.min(100, Math.round((accountUsage.projects / accountUsage.projectLimit) * 100));
 
 function buildProjectDistribution(projects: typeof account.projects) {
   const total = Math.max(1, projects.length);
@@ -273,13 +289,47 @@ function buildProjectDistribution(projects: typeof account.projects) {
                   {formatCount(accountUsage.projects)} / {account.plan.limits.projects === null ? "Unlimited" : formatCount(account.plan.limits.projects)}
                 </span>
               </div>
+              {
+                accountUsage.projectLimit !== null && (
+                  <div class="h-1.5 rounded-full bg-secondary" aria-hidden="true">
+                    <div class="h-full rounded-full bg-primary" style={`width: ${projectUsagePercent}%`} />
+                  </div>
+                )
+              }
               <div class="flex items-center justify-between gap-3">
                 <span class="text-muted-foreground">Events this month</span>
                 <span class="font-medium">
                   {formatCount(accountUsage.eventsThisPeriod)} / {account.plan.limits.eventsPerMonth === null ? "Unlimited" : formatCount(account.plan.limits.eventsPerMonth)}
                 </span>
               </div>
-              <a class="text-sm font-medium text-primary hover:underline" href="/app/billing">View plans</a>
+              {
+                accountUsage.eventLimit !== null && (
+                  <div class="h-1.5 rounded-full bg-secondary" aria-hidden="true">
+                    <div class="h-full rounded-full bg-primary" style={`width: ${eventUsagePercent}%`} />
+                  </div>
+                )
+              }
+              {
+                usagePrompts.map((prompt) => (
+                  <div
+                    class:list={[
+                      "rounded-md border p-3 text-xs",
+                      prompt.level === "blocked"
+                        ? "border-destructive/40 bg-destructive/10 text-destructive"
+                        : prompt.level === "urgent"
+                          ? "border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-200"
+                          : "bg-muted/40 text-muted-foreground",
+                    ]}
+                    data-usage-limit-prompt={prompt.level}
+                  >
+                    <p class="font-medium">{prompt.message}</p>
+                    {prompt.targetPlanName && <p class="mt-1">Next plan: {prompt.targetPlanName}.</p>}
+                  </div>
+                ))
+              }
+              <a class="text-sm font-medium text-primary hover:underline" href="/app/billing">
+                {usagePrompts.length > 0 ? "Upgrade plan" : "View plans"}
+              </a>
             </CardContent>
           </Card>
         </section>

@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { planEventLimits } from "@sarge/core";
-import { buildPlanLimitSqlCase, canUseFeature, formatPlanLimit, getPlanDefinition, planDefinitions } from "./pricing";
+import {
+  buildPlanLimitSqlCase,
+  canUseFeature,
+  formatPlanLimit,
+  getLimitUsagePrompt,
+  getPlanDefinition,
+  getUpgradeTargetPlan,
+  planDefinitions,
+} from "./pricing";
 
 describe("pricing plan definitions", () => {
   it("defines the public Sarge plan ladder", () => {
@@ -60,5 +68,35 @@ describe("pricing plan definitions", () => {
     expect(buildPlanLimitSqlCase("projects", 'w."planId"')).toContain("WHEN 'free' THEN 1");
     expect(buildPlanLimitSqlCase("webhooks", 'w."planId"')).toContain("WHEN 'starter' THEN 3");
     expect(buildPlanLimitSqlCase("webhooks", 'w."planId"')).toContain("WHEN 'scale' THEN NULL");
+  });
+
+  it("selects the next upgrade target for finite plans", () => {
+    expect(getUpgradeTargetPlan("free")?.id).toBe("starter");
+    expect(getUpgradeTargetPlan("starter")?.id).toBe("growth");
+    expect(getUpgradeTargetPlan("growth")?.id).toBe("scale");
+    expect(getUpgradeTargetPlan("scale")).toBeNull();
+  });
+
+  it("prompts users as they approach finite plan limits", () => {
+    expect(getLimitUsagePrompt({ used: 79, limit: 100, noun: "events", planId: "free" })).toBeNull();
+    expect(getLimitUsagePrompt({ used: 80, limit: 100, noun: "events", planId: "free" })).toMatchObject({
+      level: "warning",
+      percentUsed: 80,
+      targetPlanName: "Starter",
+    });
+    expect(getLimitUsagePrompt({ used: 95, limit: 100, noun: "events", planId: "starter" })).toMatchObject({
+      level: "urgent",
+      percentUsed: 95,
+      targetPlanName: "Growth",
+    });
+    expect(getLimitUsagePrompt({ used: 100, limit: 100, noun: "events", planId: "growth" })).toMatchObject({
+      level: "blocked",
+      percentUsed: 100,
+      targetPlanName: "Scale",
+    });
+  });
+
+  it("does not prompt for unlimited limits", () => {
+    expect(getLimitUsagePrompt({ used: 1_000_000, limit: null, noun: "events", planId: "scale" })).toBeNull();
   });
 });

@@ -120,6 +120,10 @@ describe("app navigation routes", () => {
     expect(demoData.match(/sql\.transaction/g)?.length).toBeGreaterThanOrEqual(4);
     expect(demoData.match(/FOR UPDATE/g)?.length).toBeGreaterThanOrEqual(4);
     expect(demoData).not.toContain("const createProjectEnvironments");
+    expect(overview).toContain("getLimitUsagePrompt");
+    expect(overview).toContain("eventUsagePrompt");
+    expect(overview).toContain("projectUsagePrompt");
+    expect(overview).toContain("data-usage-limit-prompt");
     expect(overview).toContain("data-plan-usage-panel");
     expect(overview).toContain("account.plan.limits.eventsPerMonth");
     expect(newProject).toContain("canCreateProjectForPlan(account)");

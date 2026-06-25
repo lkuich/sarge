@@ -1,7 +1,11 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
-import type { TrackedPageHealthResult } from "@sarge/core";
+import { UsageLimitExceededError, type TrackedPageHealthResult } from "@sarge/core";
 import { createWorkerHandler } from "./index.js";
 import type { EventStore, StoredDiagnosticRun, StoredEvent, WorkerEnv } from "./types.js";
+
+const sourcePath = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 
 const createEnv = (overrides: Partial<WorkerEnv> = {}): WorkerEnv => ({
   DATABASE_URL: "postgresql://example",
@@ -157,6 +161,43 @@ describe("Cloudflare Worker hosted API", () => {
       siteId: "env_123_production",
       name: "Purchase"
     });
+  });
+
+  it("returns 429 when the workspace event limit is reached", async () => {
+    const { store } = createMemoryStore();
+    const limitedStore: EventStore = {
+      ...store,
+      async createEvent() {
+        throw new UsageLimitExceededError();
+      }
+    };
+    const handler = createWorkerHandler({ store: limitedStore });
+
+    const response = await handler.fetch(
+      new Request("https://acme.sarge.events/v2/events", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          siteId: "env_123_production",
+          name: "Purchase",
+          occurredAt: "2026-06-19T12:00:00.000Z",
+          sessionId: "sess_123",
+          userId: "user_123"
+        })
+      }),
+      createEnv()
+    );
+
+    expect(response.status).toBe(429);
+    expect(await response.json()).toEqual({ success: false, error: "Monthly event limit reached" });
+  });
+
+  it("keeps the Neon insert query shaped as INSERT SELECT FROM", () => {
+    const source = readFileSync(sourcePath("./neon-event-store.ts"), "utf8");
+
+    expect(source).toContain('INSERT INTO "Event"');
+    expect(source).toContain('FROM site_environment se');
+    expect(source).not.toMatch(/::jsonb\s*\)\s*FROM site_environment se/);
   });
 
   it("stores shared-host events by site ID", async () => {

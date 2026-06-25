@@ -17,15 +17,12 @@ interface Props {
   eyebrow?: string;
   heading: string;
   description?: string;
-  active: "overview" | "account";
+  active: "overview" | "account" | "billing";
   breadcrumbs?: BreadcrumbItem[];
 }
 
 const { account, title = "Sarge", eyebrow = account.name, heading, description, active, breadcrumbs = [] } = Astro.props;
 
-const navItems: Array<{ id: Props["active"]; href: string; label: string }> = [
-  // { id: "overview", href: "/app", label: "Overview" },
-];
 ---
 
 <!doctype html>
@@ -55,27 +52,23 @@ const navItems: Array<{ id: Props["active"]; href: string; label: string }> = [
               >
                 Docs
               </a>
-              {
-                navItems.map((item) => (
-                  <a
-                    href={item.href}
-                    class:list={[
-                      "rounded-md px-3 py-2 text-sm font-medium transition",
-                      active === item.id
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-                    ]}
-                  >
-                    {item.label}
-                  </a>
-                ))
-              }
+              <a
+                href="/app/billing"
+                class:list={[
+                  "rounded-md px-3 py-2 text-sm font-medium transition",
+                  active === "billing"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                ]}
+              >
+                Billing
+              </a>
             </nav>
           </div>
           <div class="flex min-w-0 items-center gap-3">
             <div class="hidden min-w-0 text-right sm:block">
               <p class="truncate text-sm font-semibold">{account.name}</p>
-              <p class="text-xs text-muted-foreground">{account.role} · {account.plan}</p>
+              <p class="text-xs text-muted-foreground">{account.role} · {account.plan.name}</p>
             </div>
             <ThemeToggle client:only="react" />
             <UserButton />

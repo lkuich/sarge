@@ -2,6 +2,7 @@ import { neon } from '@neondatabase/serverless';
 import { summarizeEventHosts, type EventHostSummary } from './event-hosts';
 import { sendProjectInviteEmail, type ProjectInviteEmailInput } from './project-invite-email';
 import { analyzeProjectEvents, type ProjectDiagnostic } from './project-diagnostics';
+import { buildPlanLimitSqlCase, getPlanDefinition, type PlanDefinition, type PlanId } from './pricing';
 
 export type AccountRole = 'admin' | 'user';
 export type ProjectStatus = 'active' | 'paused' | 'draft';
@@ -91,7 +92,10 @@ export interface SargeAccount {
   name: string;
   slug: string;
   role: AccountRole;
-  plan: string;
+  planId: PlanId;
+  plan: PlanDefinition;
+  billingStatus: 'active' | 'past_due' | 'canceled';
+  currentPeriodEventCount: number;
   workspaceSetupComplete: boolean;
   ownedProjects: SargeProject[];
   sharedProjects: SargeProject[];
@@ -172,6 +176,10 @@ export type RemoveProjectShareResult =
 export const hostedEndpointHost = 'track.sargetrack.app';
 const demoAccountName = 'Demo Account';
 type SqlClient = ReturnType<typeof neon>;
+const projectLimitSqlCase = buildPlanLimitSqlCase('projects', 'w."planId"');
+const webhookLimitSqlCase = buildPlanLimitSqlCase('webhooks', 'w."planId"');
+const serverSecretLimitSqlCase = buildPlanLimitSqlCase('serverSecrets', 'w."planId"');
+const postbackTokenLimitSqlCase = buildPlanLimitSqlCase('postbackTokens', 'w."planId"');
 
 const adminIds = new Set(
   (import.meta.env.SARGE_ADMIN_USER_IDS ?? '')
@@ -204,7 +212,7 @@ const resolveRole = (userId: string): AccountRole => {
 
 const getViewerWorkspace = async (sql: SqlClient, userId: string) => {
   const workspaces = (await sql`
-    SELECT id, slug, name
+    SELECT id, slug, name, "planId", "billingStatus", "currentPeriodEventCount"
     FROM "Workspace"
     WHERE "ownerUserId" = ${userId}
     LIMIT 1
@@ -456,6 +464,7 @@ export const getViewerAccount = async (
     const viewerShareBySite = new Map(sharedProjectShares.map((share) => [share.siteId, share]));
 
     const isPlaceholderWorkspace = workspace?.name === demoAccountName && sites.length === 0;
+    const planId = workspace?.planId ?? 'free';
 
     const ownedProjects = sites.map((site) => {
       const environments = siteEnvironments
@@ -522,7 +531,10 @@ export const getViewerAccount = async (
       name: workspace ? (isPlaceholderWorkspace ? 'Set up workspace' : workspace.name) : 'Shared projects',
       slug: workspace?.slug ?? 'shared',
       role,
-      plan: 'Cloud',
+      planId,
+      plan: getPlanDefinition(planId),
+      billingStatus: workspace?.billingStatus ?? 'active',
+      currentPeriodEventCount: workspace?.currentPeriodEventCount ?? 0,
       workspaceSetupComplete: Boolean(workspace && !isPlaceholderWorkspace),
       ownedProjects,
       sharedProjects,
@@ -691,21 +703,112 @@ export const createProject = async (
 
     const id = `site_${crypto.randomUUID()}`;
     const endpointHost = buildScopedEndpointHost(slug, workspace.id);
-    const rows = (await sql`
+    const productionEnvironmentId = `env_${crypto.randomUUID()}`;
+    const stagingEnvironmentId = `env_${crypto.randomUUID()}`;
+    const developmentEnvironmentId = `env_${crypto.randomUUID()}`;
+    const stagingEndpointHost = buildScopedEnvironmentHost(slug, 'staging', workspace.id);
+    const developmentEndpointHost = buildScopedEnvironmentHost(slug, 'development', workspace.id);
+    const [, rows] = (await sql.transaction((tx) => [
+      tx`
+        SELECT id
+        FROM "Workspace"
+        WHERE id = ${workspace.id}
+          AND "ownerUserId" = ${userId}
+        FOR UPDATE
+      `,
+      tx`
+        WITH workspace_row AS (
+        SELECT id, "planId"
+        FROM "Workspace"
+        WHERE id = ${workspace.id}
+          AND "ownerUserId" = ${userId}
+      ),
+      limited_workspace AS (
+        SELECT w.id
+        FROM workspace_row w
+        WHERE ${tx.unsafe(projectLimitSqlCase)} IS NULL
+          OR (
+            SELECT COUNT(*)::int
+            FROM "Site" existing_site
+            WHERE existing_site."workspaceId" = w.id
+          ) < ${tx.unsafe(projectLimitSqlCase)}
+      ),
+      inserted_site AS (
       INSERT INTO "Site" (id, "workspaceId", slug, name, "endpointHost", "attributionTtlDays", "pixelEnabled")
-      VALUES (${id}, ${workspace.id}, ${slug}, ${name}, ${endpointHost}, 28, true)
+      SELECT ${id}, lw.id, ${slug}, ${name}, ${endpointHost}, 28, true
+      FROM limited_workspace lw
       RETURNING id, slug, name, "endpointHost", "pixelEnabled"
-    `) as Pick<SiteSummaryRow, 'id' | 'slug' | 'name' | 'endpointHost' | 'pixelEnabled'>[];
-    const site = rows[0];
-    const environments = await createProjectEnvironments(sql, site, workspace.id);
+      ),
+      inserted_environments AS (
+        INSERT INTO "SiteEnvironment" (
+          id,
+          "siteId",
+          environment,
+          "endpointHost",
+          "attributionTtlDays",
+          "pixelEnabled"
+        )
+        SELECT environment_row.id, inserted_site.id, environment_row.environment, environment_row."endpointHost", 28, true
+        FROM inserted_site
+        CROSS JOIN (
+          VALUES
+            (${productionEnvironmentId}, 'production', ${endpointHost}),
+            (${stagingEnvironmentId}, 'staging', ${stagingEndpointHost}),
+            (${developmentEnvironmentId}, 'development', ${developmentEndpointHost})
+        ) AS environment_row(id, environment, "endpointHost")
+        RETURNING id, "siteId", environment, "endpointHost", "attributionTtlDays", "pixelEnabled", "serverEventSecretHash", "postbackTokenHash", 0::int AS "eventCount24h", NULL::timestamp AS "lastOccurredAt"
+      )
+      SELECT
+        inserted_site.id AS "siteId",
+        inserted_site.slug,
+        inserted_site.name,
+        inserted_site."endpointHost" AS "siteEndpointHost",
+        inserted_site."pixelEnabled" AS "sitePixelEnabled",
+        inserted_environments.id,
+        inserted_environments."siteId" AS "environmentSiteId",
+        inserted_environments.environment,
+        inserted_environments."endpointHost",
+        inserted_environments."attributionTtlDays",
+        inserted_environments."pixelEnabled",
+        inserted_environments."serverEventSecretHash",
+        inserted_environments."postbackTokenHash",
+        inserted_environments."eventCount24h",
+        inserted_environments."lastOccurredAt"
+      FROM inserted_site
+      JOIN inserted_environments ON inserted_environments."siteId" = inserted_site.id
+      `,
+    ])) as [unknown[], NewProjectEnvironmentRow[]];
+    const siteRow = rows[0];
+    if (!siteRow) return { success: false, error: 'Upgrade to add more projects.' };
+    const environments = rows.map((environment) =>
+      mapProjectEnvironment(
+        {
+          id: environment.id,
+          siteId: environment.environmentSiteId,
+          environment: environment.environment,
+          endpointHost: environment.endpointHost,
+          attributionTtlDays: environment.attributionTtlDays,
+          pixelEnabled: environment.pixelEnabled,
+          serverEventSecretHash: environment.serverEventSecretHash,
+          postbackTokenHash: environment.postbackTokenHash,
+          eventCount24h: environment.eventCount24h,
+          lastOccurredAt: environment.lastOccurredAt,
+        },
+        {
+          recentEvents: [],
+          persistedDiagnostics: null,
+          webhookEndpoints: [],
+        },
+      ),
+    );
     const productionEnvironment = environments.find((environment) => environment.environment === 'production') ?? environments[0];
 
     return {
       success: true,
       project: {
         ...productionEnvironment,
-        slug: site.slug,
-        name: site.name,
+        slug: siteRow.slug,
+        name: siteRow.name,
         ownership: "owned",
         shares: [],
         environments,
@@ -729,6 +832,23 @@ export const canManageProject = (project: SargeProject) =>
   project.ownership === 'owned' || project.shareRole === 'edit';
 
 export const formatCount = (value: number) => new Intl.NumberFormat('en-US').format(value);
+
+export const getAccountUsage = (account: SargeAccount) => ({
+  projects: account.ownedProjects.length,
+  eventsThisPeriod: account.currentPeriodEventCount,
+  projectLimit: account.plan.limits.projects,
+  eventLimit: account.plan.limits.eventsPerMonth,
+});
+
+export const canCreateProjectForPlan = (account: SargeAccount) => {
+  const limit = account.plan.limits.projects;
+  return limit === null || account.ownedProjects.length < limit;
+};
+
+export const isEventUsageOverLimit = (account: SargeAccount) => {
+  const limit = account.plan.limits.eventsPerMonth;
+  return limit !== null && account.currentPeriodEventCount >= limit;
+};
 
 export const shareProject = async (
   userId: string,
@@ -888,7 +1008,37 @@ export const createWebhookEndpoint = async (
     if (!siteEnvironment) return { success: false, error: 'Project environment was not found.' };
 
     const signingSecret = createSigningSecret();
-    const insertedRows = (await sql`
+    const [, insertedRows] = (await sql.transaction((tx) => [
+      tx`
+        SELECT id
+        FROM "Workspace"
+        WHERE id = ${workspace.id}
+          AND "ownerUserId" = ${userId}
+        FOR UPDATE
+      `,
+      tx`
+        WITH workspace_row AS (
+        SELECT id, "planId"
+        FROM "Workspace"
+        WHERE id = ${workspace.id}
+          AND "ownerUserId" = ${userId}
+      ),
+      limited_site_environment AS (
+        SELECT se.id, se."siteId"
+        FROM "SiteEnvironment" se
+        JOIN "Site" s ON s.id = se."siteId"
+        JOIN workspace_row w ON w.id = s."workspaceId"
+        WHERE se.id = ${siteEnvironment.id}
+          AND (
+            ${tx.unsafe(webhookLimitSqlCase)} IS NULL
+            OR (
+              SELECT COUNT(*)::int
+              FROM "WebhookEndpoint" wh
+              JOIN "Site" webhook_site ON webhook_site.id = wh."siteId"
+              WHERE webhook_site."workspaceId" = w.id
+            ) < ${tx.unsafe(webhookLimitSqlCase)}
+          )
+      )
       INSERT INTO "WebhookEndpoint" (
         id,
         "siteId",
@@ -899,20 +1049,21 @@ export const createWebhookEndpoint = async (
         "signingSecret",
         "isActive"
       )
-      VALUES (
+      SELECT
         ${crypto.randomUUID()},
-        ${siteEnvironment.siteId},
-        ${siteEnvironment.id},
+        lse."siteId",
+        lse.id,
         ${name},
         ${url},
         ${JSON.stringify(eventNames)},
         ${signingSecret},
         true
-      )
+      FROM limited_site_environment lse
       RETURNING id, name, url, "eventNames", "isActive", "createdAt"
-    `) as Omit<WebhookEndpointRow, 'siteId' | 'siteEnvironmentId'>[];
+      `,
+    ])) as [unknown[], Omit<WebhookEndpointRow, 'siteId' | 'siteEnvironmentId'>[]];
     const webhook = insertedRows.at(0);
-    if (!webhook) return { success: false, error: 'Webhook could not be created.' };
+    if (!webhook) return { success: false, error: 'Upgrade to add more webhooks.' };
 
     return {
       success: true,
@@ -944,24 +1095,60 @@ export const createEnvironmentCredential = async (
     if (!workspace) return { success: false, error: 'Account workspace was not found.' };
 
     const siteEnvironments = (await sql`
-      SELECT se.id
+      SELECT se.id, se."serverEventSecretHash", se."postbackTokenHash"
       FROM "SiteEnvironment" se
       JOIN "Site" s ON s.id = se."siteId"
       WHERE se.id = ${siteEnvironmentId}
         AND s."workspaceId" = ${workspace.id}
       LIMIT 1
-    `) as { id: string }[];
+    `) as { id: string; serverEventSecretHash: string | null; postbackTokenHash: string | null }[];
     if (!siteEnvironments.at(0)) return { success: false, error: 'Project environment was not found.' };
 
     const token = createCredentialToken(kind);
     const tokenHash = await sha256Hex(token);
 
     if (kind === 'server') {
-      await sql`
+      const [, rows] = (await sql.transaction((tx) => [
+        tx`
+          SELECT id
+          FROM "Workspace"
+          WHERE id = ${workspace.id}
+            AND "ownerUserId" = ${userId}
+          FOR UPDATE
+        `,
+        tx`
+          WITH workspace_row AS (
+          SELECT id, "planId"
+          FROM "Workspace"
+          WHERE id = ${workspace.id}
+            AND "ownerUserId" = ${userId}
+        ),
+        target_environment AS (
+          SELECT se.id, se."serverEventSecretHash"
+          FROM "SiteEnvironment" se
+          JOIN "Site" s ON s.id = se."siteId"
+          JOIN workspace_row w ON w.id = s."workspaceId"
+          WHERE se.id = ${siteEnvironmentId}
+        )
         UPDATE "SiteEnvironment"
         SET "serverEventSecretHash" = ${tokenHash}
-        WHERE id = ${siteEnvironmentId}
-      `;
+        FROM target_environment te, workspace_row w
+        WHERE "SiteEnvironment".id = te.id
+          AND (
+            te."serverEventSecretHash" IS NOT NULL
+            OR ${tx.unsafe(serverSecretLimitSqlCase)} IS NULL
+            OR (
+              SELECT COUNT(*)::int
+              FROM "SiteEnvironment" existing_environment
+              JOIN "Site" existing_site ON existing_site.id = existing_environment."siteId"
+              WHERE existing_site."workspaceId" = w.id
+                AND existing_environment."serverEventSecretHash" IS NOT NULL
+            ) < ${tx.unsafe(serverSecretLimitSqlCase)}
+          )
+        RETURNING "SiteEnvironment".id
+        `,
+      ])) as [unknown[], { id: string }[]];
+      if (!rows.at(0)) return { success: false, error: 'Upgrade to add more server event secrets.' };
 
       return {
         success: true,
@@ -971,11 +1158,47 @@ export const createEnvironmentCredential = async (
       };
     }
 
-    await sql`
+    const [, rows] = (await sql.transaction((tx) => [
+      tx`
+        SELECT id
+        FROM "Workspace"
+        WHERE id = ${workspace.id}
+          AND "ownerUserId" = ${userId}
+        FOR UPDATE
+      `,
+      tx`
+        WITH workspace_row AS (
+        SELECT id, "planId"
+        FROM "Workspace"
+        WHERE id = ${workspace.id}
+          AND "ownerUserId" = ${userId}
+      ),
+      target_environment AS (
+        SELECT se.id, se."postbackTokenHash"
+        FROM "SiteEnvironment" se
+        JOIN "Site" s ON s.id = se."siteId"
+        JOIN workspace_row w ON w.id = s."workspaceId"
+        WHERE se.id = ${siteEnvironmentId}
+      )
       UPDATE "SiteEnvironment"
       SET "postbackTokenHash" = ${tokenHash}
-      WHERE id = ${siteEnvironmentId}
-    `;
+      FROM target_environment te, workspace_row w
+      WHERE "SiteEnvironment".id = te.id
+        AND (
+          te."postbackTokenHash" IS NOT NULL
+          OR ${tx.unsafe(postbackTokenLimitSqlCase)} IS NULL
+          OR (
+            SELECT COUNT(*)::int
+            FROM "SiteEnvironment" existing_environment
+            JOIN "Site" existing_site ON existing_site.id = existing_environment."siteId"
+            WHERE existing_site."workspaceId" = w.id
+              AND existing_environment."postbackTokenHash" IS NOT NULL
+          ) < ${tx.unsafe(postbackTokenLimitSqlCase)}
+        )
+      RETURNING "SiteEnvironment".id
+      `,
+    ])) as [unknown[], { id: string }[]];
+    if (!rows.at(0)) return { success: false, error: 'Upgrade to add more postback tokens.' };
 
     return {
       success: true,
@@ -1019,7 +1242,10 @@ const getFallbackAccount = (role: AccountRole): SargeAccount => {
     name: demoAccountName,
     slug: 'demo',
     role,
-    plan: 'Cloud',
+    planId: 'free',
+    plan: getPlanDefinition('free'),
+    billingStatus: 'active',
+    currentPeriodEventCount: 184,
     workspaceSetupComplete: true,
     ownedProjects,
     sharedProjects: [],
@@ -1033,7 +1259,10 @@ const getSetupAccount = (role: AccountRole): SargeAccount => ({
   name: 'Set up workspace',
   slug: 'setup',
   role,
-  plan: 'Setup',
+  planId: 'free',
+  plan: getPlanDefinition('free'),
+  billingStatus: 'active',
+  currentPeriodEventCount: 0,
   workspaceSetupComplete: false,
   ownedProjects: [],
   sharedProjects: [],
@@ -1112,49 +1341,6 @@ const mapProjectEnvironment = (
   diagnosticRunAt: environment.environment === 'production' ? data.latestRun?.createdAt.toISOString() ?? null : null,
   webhookEndpoints: data.webhookEndpoints,
 });
-
-const createProjectEnvironments = async (
-  sql: SqlClient,
-  site: Pick<SiteSummaryRow, 'id' | 'slug' | 'endpointHost' | 'pixelEnabled'>,
-  workspaceId: string,
-): Promise<SargeProjectEnvironment[]> => {
-  const environmentRows = await Promise.all(
-    projectEnvironmentOptions.map(async (environment) => {
-      const id = `env_${crypto.randomUUID()}`;
-      const endpointHost =
-        environment === 'production' ? site.endpointHost : buildScopedEnvironmentHost(site.slug, environment, workspaceId);
-      const rows = (await sql`
-        INSERT INTO "SiteEnvironment" (
-          id,
-          "siteId",
-          environment,
-          "endpointHost",
-          "attributionTtlDays",
-          "pixelEnabled"
-        )
-        VALUES (
-          ${id},
-          ${site.id},
-          ${environment},
-          ${endpointHost},
-          28,
-          true
-        )
-        RETURNING id, "siteId", environment, "endpointHost", "attributionTtlDays", "pixelEnabled", "serverEventSecretHash", "postbackTokenHash", 0::int AS "eventCount24h", NULL::timestamp AS "lastOccurredAt"
-      `) as SiteEnvironmentSummaryRow[];
-
-      return rows[0];
-    }),
-  );
-
-  return environmentRows.map((environment) =>
-    mapProjectEnvironment(environment, {
-      recentEvents: [],
-      persistedDiagnostics: null,
-      webhookEndpoints: [],
-    }),
-  );
-};
 
 const buildFallbackProject = (input: {
   id: string;
@@ -1300,6 +1486,9 @@ interface WorkspaceRow {
   id: string;
   slug: string;
   name: string;
+  planId: PlanId;
+  billingStatus: 'active' | 'past_due' | 'canceled';
+  currentPeriodEventCount: number;
 }
 
 interface SiteSummaryRow {
@@ -1317,6 +1506,24 @@ interface SharedSiteSummaryRow extends SiteSummaryRow {
 interface SiteEnvironmentSummaryRow {
   id: string;
   siteId: string;
+  environment: ProjectEnvironment;
+  endpointHost: string;
+  attributionTtlDays: number;
+  pixelEnabled: boolean;
+  serverEventSecretHash: string | null;
+  postbackTokenHash: string | null;
+  eventCount24h: number;
+  lastOccurredAt: Date | null;
+}
+
+interface NewProjectEnvironmentRow {
+  siteId: string;
+  slug: string;
+  name: string;
+  siteEndpointHost: string;
+  sitePixelEnabled: boolean;
+  id: string;
+  environmentSiteId: string;
   environment: ProjectEnvironment;
   endpointHost: string;
   attributionTtlDays: number;

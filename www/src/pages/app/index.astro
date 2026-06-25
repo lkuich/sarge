@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import AppLayout from "@/layouts/AppLayout.astro";
-import { canAdministerAccount, createWorkspace, deleteWorkspace, environmentLabels, formatCount, getViewerAccount } from "@/lib/sarge-demo";
+import { canAdministerAccount, createWorkspace, deleteWorkspace, environmentLabels, formatCount, getAccountUsage, getViewerAccount } from "@/lib/sarge-demo";
 
 const { userId } = Astro.locals.auth();
 if (!userId) return Astro.redirect("/sign-in");
@@ -45,6 +45,7 @@ if (Astro.request.method === "POST") {
 }
 
 const account = await getViewerAccount(userId, env.DATABASE_URL, { viewerEmails });
+const accountUsage = getAccountUsage(account);
 const totalEvents = account.projects.reduce((sum, project) => sum + project.eventCount24h, 0);
 const failedEvents = account.projects.reduce((sum, project) => sum + project.failedEvents24h, 0);
 const hasProjects = account.projects.length > 0;
@@ -227,7 +228,7 @@ function buildProjectDistribution(projects: typeof account.projects) {
   {
     (!needsWorkspaceSetup || hasSharedProjects) && (
       <>
-        <section class="grid gap-4 md:grid-cols-3" data-overview-metrics>
+        <section class="grid gap-4 md:grid-cols-2 lg:grid-cols-4" data-overview-metrics>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Coverage</CardTitle>
@@ -259,6 +260,26 @@ function buildProjectDistribution(projects: typeof account.projects) {
             <CardContent>
               <p class="text-3xl font-semibold">{attentionItems}</p>
               <p class="text-xs text-muted-foreground">{failedEvents} failed · {failureRate}% failure rate</p>
+            </CardContent>
+          </Card>
+          <Card data-plan-usage-panel>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Plan usage</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 text-sm">
+              <div class="flex items-center justify-between gap-3">
+                <span class="text-muted-foreground">Projects</span>
+                <span class="font-medium">
+                  {formatCount(accountUsage.projects)} / {account.plan.limits.projects === null ? "Unlimited" : formatCount(account.plan.limits.projects)}
+                </span>
+              </div>
+              <div class="flex items-center justify-between gap-3">
+                <span class="text-muted-foreground">Events this month</span>
+                <span class="font-medium">
+                  {formatCount(accountUsage.eventsThisPeriod)} / {account.plan.limits.eventsPerMonth === null ? "Unlimited" : formatCount(account.plan.limits.eventsPerMonth)}
+                </span>
+              </div>
+              <a class="text-sm font-medium text-primary hover:underline" href="/app/billing">View plans</a>
             </CardContent>
           </Card>
         </section>

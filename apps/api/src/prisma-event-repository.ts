@@ -1,7 +1,9 @@
-import type { Prisma } from "@prisma/client";
-import type { EventPayload } from "@sarge/core";
+import { buildPlanEventLimitSqlCase, UsageLimitExceededError, type EventPayload } from "@sarge/core";
+import { Prisma } from "@prisma/client";
 import type { EventRepository, IngestSite } from "./event-repository.js";
 import { prisma } from "./prisma.js";
+
+const planEventLimitSqlCase = Prisma.raw(buildPlanEventLimitSqlCase('w."planId"'));
 
 export class PrismaEventRepository implements EventRepository {
   async findSiteById(siteId: string): Promise<IngestSite | null> {
@@ -33,28 +35,92 @@ export class PrismaEventRepository implements EventRepository {
   }
 
   async createEvent(event: EventPayload): Promise<void> {
-    const site = await this.findSiteById(event.siteId);
-    if (!site) throw new Error(`Unknown site environment: ${event.siteId}`);
-
-    await prisma.event.create({
-      data: {
-        siteId: site.siteId,
-        siteEnvironmentId: site.id,
-        source: event.source,
-        name: event.name,
-        occurredAt: new Date(event.occurredAt),
-        sessionId: event.sessionId,
-        userId: event.userId,
-        ref: event.attribution?.ref,
-        affiliate: event.attribution?.aff,
-        attributionExpiresAt: event.attribution?.expiresAt
-          ? new Date(event.attribution.expiresAt)
-          : undefined,
-        url: event.context?.url,
-        referrer: event.context?.referrer,
-        title: event.context?.title,
-        properties: (event.properties ?? {}) as Prisma.InputJsonValue
-      }
-    });
+    const result = await prisma.$queryRaw<UsageInsertResult[]>`
+      WITH site_environment AS (
+        SELECT se.id, se."siteId", s."workspaceId"
+        FROM "SiteEnvironment" se
+        JOIN "Site" s ON s.id = se."siteId"
+        WHERE se.id = ${event.siteId}
+          OR (se."siteId" = ${event.siteId} AND se.environment = 'production')
+        LIMIT 1
+      ),
+      updated_workspace AS (
+        UPDATE "Workspace" w
+        SET
+          "currentPeriodStart" = CASE
+            WHEN w."currentPeriodStart" + INTERVAL '1 month' <= NOW() THEN NOW()
+            ELSE w."currentPeriodStart"
+          END,
+          "currentPeriodEventCount" = CASE
+            WHEN w."currentPeriodStart" + INTERVAL '1 month' <= NOW() THEN 1
+            ELSE w."currentPeriodEventCount" + 1
+          END
+        FROM site_environment se
+        WHERE w.id = se."workspaceId"
+          AND (
+            ${planEventLimitSqlCase} IS NULL
+            OR CASE
+              WHEN w."currentPeriodStart" + INTERVAL '1 month' <= NOW() THEN 0
+              ELSE w."currentPeriodEventCount"
+            END < ${planEventLimitSqlCase}
+          )
+        RETURNING w.id
+      ),
+      inserted_event AS (
+        INSERT INTO "Event" (
+          id,
+          "siteId",
+          "siteEnvironmentId",
+          source,
+          name,
+          "occurredAt",
+          "sessionId",
+          "userId",
+          ref,
+          affiliate,
+          "attributionExpiresAt",
+          url,
+          referrer,
+          title,
+          properties
+        )
+        SELECT
+          ${crypto.randomUUID()},
+          se."siteId",
+          se.id,
+          ${event.source},
+          ${event.name},
+          ${new Date(event.occurredAt)},
+          ${event.sessionId},
+          ${event.userId},
+          ${event.attribution?.ref ?? null},
+          ${event.attribution?.aff ?? null},
+          ${event.attribution?.expiresAt ? new Date(event.attribution.expiresAt) : null},
+          ${event.context?.url ?? null},
+          ${event.context?.referrer ?? null},
+          ${event.context?.title ?? null},
+          ${JSON.stringify(event.properties ?? {})}::jsonb
+        FROM site_environment se
+        JOIN updated_workspace uw ON true
+        RETURNING id
+      )
+      SELECT
+        (SELECT COUNT(*)::int FROM site_environment) AS "siteCount",
+        (SELECT COUNT(*)::int FROM updated_workspace) AS "updatedCount",
+        (SELECT COUNT(*)::int FROM inserted_event) AS "insertedCount"
+    `;
+    const usageInsert = result.at(0);
+    if (!usageInsert || usageInsert.siteCount === 0) {
+      throw new Error(`Unknown site environment: ${event.siteId}`);
+    }
+    if (usageInsert.updatedCount === 0 || usageInsert.insertedCount === 0) {
+      throw new UsageLimitExceededError();
+    }
   }
+}
+
+interface UsageInsertResult {
+  siteCount: number;
+  updatedCount: number;
+  insertedCount: number;
 }

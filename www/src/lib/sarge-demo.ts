@@ -2,7 +2,7 @@ import { neon } from '@neondatabase/serverless';
 import { summarizeEventHosts, type EventHostSummary } from './event-hosts';
 import { sendProjectAccessNotificationEmail, sendProjectInviteEmail, type ProjectInviteEmailInput } from './project-invite-email';
 import { analyzeProjectEvents, type ProjectDiagnostic } from './project-diagnostics';
-import { buildPlanLimitSqlCase, getPlanDefinition, type PlanDefinition, type PlanId } from './pricing';
+import { buildPlanLimitSqlCase, buildPlanRetentionFilterSql, getPlanDefinition, type PlanDefinition, type PlanId } from './pricing';
 
 export type AccountRole = 'admin' | 'user';
 export type ProjectStatus = 'active' | 'paused' | 'draft';
@@ -183,6 +183,7 @@ const projectLimitSqlCase = buildPlanLimitSqlCase('projects', 'w."planId"');
 const webhookLimitSqlCase = buildPlanLimitSqlCase('webhooks', 'w."planId"');
 const serverSecretLimitSqlCase = buildPlanLimitSqlCase('serverSecrets', 'w."planId"');
 const postbackTokenLimitSqlCase = buildPlanLimitSqlCase('postbackTokens', 'w."planId"');
+const eventRetentionFilterSql = buildPlanRetentionFilterSql('e."occurredAt"', 'w."planId"');
 
 const adminIds = new Set(
   (import.meta.env.SARGE_ADMIN_USER_IDS ?? '')
@@ -351,7 +352,9 @@ export const getViewerAccount = async (
         MAX(e."occurredAt") AS "lastOccurredAt"
       FROM "SiteEnvironment" se
       JOIN "Site" s ON s.id = se."siteId"
+      JOIN "Workspace" w ON w.id = s."workspaceId"
       LEFT JOIN "Event" e ON e."siteEnvironmentId" = se.id
+        AND ${sql.unsafe(eventRetentionFilterSql)}
       WHERE s.id = ANY(${allSiteIds})
       GROUP BY se.id
       ORDER BY se."siteId" ASC, se."createdAt" ASC
@@ -375,7 +378,9 @@ export const getViewerAccount = async (
         e.properties
       FROM "Event" e
       JOIN "Site" s ON s.id = e."siteId"
+      JOIN "Workspace" w ON w.id = s."workspaceId"
       WHERE s.id = ANY(${allSiteIds})
+        AND ${sql.unsafe(eventRetentionFilterSql)}
       ORDER BY e."occurredAt" DESC
       LIMIT 200
     `) as EventRow[]) : [];
@@ -574,22 +579,25 @@ export const getPublicEventStream = async (
 
     const events = (await sql`
       SELECT
-        id,
-        "siteId",
-        name,
-        "occurredAt",
-        "receivedAt",
-        "sessionId",
-        "userId",
-        url,
-        referrer,
-        ref,
-        affiliate,
-        title,
-        properties
-      FROM "Event"
-      WHERE "siteEnvironmentId" = ${site.id}
-      ORDER BY "occurredAt" DESC
+        e.id,
+        e."siteId",
+        e.name,
+        e."occurredAt",
+        e."receivedAt",
+        e."sessionId",
+        e."userId",
+        e.url,
+        e.referrer,
+        e.ref,
+        e.affiliate,
+        e.title,
+        e.properties
+      FROM "Event" e
+      JOIN "Site" s ON s.id = e."siteId"
+      JOIN "Workspace" w ON w.id = s."workspaceId"
+      WHERE e."siteEnvironmentId" = ${site.id}
+        AND ${sql.unsafe(eventRetentionFilterSql)}
+      ORDER BY e."occurredAt" DESC
       LIMIT 30
     `) as EventRow[];
 
@@ -1305,20 +1313,38 @@ const getSetupAccount = (role: AccountRole): SargeAccount => ({
   members: [],
 });
 
-const mapEvent = (event: EventRow): SargeEvent => ({
-  id: event.id,
-  name: event.name,
-  occurredAt: event.occurredAt.toISOString(),
-  receivedAt: event.receivedAt.toISOString(),
-  sessionId: event.sessionId,
-  userId: event.userId,
-  url: event.url ?? undefined,
-  referrer: event.referrer ?? undefined,
-  ref: event.ref ?? undefined,
-  affiliate: event.affiliate ?? undefined,
-  title: event.title ?? undefined,
-  properties: (event.properties ?? {}) as Record<string, unknown>,
-});
+const mapEvent = (event: EventRow): SargeEvent => {
+  const attribution = readSargeAttributionFromUrl(event.url);
+
+  return {
+    id: event.id,
+    name: event.name,
+    occurredAt: event.occurredAt.toISOString(),
+    receivedAt: event.receivedAt.toISOString(),
+    sessionId: event.sessionId,
+    userId: event.userId,
+    url: event.url ?? undefined,
+    referrer: event.referrer ?? undefined,
+    ref: event.ref ?? attribution.ref,
+    affiliate: event.affiliate ?? attribution.affiliate,
+    title: event.title ?? undefined,
+    properties: (event.properties ?? {}) as Record<string, unknown>,
+  };
+};
+
+const readSargeAttributionFromUrl = (value: string | null) => {
+  if (!value) return {};
+
+  try {
+    const params = new URL(value).searchParams;
+    return {
+      ref: params.get("sarge_ref") ?? undefined,
+      affiliate: params.get("sarge_aff") ?? undefined,
+    };
+  } catch {
+    return {};
+  }
+};
 
 const mapDiagnosticFinding = (finding: DiagnosticFindingRow): ProjectDiagnostic => ({
   id: finding.ruleId,

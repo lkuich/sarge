@@ -218,6 +218,7 @@ const snippet = `<script>
 <script async src="${selectedEnvironment.pixelUrl}"></script>`;
 const publicVerifyUrl = `/verify/${selectedEnvironment.id}`;
 const publicVerifyAbsoluteUrl = `https://sargetrack.app${publicVerifyUrl}`;
+const debugStreamEndpoint = `/api/project-events/${selectedEnvironment.id}`;
 const llmInstallPrompt = `Add Sarge tracking for ${project.name} ${selectedEnvironmentLabel}.
 
 Read these docs first:
@@ -965,11 +966,16 @@ function resolveTrackedSiteDomain(value: string) {
         </Card>
       </div>
 
-      <Card>
+      <Card data-live-debug-stream data-events-endpoint={debugStreamEndpoint}>
         <CardHeader>
-          <CardTitle>Debug stream</CardTitle>
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <CardTitle>Debug stream</CardTitle>
+            <span class="inline-flex items-center gap-1.5 text-xs text-muted-foreground" data-debug-stream-status>
+              <Radio className="size-3.5 text-primary" /> Live
+            </span>
+          </div>
         </CardHeader>
-        <CardContent className="grid gap-3">
+        <CardContent className="grid gap-3" data-debug-events-list>
           {
             recentEvents.length > 0 ? (
               recentEvents.map((event) => (
@@ -1250,17 +1256,16 @@ function resolveTrackedSiteDomain(value: string) {
       });
     });
 
-    document.querySelectorAll<HTMLButtonElement>("[data-open-event]").forEach((button) => {
-      button.addEventListener("click", () => {
-        const dialog = document.getElementById(button.dataset.eventDialog ?? "");
-        if (dialog instanceof HTMLDialogElement) dialog.showModal();
-      });
-    });
+    document.addEventListener("click", (event) => {
+      const openButton = (event.target as Element | null)?.closest<HTMLButtonElement>("[data-open-event]");
+      if (openButton) {
+        const dialog = document.getElementById(openButton.dataset.eventDialog ?? "");
+        if (dialog instanceof HTMLDialogElement && !dialog.open) dialog.showModal();
+        return;
+      }
 
-    document.querySelectorAll<HTMLButtonElement>("[data-close-event]").forEach((button) => {
-      button.addEventListener("click", () => {
-        button.closest("dialog")?.close();
-      });
+      const closeButton = (event.target as Element | null)?.closest<HTMLButtonElement>("[data-close-event]");
+      if (closeButton) closeButton.closest("dialog")?.close();
     });
 
     document.querySelectorAll<HTMLButtonElement>("[data-copy-prompt]").forEach((button) => {
@@ -1357,6 +1362,153 @@ function resolveTrackedSiteDomain(value: string) {
         const button = event.currentTarget;
         await copyTextWithLabel(code.textContent ?? "", button.querySelector("[data-copy-impersonation-code-label]"), "Copy code");
       });
+    });
+
+    type LiveDebugEvent = {
+      id: string;
+      name: string;
+      occurredAt: string;
+      receivedAt: string;
+      sessionId: string;
+      userId: string;
+      url?: string;
+      ref?: string;
+      affiliate?: string;
+      title?: string;
+      properties: Record<string, unknown>;
+    };
+
+    const isWatchdogDebugEvent = (name: string) =>
+      name === "meta.pixel.fire" || name === "google.tag.fire" || name === "data_layer.push";
+    const isTestDebugEvent = (event: LiveDebugEvent) => event.properties?.sarge_test === true;
+    const formatDebugEventTime = (value: string) =>
+      new Intl.DateTimeFormat("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        second: "2-digit",
+      }).format(new Date(value));
+    const escapeDebugHtml = (value: unknown) =>
+      String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    const renderDebugEvents = (events: LiveDebugEvent[]) => {
+      if (events.length === 0) {
+        return `<div class="rounded-md border border-dashed p-6 text-sm text-muted-foreground">
+          No live events yet. Open the sample shop and click around to populate this stream.
+        </div>`;
+      }
+
+      return events
+        .map((event) => {
+          const dialogId = `event-${event.id}`;
+          const pageLabel = event.title ?? event.url ?? "Untitled event";
+          const properties = JSON.stringify(event.properties ?? {}, null, 2);
+          const iconClass = isWatchdogDebugEvent(event.name) ? "text-cyan-400" : "text-primary";
+
+          return `<div class="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-md border p-3">
+              <span class="size-4 font-mono text-xs ${iconClass}">[]</span>
+              <div class="min-w-0">
+                <div class="flex min-w-0 flex-wrap items-center gap-2">
+                  <p class="font-mono text-sm">${escapeDebugHtml(event.name)}</p>
+                  ${isTestDebugEvent(event) ? `<span class="inline-flex items-center justify-center rounded-md border px-2 py-0.5 text-xs font-medium">Test</span>` : ""}
+                </div>
+                <p class="truncate text-xs text-muted-foreground">
+                  ${escapeDebugHtml(pageLabel)} · ${escapeDebugHtml(formatDebugEventTime(event.occurredAt))}
+                </p>
+              </div>
+              <button
+                class="inline-flex h-7 items-center justify-center gap-1 rounded-md border px-2 text-xs font-medium hover:bg-muted"
+                type="button"
+                data-open-event
+                data-event-dialog="${escapeDebugHtml(dialogId)}"
+              >
+                Details
+              </button>
+            </div>
+            <dialog id="${escapeDebugHtml(dialogId)}" class="w-[min(720px,calc(100vw-2rem))] rounded-lg border bg-card p-0 text-card-foreground shadow-xl backdrop:bg-black/20">
+              <div class="border-b p-4">
+                <div class="flex min-w-0 flex-wrap items-center gap-2">
+                  <p class="font-mono text-sm">${escapeDebugHtml(event.name)}</p>
+                  ${isTestDebugEvent(event) ? `<span class="inline-flex items-center justify-center rounded-md border px-2 py-0.5 text-xs font-medium">Test</span>` : ""}
+                </div>
+                <p class="mt-1 text-xs text-muted-foreground">${escapeDebugHtml(event.url ?? "No URL recorded")}</p>
+              </div>
+              <div class="grid gap-4 p-4 text-sm">
+                <div class="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <p class="text-xs text-muted-foreground">Session</p>
+                    <p class="mt-1 truncate font-mono">${escapeDebugHtml(event.sessionId)}</p>
+                  </div>
+                  <div>
+                    <p class="text-xs text-muted-foreground">User</p>
+                    <p class="mt-1 truncate font-mono">${escapeDebugHtml(event.userId)}</p>
+                  </div>
+                  <div>
+                    <p class="text-xs text-muted-foreground">sarge_ref</p>
+                    <p class="mt-1 truncate font-mono">${escapeDebugHtml(event.ref ?? "Not captured")}</p>
+                  </div>
+                  <div>
+                    <p class="text-xs text-muted-foreground">sarge_aff</p>
+                    <p class="mt-1 truncate font-mono">${escapeDebugHtml(event.affiliate ?? "Not captured")}</p>
+                  </div>
+                  <div>
+                    <p class="text-xs text-muted-foreground">Occurred</p>
+                    <p class="mt-1">${escapeDebugHtml(new Date(event.occurredAt).toLocaleString())}</p>
+                  </div>
+                  <div>
+                    <p class="text-xs text-muted-foreground">Received</p>
+                    <p class="mt-1">${escapeDebugHtml(new Date(event.receivedAt).toLocaleString())}</p>
+                  </div>
+                </div>
+                <div>
+                  <p class="text-xs text-muted-foreground">Properties</p>
+                  <pre class="mt-2 max-h-72 overflow-auto rounded-md border bg-muted p-3 text-xs leading-5"><code>${escapeDebugHtml(properties)}</code></pre>
+                </div>
+              </div>
+              <div class="flex justify-end border-t p-3">
+                <button class="h-8 rounded-md border px-3 text-sm font-medium hover:bg-muted" type="button" data-close-event>Close</button>
+              </div>
+            </dialog>`;
+        })
+        .join("");
+    };
+
+    document.querySelectorAll<HTMLElement>("[data-live-debug-stream]").forEach((stream) => {
+      const endpoint = stream.dataset.eventsEndpoint;
+      const list = stream.querySelector<HTMLElement>("[data-debug-events-list]");
+      const status = stream.querySelector<HTMLElement>("[data-debug-stream-status]");
+      if (!endpoint || !list) return;
+
+      let lastRenderedIds = Array.from(list.querySelectorAll<HTMLButtonElement>("[data-event-dialog]"))
+        .map((button) => button.dataset.eventDialog)
+        .join(",");
+
+      const refreshDebugStream = async () => {
+        try {
+          const response = await fetch(endpoint, {
+            cache: "no-store",
+            headers: { accept: "application/json" },
+          });
+          if (!response.ok) throw new Error(`Debug stream fetch failed: ${response.status}`);
+
+          const payload = (await response.json()) as { events?: LiveDebugEvent[] };
+          const events = payload.events ?? [];
+          const nextRenderedIds = events.map((event) => `event-${event.id}`).join(",");
+          if (nextRenderedIds !== lastRenderedIds) {
+            list.innerHTML = renderDebugEvents(events);
+            lastRenderedIds = nextRenderedIds;
+          }
+          if (status) status.textContent = "Live";
+        } catch {
+          if (status) status.textContent = "Reconnecting";
+        }
+      };
+
+      refreshDebugStream();
+      setInterval(refreshDebugStream, 2000);
     });
   </script>
 </AppLayout>

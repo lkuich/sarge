@@ -28,7 +28,7 @@ export const createApp = ({ repository }: AppDependencies): Express => {
 
   app.post("/v2/events", async (req, res) => {
     try {
-      const event = eventPayloadSchema.parse(req.body);
+      const event = deriveAttributionFromUrl(eventPayloadSchema.parse(req.body));
       await repository.createEvent(event);
       res.status(202).json({ success: true });
     } catch (error) {
@@ -109,6 +109,30 @@ const handlePostback = async (
 const readBearerToken = (header: string | undefined) => {
   const match = /^Bearer\s+(.+)$/i.exec(header ?? "");
   return match?.[1]?.trim();
+};
+
+const deriveAttributionFromUrl = (event: ReturnType<typeof eventPayloadSchema.parse>) => {
+  if (!event.context?.url) return event;
+
+  let url: URL;
+  try {
+    url = new URL(event.context.url);
+  } catch {
+    return event;
+  }
+
+  const ref = event.attribution?.ref ?? url.searchParams.get("sarge_ref") ?? undefined;
+  const aff = event.attribution?.aff ?? url.searchParams.get("sarge_aff") ?? undefined;
+  if (!ref && !aff && !event.attribution?.expiresAt) return event;
+
+  return {
+    ...event,
+    attribution: {
+      ...event.attribution,
+      ref,
+      aff
+    }
+  };
 };
 
 const handleIngestError = (error: unknown, res: express.Response) => {

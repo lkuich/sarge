@@ -75,8 +75,9 @@ describe("project detail install panel", () => {
     expect(demoData).toContain("affiliate?: string;");
     expect(demoData).toContain("e.ref,");
     expect(demoData).toContain("e.affiliate,");
-    expect(demoData).toContain("ref: event.ref ?? undefined,");
-    expect(demoData).toContain("affiliate: event.affiliate ?? undefined,");
+    expect(demoData).toContain("const attribution = readSargeAttributionFromUrl(event.url);");
+    expect(demoData).toContain("ref: event.ref ?? attribution.ref,");
+    expect(demoData).toContain("affiliate: event.affiliate ?? attribution.affiliate,");
     expect(projectDetail).toContain("sarge_ref");
     expect(projectDetail).toContain("{event.ref ?? \"Not captured\"}");
     expect(projectDetail).toContain("sarge_aff");
@@ -307,6 +308,22 @@ describe("project detail install panel", () => {
     expect(impersonationCard).toBeGreaterThan(toolsRow);
     expect(serverSideCard).toBeGreaterThan(impersonationCard);
     expect(debugStreamCard).toBeGreaterThan(serverSideCard);
+  });
+
+  it("polls the debug stream without a full page refresh", () => {
+    const projectDetail = readSource("./projects/[projectId].astro");
+    const eventStreamApi = readSource("../api/project-events/[environmentId].ts");
+
+    expect(projectDetail).toContain("const debugStreamEndpoint = `/api/project-events/${selectedEnvironment.id}`;");
+    expect(projectDetail).toContain("data-live-debug-stream");
+    expect(projectDetail).toContain("data-events-endpoint={debugStreamEndpoint}");
+    expect(projectDetail).toContain("setInterval(refreshDebugStream, 2000)");
+    expect(projectDetail).toContain("renderDebugEvents");
+    expect(projectDetail).not.toContain("window.location.reload()");
+
+    expect(eventStreamApi).toContain("Astro.locals.auth()");
+    expect(eventStreamApi).toContain('headers: { "Cache-Control": "no-store" }');
+    expect(eventStreamApi).toContain("selectedEnvironment.recentEvents.slice(0, 12)");
   });
 
   it("shows affiliate tracking and latent conversion windows in the project view", () => {

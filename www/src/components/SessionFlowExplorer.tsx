@@ -9,7 +9,7 @@ import {
   type Edge,
   type Node,
 } from "@xyflow/react";
-import { Download, GitBranch, Radio, Search, UserRound, UsersRound, X } from "lucide-react";
+import { Download, GitBranch, Radio, RefreshCw, Search, UserRound, UsersRound, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,7 @@ interface FlowEvent {
 
 interface SessionFlowExplorerProps {
   events: FlowEvent[];
+  onRefresh?: () => void;
 }
 
 interface FlowGroup {
@@ -62,11 +63,13 @@ const nodeGap = 250;
 const pageRowGap = 154;
 const groupGap = 96;
 
-export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
+export function SessionFlowExplorer({ events, onRefresh }: SessionFlowExplorerProps) {
   const [mode, setMode] = useState<FlowMode>("user");
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [sargeRefFilter, setSargeRefFilter] = useState("");
+  const [sargeAffFilter, setSargeAffFilter] = useState("");
   const [selectedEventFilters, setSelectedEventFilters] = useState<EventFilter[]>(() =>
     eventFilters.map((filter) => filter.value),
   );
@@ -84,8 +87,8 @@ export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
   );
   const groups = useMemo(() => buildGroups(timeFilteredEvents, mode), [mode, timeFilteredEvents]);
   const filteredGroups = useMemo(
-    () => filterGroups(groups, query, selectedEventFilters),
-    [groups, query, selectedEventFilters],
+    () => filterGroups(groups, query, selectedEventFilters, { ref: sargeRefFilter, affiliate: sargeAffFilter }),
+    [groups, query, selectedEventFilters, sargeAffFilter, sargeRefFilter],
   );
   const visibleGroups = useMemo(() => {
     if (selectedGroupId) return filteredGroups.filter((group) => group.id === selectedGroupId);
@@ -106,6 +109,8 @@ export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
         mode,
         query,
         selectedEventFilters,
+        sargeRefFilter,
+        sargeAffFilter,
         trafficFilter,
         startAt,
         endAt,
@@ -121,6 +126,14 @@ export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
         edges,
       }),
     );
+  };
+  const refreshFlowData = () => {
+    if (onRefresh) {
+      onRefresh();
+      return;
+    }
+
+    window.location.reload();
   };
 
   useEffect(() => {
@@ -212,6 +225,10 @@ export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
             <Radio className="size-3.5" />
             {filteredGroups.length} of {groups.length} {mode === "session" ? "sessions" : "users"}
           </div>
+          <Button className="h-7 gap-1.5 px-2.5" size="sm" variant="outline" type="button" onClick={refreshFlowData}>
+            <RefreshCw className="size-3.5" />
+            Refresh
+          </Button>
           <Button className="h-7 gap-1.5 px-2.5" size="sm" variant="outline" type="button" onClick={exportFlowData}>
             <Download className="size-3.5" />
             Export JSON
@@ -284,6 +301,49 @@ export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
               </Button>
             ))}
           </div>
+        </div>
+        <div className="grid gap-2 md:grid-cols-[minmax(160px,220px)_minmax(160px,220px)_auto] md:items-end">
+          <label className="grid gap-1 text-xs text-muted-foreground">
+            sarge_ref
+            <Input
+              value={sargeRefFilter}
+              placeholder="summer-campaign"
+              onChange={(event) => {
+                setSargeRefFilter(event.target.value);
+                setSelectedGroupId(null);
+                setSelectedEventId(null);
+              }}
+            />
+          </label>
+          <label className="grid gap-1 text-xs text-muted-foreground">
+            sarge_aff
+            <Input
+              value={sargeAffFilter}
+              placeholder="partner-42"
+              onChange={(event) => {
+                setSargeAffFilter(event.target.value);
+                setSelectedGroupId(null);
+                setSelectedEventId(null);
+              }}
+            />
+          </label>
+          {(sargeRefFilter || sargeAffFilter) && (
+            <Button
+              className="h-8 gap-1"
+              size="sm"
+              variant="ghost"
+              type="button"
+              onClick={() => {
+                setSargeRefFilter("");
+                setSargeAffFilter("");
+                setSelectedGroupId(null);
+                setSelectedEventId(null);
+              }}
+            >
+              <X className="size-3.5" />
+              Clear sarge params
+            </Button>
+          )}
         </div>
         <div className="grid gap-2 lg:grid-cols-[auto_minmax(180px,220px)_minmax(180px,220px)_auto] lg:items-end">
           <div className="flex flex-wrap gap-1">
@@ -664,6 +724,8 @@ const buildFlowExportPayload = ({
   mode,
   query,
   selectedEventFilters,
+  sargeRefFilter,
+  sargeAffFilter,
   trafficFilter,
   startAt,
   endAt,
@@ -682,6 +744,8 @@ const buildFlowExportPayload = ({
   mode: FlowMode;
   query: string;
   selectedEventFilters: EventFilter[];
+  sargeRefFilter: string;
+  sargeAffFilter: string;
   trafficFilter: TrafficFilter;
   startAt: string;
   endAt: string;
@@ -702,6 +766,8 @@ const buildFlowExportPayload = ({
   mode,
   filters: {
     query,
+    sargeRef: sargeRefFilter,
+    sargeAff: sargeAffFilter,
     traffic: trafficFilter,
     eventCategories: selectedEventFilters,
     startAt,
@@ -818,8 +884,15 @@ const segmentEventsByPageView = (events: FlowEvent[]) => {
   return segments;
 };
 
-const filterGroups = (groups: FlowGroup[], query: string, selectedEventFilters: EventFilter[]) => {
+const filterGroups = (
+  groups: FlowGroup[],
+  query: string,
+  selectedEventFilters: EventFilter[],
+  sargeFilters: { ref: string; affiliate: string },
+) => {
   const normalizedQuery = query.trim().toLowerCase();
+  const normalizedRefFilter = sargeFilters.ref.trim().toLowerCase();
+  const normalizedAffiliateFilter = sargeFilters.affiliate.trim().toLowerCase();
   const selectedFilters = new Set(selectedEventFilters);
 
   return groups
@@ -827,6 +900,11 @@ const filterGroups = (groups: FlowGroup[], query: string, selectedEventFilters: 
       const matchingEvents = group.events.filter((event) => {
         const matchesFilter = selectedFilters.has(getEventFilter(event.name));
         if (!matchesFilter) return false;
+        const attribution = getSargeAttribution(event);
+        if (normalizedRefFilter && !matchesTextFilter(attribution.ref, normalizedRefFilter)) return false;
+        if (normalizedAffiliateFilter && !matchesTextFilter(attribution.affiliate, normalizedAffiliateFilter)) {
+          return false;
+        }
         if (!normalizedQuery) return true;
 
         return [
@@ -836,11 +914,11 @@ const filterGroups = (groups: FlowGroup[], query: string, selectedEventFilters: 
           event.userId,
           event.url,
           event.referrer,
-          event.ref,
-          event.affiliate,
+          attribution.ref,
+          attribution.affiliate,
           event.title,
-          event.ref ? `sarge_ref:${event.ref}` : undefined,
-          event.affiliate ? `sarge_aff:${event.affiliate}` : undefined,
+          attribution.ref ? `sarge_ref:${attribution.ref}` : undefined,
+          attribution.affiliate ? `sarge_aff:${attribution.affiliate}` : undefined,
         ]
           .filter(Boolean)
           .some((value) => String(value).toLowerCase().includes(normalizedQuery));
@@ -854,6 +932,9 @@ const filterGroups = (groups: FlowGroup[], query: string, selectedEventFilters: 
     })
     .filter((group) => group.events.length > 0);
 };
+
+const matchesTextFilter = (value: string | undefined, normalizedFilter: string) =>
+  Boolean(value?.toLowerCase().includes(normalizedFilter));
 
 const filterEventsByTime = (events: FlowEvent[], startAt: string, endAt: string) => {
   const startTime = parseDateTimeLocal(startAt);
@@ -913,6 +994,8 @@ const isTimePresetActive = (preset: TimePreset, startAt: string, endAt: string, 
 };
 
 function EventDetailsModal({ event, onClose }: { event: FlowEvent; onClose: () => void }) {
+  const attribution = getSargeAttribution(event);
+
   return (
     <div
       className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
@@ -945,8 +1028,8 @@ function EventDetailsModal({ event, onClose }: { event: FlowEvent; onClose: () =
           <div className="grid gap-3 sm:grid-cols-2">
             <DetailRow label="Session" value={event.sessionId} />
             <DetailRow label="User" value={event.userId} />
-            <DetailRow label="sarge_ref" value={event.ref ?? "Not captured"} />
-            <DetailRow label="sarge_aff" value={event.affiliate ?? "Not captured"} />
+            <DetailRow label="sarge_ref" value={attribution.ref ?? "Not captured"} />
+            <DetailRow label="sarge_aff" value={attribution.affiliate ?? "Not captured"} />
             <DetailRow label="Occurred" value={new Date(event.occurredAt).toLocaleString()} />
             <DetailRow label="Received" value={new Date(event.receivedAt).toLocaleString()} />
           </div>
@@ -1020,6 +1103,25 @@ const eventHost = (value?: string) => {
     return new URL(value).host;
   } catch {
     return value;
+  }
+};
+
+const getSargeAttribution = (event: FlowEvent) => {
+  const params = getUrlSearchParams(event.url);
+
+  return {
+    ref: event.ref ?? params?.get("sarge_ref") ?? undefined,
+    affiliate: event.affiliate ?? params?.get("sarge_aff") ?? undefined,
+  };
+};
+
+const getUrlSearchParams = (value?: string) => {
+  if (!value) return null;
+
+  try {
+    return new URL(value).searchParams;
+  } catch {
+    return null;
   }
 };
 

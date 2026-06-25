@@ -66,6 +66,37 @@ describe("Sarge API v2", () => {
     });
   });
 
+  it("derives attribution from browser event URLs when the client omits attribution", async () => {
+    const { events, repository } = createMemoryRepository();
+    const app = createApp({ repository });
+
+    const response = await request(app)
+      .post("/v2/events")
+      .send({
+        siteId: "site_123",
+        name: "page.view",
+        occurredAt: "2026-06-25T16:03:36.000Z",
+        sessionId: "sess_123",
+        userId: "user_123",
+        context: {
+          url: "https://www.thebotoxcourse.com/ca?sarge_ref=summer-campaign&sarge_aff=partner-42",
+          title: "Canada's Leading Medical Aesthetics Certification"
+        },
+        properties: {
+          path: "/ca"
+        }
+      });
+
+    expect(response.status).toBe(202);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      attribution: {
+        ref: "summer-campaign",
+        aff: "partner-42"
+      }
+    });
+  });
+
   it("rejects malformed JSON event payloads", async () => {
     const { events, repository } = createMemoryRepository();
     const app = createApp({ repository });

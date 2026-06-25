@@ -65,15 +65,24 @@ export const createSargeClient = (browser: BrowserLike): SargeClient => {
     localStore.set(sessionStorageKey, browser.crypto.randomUUID());
     ensureProjectUserId(siteId);
 
-    const existingExpiration = localStore.get(expirationStorageKey);
-    if (existingExpiration && Date.parse(existingExpiration) > getNow().getTime()) {
-      return;
-    }
-
     const params = new URLSearchParams(browser.location.search);
     const ref = params.get("sarge_ref");
     const aff = params.get("sarge_aff");
+    const hasCurrentAttribution = Boolean(ref || aff);
+    const existingExpiration = localStore.get(expirationStorageKey);
+    if (!hasCurrentAttribution && existingExpiration && Date.parse(existingExpiration) > getNow().getTime()) {
+      return;
+    }
 
+    if (!hasCurrentAttribution) {
+      localStore.remove(refStorageKey);
+      localStore.remove(affiliateStorageKey);
+      localStore.remove(expirationStorageKey);
+      return;
+    }
+
+    localStore.remove(refStorageKey);
+    localStore.remove(affiliateStorageKey);
     if (ref) {
       localStore.set(refStorageKey, ref);
     }

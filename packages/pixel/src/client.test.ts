@@ -170,6 +170,92 @@ describe("Sarge pixel", () => {
     });
   });
 
+  it("captures sarge URL params even when an attribution window already exists", () => {
+    const { browser, sendBeacon, storage } = createBrowser({
+      location: {
+        href: "https://example.com/?sarge_ref=summer-campaign&sarge_aff=partner-42",
+        search: "?sarge_ref=summer-campaign&sarge_aff=partner-42"
+      }
+    });
+    storage.values.set("sarge_exp", "2026-07-01T12:00:00.000Z");
+    const client = createSargeClient(browser);
+
+    client.init({
+      siteId: "site_123",
+      endpoint: "https://events.example.com",
+      attributionTtlDays: 28
+    });
+    client.track("Page View");
+
+    const [, body] = sendBeacon.mock.calls[0];
+    expect(storage.values.get("sarge_ref")).toBe("summer-campaign");
+    expect(storage.values.get("sarge_aff")).toBe("partner-42");
+    expect(JSON.parse(String(body))).toMatchObject({
+      attribution: {
+        ref: "summer-campaign",
+        aff: "partner-42",
+        expiresAt: "2026-07-17T12:00:00.000Z"
+      }
+    });
+  });
+
+  it("drops expired attribution when the current URL has no sarge params", () => {
+    const { browser, sendBeacon, storage } = createBrowser({
+      location: {
+        href: "https://example.com/products",
+        search: ""
+      }
+    });
+    storage.values.set("sarge_ref", "old-campaign");
+    storage.values.set("sarge_aff", "old-partner");
+    storage.values.set("sarge_exp", "2026-06-01T12:00:00.000Z");
+    const client = createSargeClient(browser);
+
+    client.init({
+      siteId: "site_123",
+      endpoint: "https://events.example.com",
+      attributionTtlDays: 28
+    });
+    client.track("Page View");
+
+    const [, body] = sendBeacon.mock.calls[0];
+    expect(storage.values.get("sarge_ref")).toBeUndefined();
+    expect(storage.values.get("sarge_aff")).toBeUndefined();
+    expect(storage.values.get("sarge_exp")).toBeUndefined();
+    expect(JSON.parse(String(body)).attribution).toBeUndefined();
+  });
+
+  it("replaces previous attribution instead of mixing old and new params", () => {
+    const { browser, sendBeacon, storage } = createBrowser({
+      location: {
+        href: "https://example.com/?sarge_ref=new-campaign",
+        search: "?sarge_ref=new-campaign"
+      }
+    });
+    storage.values.set("sarge_ref", "old-campaign");
+    storage.values.set("sarge_aff", "old-partner");
+    storage.values.set("sarge_exp", "2026-07-01T12:00:00.000Z");
+    const client = createSargeClient(browser);
+
+    client.init({
+      siteId: "site_123",
+      endpoint: "https://events.example.com",
+      attributionTtlDays: 28
+    });
+    client.track("Page View");
+
+    const [, body] = sendBeacon.mock.calls[0];
+    expect(storage.values.get("sarge_ref")).toBe("new-campaign");
+    expect(storage.values.get("sarge_aff")).toBeUndefined();
+    expect(JSON.parse(String(body))).toMatchObject({
+      attribution: {
+        ref: "new-campaign",
+        expiresAt: "2026-07-17T12:00:00.000Z"
+      }
+    });
+    expect(JSON.parse(String(body)).attribution.aff).toBeUndefined();
+  });
+
   it("keeps generated user ids scoped to each project", () => {
     const randomUUID = vi
       .fn()

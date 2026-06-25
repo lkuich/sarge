@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { planEventLimits } from "@sarge/core";
 import {
   buildPlanLimitSqlCase,
+  buildPlanRetentionFilterSql,
   canUseFeature,
   formatPlanLimit,
   getLimitUsagePrompt,
@@ -68,6 +69,16 @@ describe("pricing plan definitions", () => {
     expect(buildPlanLimitSqlCase("projects", 'w."planId"')).toContain("WHEN 'free' THEN 1");
     expect(buildPlanLimitSqlCase("webhooks", 'w."planId"')).toContain("WHEN 'starter' THEN 3");
     expect(buildPlanLimitSqlCase("webhooks", 'w."planId"')).toContain("WHEN 'scale' THEN NULL");
+  });
+
+  it("builds a plan-aware SQL filter for event log retention", () => {
+    const filter = buildPlanRetentionFilterSql('e."occurredAt"', 'w."planId"');
+
+    expect(filter).toContain('e."occurredAt" >= NOW() - make_interval');
+    expect(filter).toContain("WHEN 'free' THEN 7");
+    expect(filter).toContain("WHEN 'growth' THEN 90");
+    expect(filter).toContain("WHEN 'scale' THEN NULL");
+    expect(filter).toContain("IS NULL");
   });
 
   it("selects the next upgrade target for finite plans", () => {

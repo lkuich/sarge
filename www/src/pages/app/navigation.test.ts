@@ -148,6 +148,15 @@ describe("app navigation routes", () => {
     expect(newProject).toContain("Upgrade to add more projects");
   });
 
+  it("filters visible event logs by the owning workspace plan retention", () => {
+    const demoData = readSource("../../lib/sarge-demo.ts");
+
+    expect(demoData).toContain("buildPlanRetentionFilterSql");
+    expect(demoData).toContain("const eventRetentionFilterSql");
+    expect(demoData).toContain('JOIN "Workspace" w ON w.id = s."workspaceId"');
+    expect(demoData.match(/sql\.unsafe\(eventRetentionFilterSql\)/g)?.length).toBeGreaterThanOrEqual(3);
+  });
+
   it("adds a billing page with the recommended pricing ladder", () => {
     const billing = readSource("./billing.astro");
     const layout = readSource("../../layouts/AppLayout.astro");

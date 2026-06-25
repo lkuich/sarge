@@ -180,14 +180,16 @@ describe("SessionFlowExplorer event filters", () => {
       />,
     );
 
-    const searchInput = container?.querySelector<HTMLInputElement>('input[placeholder^="Search"]');
+    const affiliateFilterInput = container?.querySelector<HTMLInputElement>('input[placeholder="partner-42"]');
 
     act(() => {
-      if (!searchInput) return;
-      setInputValue(searchInput, "partner-42");
-      searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+      if (!affiliateFilterInput) return;
+      setInputValue(affiliateFilterInput, "partner-42");
+      affiliateFilterInput.dispatchEvent(new Event("input", { bubbles: true }));
     });
 
+    expect(container?.textContent).toContain("sarge_ref");
+    expect(container?.textContent).toContain("sarge_aff");
     expect(container?.querySelector('[data-flow-node="event:summer-page"]')).not.toBeNull();
     expect(container?.querySelector('[data-flow-node="event:winter-page"]')).toBeNull();
 
@@ -198,6 +200,41 @@ describe("SessionFlowExplorer event filters", () => {
     expect(container?.textContent).toContain("sarge_ref");
     expect(container?.textContent).toContain("summer-campaign");
     expect(container?.textContent).toContain("sarge_aff");
+    expect(container?.textContent).toContain("partner-42");
+  });
+
+  it("can filter by sarge params parsed from event URLs", () => {
+    render(
+      <SessionFlowExplorer
+        events={[
+          {
+            ...event("url-param-page", "page.view", "url-param-session", 0),
+            url: "https://example.com/ca?sarge_ref=summer-campaign&sarge_aff=partner-42",
+          },
+          {
+            ...event("plain-page", "page.view", "plain-session", 1),
+            url: "https://example.com/ca",
+          },
+        ]}
+      />,
+    );
+
+    const refFilterInput = container?.querySelector<HTMLInputElement>('input[placeholder="summer-campaign"]');
+
+    act(() => {
+      if (!refFilterInput) return;
+      setInputValue(refFilterInput, "summer-campaign");
+      refFilterInput.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    expect(container?.querySelector('[data-flow-node="event:url-param-page"]')).not.toBeNull();
+    expect(container?.querySelector('[data-flow-node="event:plain-page"]')).toBeNull();
+
+    act(() => {
+      container?.querySelector<HTMLElement>('[data-flow-node="event:url-param-page"]')?.click();
+    });
+
+    expect(container?.textContent).toContain("summer-campaign");
     expect(container?.textContent).toContain("partner-42");
   });
 
@@ -287,6 +324,20 @@ describe("SessionFlowExplorer event filters", () => {
     expect(click).toHaveBeenCalledTimes(1);
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:flow-export");
     expect(remove).toHaveBeenCalledWith(link);
+  });
+
+  it("shows a refresh action for reloading flow data", () => {
+    const onRefresh = vi.fn();
+
+    render(<SessionFlowExplorer events={events} onRefresh={onRefresh} />);
+
+    expect(buttonNamed("Refresh")).not.toBeUndefined();
+
+    act(() => {
+      buttonNamed("Refresh")?.click();
+    });
+
+    expect(onRefresh).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -38,7 +38,8 @@ interface FlowEvent {
 
 interface SessionFlowExplorerProps {
   events: FlowEvent[];
-  onRefresh?: () => void;
+  refreshEndpoint?: string;
+  onRefresh?: () => void | Promise<void>;
 }
 
 interface FlowGroup {
@@ -63,13 +64,15 @@ const nodeGap = 250;
 const pageRowGap = 154;
 const groupGap = 96;
 
-export function SessionFlowExplorer({ events, onRefresh }: SessionFlowExplorerProps) {
+export function SessionFlowExplorer({ events, refreshEndpoint, onRefresh }: SessionFlowExplorerProps) {
+  const [liveEvents, setLiveEvents] = useState(events);
   const [mode, setMode] = useState<FlowMode>("user");
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [sargeRefFilter, setSargeRefFilter] = useState("");
   const [sargeAffFilter, setSargeAffFilter] = useState("");
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedEventFilters, setSelectedEventFilters] = useState<EventFilter[]>(() =>
     eventFilters.map((filter) => filter.value),
   );
@@ -78,7 +81,8 @@ export function SessionFlowExplorer({ events, onRefresh }: SessionFlowExplorerPr
   const [endAt, setEndAt] = useState(() => getDefaultTimeRange(events).endAt);
   const [hasChosenTimeWindow, setHasChosenTimeWindow] = useState(false);
 
-  const trafficFilteredEvents = useMemo(() => filterEventsByTraffic(events, trafficFilter), [events, trafficFilter]);
+  const canRefresh = Boolean(refreshEndpoint || onRefresh);
+  const trafficFilteredEvents = useMemo(() => filterEventsByTraffic(liveEvents, trafficFilter), [liveEvents, trafficFilter]);
   const sampleBounds = useMemo(() => getSampleBounds(trafficFilteredEvents), [trafficFilteredEvents]);
   const defaultTimeRange = useMemo(() => getPresetTimeRange("1h", sampleBounds.latest), [sampleBounds.latest]);
   const timeFilteredEvents = useMemo(
@@ -116,7 +120,7 @@ export function SessionFlowExplorer({ events, onRefresh }: SessionFlowExplorerPr
         endAt,
         selectedGroupId,
         sampleBounds,
-        sourceEventCount: events.length,
+        sourceEventCount: liveEvents.length,
         trafficFilteredEventCount: trafficFilteredEvents.length,
         timeFilteredEventCount: timeFilteredEvents.length,
         groupCount: groups.length,
@@ -127,14 +131,34 @@ export function SessionFlowExplorer({ events, onRefresh }: SessionFlowExplorerPr
       }),
     );
   };
-  const refreshFlowData = () => {
-    if (onRefresh) {
-      onRefresh();
-      return;
-    }
+  const refreshFlowData = async () => {
+    if (!canRefresh || isRefreshing) return;
 
-    window.location.reload();
+    setIsRefreshing(true);
+    try {
+      if (onRefresh) {
+        await onRefresh();
+        return;
+      }
+
+      const response = await fetch(refreshEndpoint ?? "", {
+        cache: "no-store",
+        headers: { accept: "application/json" },
+      });
+      if (!response.ok) throw new Error(`Flow refresh failed: ${response.status}`);
+
+      const payload = (await response.json()) as { events?: FlowEvent[] };
+      setLiveEvents(Array.isArray(payload.events) ? payload.events : []);
+      setSelectedGroupId(null);
+      setSelectedEventId(null);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
+
+  useEffect(() => {
+    setLiveEvents(events);
+  }, [events]);
 
   useEffect(() => {
     if (hasChosenTimeWindow) return;
@@ -177,7 +201,7 @@ export function SessionFlowExplorer({ events, onRefresh }: SessionFlowExplorerPr
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [selectedEvent]);
 
-  if (events.length === 0) {
+  if (liveEvents.length === 0) {
     return (
       <div className="rounded-md border border-dashed p-6 text-sm text-muted-foreground">
         Session and user flows will appear after this project receives events.
@@ -225,8 +249,15 @@ export function SessionFlowExplorer({ events, onRefresh }: SessionFlowExplorerPr
             <Radio className="size-3.5" />
             {filteredGroups.length} of {groups.length} {mode === "session" ? "sessions" : "users"}
           </div>
-          <Button className="h-7 gap-1.5 px-2.5" size="sm" variant="outline" type="button" onClick={refreshFlowData}>
-            <RefreshCw className="size-3.5" />
+          <Button
+            className="h-7 gap-1.5 px-2.5"
+            size="sm"
+            variant="outline"
+            type="button"
+            disabled={!canRefresh || isRefreshing}
+            onClick={refreshFlowData}
+          >
+            <RefreshCw className={cn("size-3.5", isRefreshing && "animate-spin")} />
             Refresh
           </Button>
           <Button className="h-7 gap-1.5 px-2.5" size="sm" variant="outline" type="button" onClick={exportFlowData}>
@@ -304,7 +335,7 @@ export function SessionFlowExplorer({ events, onRefresh }: SessionFlowExplorerPr
         </div>
         <div className="grid gap-2 md:grid-cols-[minmax(160px,220px)_minmax(160px,220px)_auto] md:items-end">
           <label className="grid gap-1 text-xs text-muted-foreground">
-            sarge_ref
+            Ref/Campaign
             <Input
               value={sargeRefFilter}
               placeholder="summer-campaign"
@@ -316,7 +347,7 @@ export function SessionFlowExplorer({ events, onRefresh }: SessionFlowExplorerPr
             />
           </label>
           <label className="grid gap-1 text-xs text-muted-foreground">
-            sarge_aff
+            Affiliate
             <Input
               value={sargeAffFilter}
               placeholder="partner-42"
@@ -1028,8 +1059,8 @@ function EventDetailsModal({ event, onClose }: { event: FlowEvent; onClose: () =
           <div className="grid gap-3 sm:grid-cols-2">
             <DetailRow label="Session" value={event.sessionId} />
             <DetailRow label="User" value={event.userId} />
-            <DetailRow label="sarge_ref" value={attribution.ref ?? "Not captured"} />
-            <DetailRow label="sarge_aff" value={attribution.affiliate ?? "Not captured"} />
+            <DetailRow label="Ref/Campaign" value={attribution.ref ?? "Not captured"} />
+            <DetailRow label="Affiliate" value={attribution.affiliate ?? "Not captured"} />
             <DetailRow label="Occurred" value={new Date(event.occurredAt).toLocaleString()} />
             <DetailRow label="Received" value={new Date(event.receivedAt).toLocaleString()} />
           </div>

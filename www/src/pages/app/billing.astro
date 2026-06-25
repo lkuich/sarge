@@ -59,10 +59,10 @@ if (Astro.request.method === "POST") {
 const account = await getViewerAccount(userId, env.DATABASE_URL, { viewerEmails });
 
 const planHighlights: Record<PlanId, string[]> = {
-  free: ["50k events/month", "7-day retention", "1 project"],
-  starter: ["250k events/month", "30-day retention", "3 projects"],
-  growth: ["2M events/month", "90-day retention", "10 projects"],
-  scale: ["Custom events/month", "1-year+ retention", "Dedicated endpoint"],
+  free: ["50k events/month", "7-day retention", "1 project", "1 shared user/project"],
+  starter: ["250k events/month", "30-day retention", "3 projects", "3 shared users/project"],
+  growth: ["2M events/month", "90-day retention", "10 projects", "10 shared users/project"],
+  scale: ["Custom events/month", "1-year+ retention", "Unlimited shared users/project", "Dedicated endpoint"],
 };
 
 const planNames: Record<PlanId, string> = {

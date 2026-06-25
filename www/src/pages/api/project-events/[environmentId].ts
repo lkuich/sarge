@@ -14,6 +14,8 @@ export const GET: APIRoute = async (Astro) => {
   }
 
   const environmentId = Astro.params.environmentId ?? "";
+  const requestedLimit = Number.parseInt(Astro.url.searchParams.get("limit") ?? "12", 10);
+  const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 80) : 12;
   const currentUser = await Astro.locals.currentUser();
   const viewerEmails = currentUser?.emailAddresses.map((email) => email.emailAddress).filter(Boolean) ?? [];
   const account = await getViewerAccount(userId, env.DATABASE_URL, { viewerEmails });
@@ -29,7 +31,7 @@ export const GET: APIRoute = async (Astro) => {
     });
   }
 
-  return new Response(JSON.stringify({ events: selectedEnvironment.recentEvents.slice(0, 12) }), {
+  return new Response(JSON.stringify({ events: selectedEnvironment.recentEvents.slice(0, limit) }), {
     status: 200,
     headers: { "Cache-Control": "no-store" },
   });

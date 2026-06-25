@@ -188,8 +188,8 @@ describe("SessionFlowExplorer event filters", () => {
       affiliateFilterInput.dispatchEvent(new Event("input", { bubbles: true }));
     });
 
-    expect(container?.textContent).toContain("sarge_ref");
-    expect(container?.textContent).toContain("sarge_aff");
+    expect(container?.textContent).toContain("Ref/Campaign");
+    expect(container?.textContent).toContain("Affiliate");
     expect(container?.querySelector('[data-flow-node="event:summer-page"]')).not.toBeNull();
     expect(container?.querySelector('[data-flow-node="event:winter-page"]')).toBeNull();
 
@@ -197,9 +197,9 @@ describe("SessionFlowExplorer event filters", () => {
       container?.querySelector<HTMLElement>('[data-flow-node="event:summer-page"]')?.click();
     });
 
-    expect(container?.textContent).toContain("sarge_ref");
+    expect(container?.textContent).toContain("Ref/Campaign");
     expect(container?.textContent).toContain("summer-campaign");
-    expect(container?.textContent).toContain("sarge_aff");
+    expect(container?.textContent).toContain("Affiliate");
     expect(container?.textContent).toContain("partner-42");
   });
 
@@ -338,6 +338,30 @@ describe("SessionFlowExplorer event filters", () => {
     });
 
     expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes flow data from the endpoint without navigating", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ events: [event("fresh-page", "page.view", "fresh-session", 10)] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionFlowExplorer events={[event("stale-page", "page.view", "stale-session", 0)]} refreshEndpoint="/api/project-events/env_123?limit=80" />);
+
+    expect(container?.textContent).toContain("stale-session");
+    expect(container?.textContent).not.toContain("fresh-session");
+
+    await act(async () => {
+      buttonNamed("Refresh")?.click();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/project-events/env_123?limit=80", {
+      cache: "no-store",
+      headers: { accept: "application/json" },
+    });
+    expect(container?.textContent).toContain("fresh-session");
+    expect(container?.textContent).not.toContain("stale-session");
   });
 });
 

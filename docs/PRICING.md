@@ -6,10 +6,25 @@ Sarge is priced as tracking assurance and attribution debugging, not generic pro
 
 | Plan | Price | Primary limits |
 | --- | ---: | --- |
-| Free | $0/mo | 1 project, 50k events/month, 7-day retention |
-| Starter | $19/mo | 3 projects, 250k events/month, 30-day retention |
-| Growth | $99/mo | 10 projects, 2M events/month, 90-day retention |
-| Scale | Contact us | custom volume, dedicated infrastructure, SSO, audit logs, SLA |
+| Free | $0/mo | 1 project, 1 shared user/project, 50k events/month, 7-day retention |
+| Starter | $19/mo | 3 projects, 3 shared users/project, 250k events/month, 30-day retention |
+| Growth | $99/mo | 10 projects, 10 shared users/project, 2M events/month, 90-day retention |
+| Scale | Contact us | unlimited shared users/project, custom volume, dedicated infrastructure, SSO, audit logs, SLA |
+
+## Launch Discount
+
+The Starter checkout supports Stripe promotion codes. To create the launch code, run this from the `www` package with production Stripe environment variables:
+
+```bash
+STRIPE_SECRET_KEY=sk_live_... STRIPE_PRICE_STARTER=price_... pnpm --dir www stripe:create-launchday-discount
+```
+
+The script creates or reuses:
+
+- Coupon id `sarge_starter_launchday_2_months_free`
+- Promotion code `LAUNCHDAY`
+- 100% off for `2` months
+- Restricted to the Stripe product behind `STRIPE_PRICE_STARTER`
 
 ## Gate Philosophy
 

@@ -34,6 +34,7 @@ describe("shaderBackground", () => {
     expect(layout).toContain("shader?: boolean");
     expect(layout).toContain('"site-shell": shader');
     expect(layout).toContain('<slot name="background" />');
+    expect(layout).toContain(">BETA<");
     expect(layout).not.toContain("shaderBackground");
     expect(homepage).toContain('import ShaderEffect from "@/components/shaderBackground"');
     expect(homepage).toContain("<SiteLayout");

@@ -17,6 +17,8 @@ import {
 interface ProjectShareDialogProps {
   projectName: string;
   shares: ProjectShare[];
+  shareLimit: number | null;
+  shareCount: number;
   error?: string;
   warning?: string;
   success?: string;
@@ -30,10 +32,15 @@ const roleOptions: Array<{ value: ProjectShareRole; label: string }> = [
 export default function ProjectShareDialog({
   projectName,
   shares,
+  shareLimit,
+  shareCount,
   error,
   warning,
   success,
 }: ProjectShareDialogProps) {
+  const shareLimitReached = shareLimit !== null && shareCount >= shareLimit;
+  const shareLimitLabel = shareLimit === null ? "Unlimited" : `${shareCount} / ${shareLimit}`;
+
   return (
     <Sheet>
       <SheetTrigger
@@ -51,6 +58,21 @@ export default function ProjectShareDialog({
         </SheetHeader>
 
         <div className="grid gap-4 px-4 pb-4">
+          <div className="rounded-md border bg-muted/30 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-medium">Shared user limit</p>
+              <Badge variant={shareLimitReached ? "secondary" : "outline"}>{shareLimitLabel}</Badge>
+            </div>
+            {shareLimitReached && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Upgrade to invite more people to this project.{" "}
+                <a className="font-medium text-primary hover:underline" href="/app/billing">
+                  View plans
+                </a>
+              </p>
+            )}
+          </div>
+
           {error && (
             <Alert>
               <AlertTitle>Project was not shared</AlertTitle>
@@ -74,7 +96,7 @@ export default function ProjectShareDialog({
             <input type="hidden" name="intent" value="share-project" />
             <div className="grid gap-2">
               <Label htmlFor="shareEmail">Email</Label>
-              <Input id="shareEmail" name="email" type="email" placeholder="teammate@example.com" required />
+              <Input id="shareEmail" name="email" type="email" placeholder="teammate@example.com" required disabled={shareLimitReached} />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="shareRole">Role</Label>
@@ -83,13 +105,14 @@ export default function ProjectShareDialog({
                 name="role"
                 className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                 defaultValue="view"
+                disabled={shareLimitReached}
               >
                 {roleOptions.map((role) => (
                   <option key={role.value} value={role.value}>{role.label}</option>
                 ))}
               </select>
             </div>
-            <Button type="submit" size="sm">Send invite</Button>
+            <Button type="submit" size="sm" disabled={shareLimitReached}>Send invite</Button>
           </form>
 
           <div className="grid gap-2">

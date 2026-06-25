@@ -180,6 +180,7 @@ export const hostedEndpointHost = 'track.sargetrack.app';
 const demoAccountName = 'Demo Account';
 type SqlClient = ReturnType<typeof neon>;
 const projectLimitSqlCase = buildPlanLimitSqlCase('projects', 'w."planId"');
+const projectShareLimitSqlCase = buildPlanLimitSqlCase('projectShares', 'w."planId"');
 const webhookLimitSqlCase = buildPlanLimitSqlCase('webhooks', 'w."planId"');
 const serverSecretLimitSqlCase = buildPlanLimitSqlCase('serverSecrets', 'w."planId"');
 const postbackTokenLimitSqlCase = buildPlanLimitSqlCase('postbackTokens', 'w."planId"');
@@ -887,15 +888,40 @@ export const shareProject = async (
     if (!site) return { success: false, error: 'Project was not found in your workspace.' };
 
     const rows = (await sql`
+      WITH owned_site AS (
+        SELECT s.id, s.name, ${sql.unsafe(projectShareLimitSqlCase)} AS "shareLimit"
+        FROM "Site" s
+        JOIN "Workspace" w ON w.id = s."workspaceId"
+        WHERE w."ownerUserId" = ${userId}
+          AND s.id = ${site.id}
+        FOR UPDATE OF s, w
+      ),
+      share_usage AS (
+        SELECT
+          COUNT(ps.id)::int AS "shareCount",
+          MAX(ps.id) FILTER (WHERE ps.email = ${email}) AS "existingShareId"
+        FROM "ProjectShare" ps
+        WHERE ps."siteId" = ${site.id}
+      ),
+      allowed_site AS (
+        SELECT owned_site.id
+        FROM owned_site
+        CROSS JOIN share_usage
+        WHERE share_usage."existingShareId" IS NOT NULL
+          OR owned_site."shareLimit" IS NULL
+          OR share_usage."shareCount" < owned_site."shareLimit"
+      )
       INSERT INTO "ProjectShare" (id, "siteId", email, role, "invitedByUserId")
-      VALUES (${`share_${crypto.randomUUID()}`}, ${site.id}, ${email}, ${role}, ${userId})
+      SELECT ${`share_${crypto.randomUUID()}`}, allowed_site.id, ${email}, ${role}, ${userId}
+      FROM allowed_site
+      WHERE true
       ON CONFLICT ("siteId", email) DO UPDATE
       SET role = EXCLUDED.role,
           "invitedByUserId" = EXCLUDED."invitedByUserId"
       RETURNING id, "siteId", email, role, "acceptedUserId", "createdAt", "acceptedAt"
     `) as ProjectShareRow[];
     const share = rows.at(0);
-    if (!share) return { success: false, error: 'Project invite could not be saved.' };
+    if (!share) return { success: false, error: 'Project share limit reached. Upgrade to invite more people.' };
 
     const emailResult = await sendProjectInviteEmail({
       to: email,

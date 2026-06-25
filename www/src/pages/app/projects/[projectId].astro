@@ -270,6 +270,7 @@ const createdServerCredentialCurl = createdServerCredentialToken
 
 const recentEvents = selectedEnvironment.recentEvents.slice(0, 12);
 const flowEvents = selectedEnvironment.recentEvents.slice(0, 80);
+const flowEventsEndpoint = `${debugStreamEndpoint}?limit=80`;
 const eventHosts = selectedEnvironment.eventHosts;
 const webhookEndpoints = selectedEnvironment.webhookEndpoints;
 const projectTesterUserId = buildProjectTesterUserId(selectedEnvironment.id, userId);
@@ -289,6 +290,8 @@ const eventPulseBars = buildEventPulseBars(selectedEnvironment.recentEvents, sel
 const eventTypeMix = buildEventTypeMix(selectedEnvironment.recentEvents);
 const recentSessionCount = countUnique(selectedEnvironment.recentEvents.map((event) => event.sessionId));
 const recentUserCount = countUnique(selectedEnvironment.recentEvents.map((event) => event.userId));
+const projectShareLimit = account.plan.limits.projectShares;
+const projectShareCount = project.shares.length;
 const severityVariant = (severity: string) => {
   if (severity === "critical") return "destructive";
   if (severity === "warning") return "secondary";
@@ -476,6 +479,8 @@ function resolveTrackedSiteDomain(value: string) {
         <ProjectShareDialog
           projectName={project.name}
           shares={project.shares}
+          shareLimit={projectShareLimit}
+          shareCount={projectShareCount}
           error={shareError}
           warning={shareWarning}
           success={shareSuccess}
@@ -760,7 +765,7 @@ function resolveTrackedSiteDomain(value: string) {
           <CardTitle>User and session flows</CardTitle>
         </CardHeader>
         <CardContent>
-          <SessionFlowExplorer events={flowEvents} client:only="react" />
+          <SessionFlowExplorer events={flowEvents} refreshEndpoint={flowEventsEndpoint} client:only="react" />
         </CardContent>
       </Card>
 
@@ -1025,11 +1030,11 @@ function resolveTrackedSiteDomain(value: string) {
                           <p class="mt-1 truncate font-mono">{event.userId}</p>
                         </div>
                         <div>
-                          <p class="text-xs text-muted-foreground">sarge_ref</p>
+                          <p class="text-xs text-muted-foreground">Ref/Campaign</p>
                           <p class="mt-1 truncate font-mono">{event.ref ?? "Not captured"}</p>
                         </div>
                         <div>
-                          <p class="text-xs text-muted-foreground">sarge_aff</p>
+                          <p class="text-xs text-muted-foreground">Affiliate</p>
                           <p class="mt-1 truncate font-mono">{event.affiliate ?? "Not captured"}</p>
                         </div>
                         <div>
@@ -1079,7 +1084,7 @@ function resolveTrackedSiteDomain(value: string) {
             <p class="text-muted-foreground">
               Add <code class="font-mono">sarge_ref</code> for the campaign or click ID and <code class="font-mono">sarge_aff</code> for the partner ID on affiliate landing URLs.
             </p>
-            <pre class="overflow-x-auto rounded-md border bg-muted p-3 text-xs leading-5"><code>{affiliateCaptureUrl}</code></pre>
+            <pre class="whitespace-pre-wrap break-all rounded-md border bg-muted p-3 font-mono text-xs leading-5"><code>{affiliateCaptureUrl}</code></pre>
           </div>
 
           {
@@ -1090,6 +1095,9 @@ function resolveTrackedSiteDomain(value: string) {
                   Use <code class="font-mono">affiliate.conversion</code> for network or partner postbacks that report conversions outside the browser session.
                 </p>
                 <p class="break-all rounded-md border bg-muted p-3 font-mono text-xs">{postbackEndpointTemplate}</p>
+                <p class="text-xs text-muted-foreground">
+                  Replace <code class="font-mono">{"{postbackToken}"}</code> with the token created in Tracking credentials above.
+                </p>
               </div>
             ) : (
               <div class="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
@@ -1447,11 +1455,11 @@ function resolveTrackedSiteDomain(value: string) {
                     <p class="mt-1 truncate font-mono">${escapeDebugHtml(event.userId)}</p>
                   </div>
                   <div>
-                    <p class="text-xs text-muted-foreground">sarge_ref</p>
+                    <p class="text-xs text-muted-foreground">Ref/Campaign</p>
                     <p class="mt-1 truncate font-mono">${escapeDebugHtml(event.ref ?? "Not captured")}</p>
                   </div>
                   <div>
-                    <p class="text-xs text-muted-foreground">sarge_aff</p>
+                    <p class="text-xs text-muted-foreground">Affiliate</p>
                     <p class="mt-1 truncate font-mono">${escapeDebugHtml(event.affiliate ?? "Not captured")}</p>
                   </div>
                   <div>

@@ -63,7 +63,7 @@ describe("project detail install panel", () => {
 
     expect(projectDetail).toContain("const trackedSiteDomain = resolveTrackedSiteDomain(customDomain);");
     expect(projectDetail).toContain("const affiliateCaptureUrl = `https://${trackedSiteDomain}/?sarge_ref=summer-campaign&sarge_aff=partner-42`;");
-    expect(projectDetail).toContain("{affiliateCaptureUrl}");
+    expect(projectDetail).toContain('<pre class="whitespace-pre-wrap break-all rounded-md border bg-muted p-3 font-mono text-xs leading-5"><code>{affiliateCaptureUrl}</code></pre>');
     expect(projectDetail).not.toContain("https://shop.example.com/?sarge_ref=summer-campaign");
   });
 
@@ -78,9 +78,9 @@ describe("project detail install panel", () => {
     expect(demoData).toContain("const attribution = readSargeAttributionFromUrl(event.url);");
     expect(demoData).toContain("ref: event.ref ?? attribution.ref,");
     expect(demoData).toContain("affiliate: event.affiliate ?? attribution.affiliate,");
-    expect(projectDetail).toContain("sarge_ref");
+    expect(projectDetail).toContain("Ref/Campaign");
     expect(projectDetail).toContain("{event.ref ?? \"Not captured\"}");
-    expect(projectDetail).toContain("sarge_aff");
+    expect(projectDetail).toContain("Affiliate");
     expect(projectDetail).toContain("{event.affiliate ?? \"Not captured\"}");
   });
 
@@ -130,7 +130,8 @@ describe("project detail install panel", () => {
     const projectDetail = readSource("./projects/[projectId].astro");
 
     expect(projectDetail).toContain("const flowEvents = selectedEnvironment.recentEvents.slice(0, 80);");
-    expect(projectDetail).toContain("<SessionFlowExplorer events={flowEvents} client:only=\"react\" />");
+    expect(projectDetail).toContain("const flowEventsEndpoint = `${debugStreamEndpoint}?limit=80`;");
+    expect(projectDetail).toContain("<SessionFlowExplorer events={flowEvents} refreshEndpoint={flowEventsEndpoint} client:only=\"react\" />");
     expect(projectDetail).not.toContain("<SessionFlowExplorer events={flowEvents} client:visible />");
   });
 
@@ -275,6 +276,20 @@ describe("project detail install panel", () => {
     expect(demoData).toContain("normalizeInviteEmail");
   });
 
+  it("enforces project share limits from the owning workspace plan", () => {
+    const demoData = readSource("../../lib/sarge-demo.ts");
+    const projectDetail = readSource("./projects/[projectId].astro");
+
+    expect(demoData).toContain("const projectShareLimitSqlCase");
+    expect(demoData).toContain('COUNT(ps.id)::int AS "shareCount"');
+    expect(demoData).toContain("Project share limit reached. Upgrade to invite more people.");
+    expect(demoData).toContain("existingShareId");
+    expect(projectDetail).toContain("const projectShareLimit = account.plan.limits.projectShares;");
+    expect(projectDetail).toContain("const projectShareCount = project.shares.length;");
+    expect(projectDetail).toContain("shareLimit={projectShareLimit}");
+    expect(projectDetail).toContain("shareCount={projectShareCount}");
+  });
+
   it("renders a project share dialog and gates management controls by project access", () => {
     const projectDetail = readSource("./projects/[projectId].astro");
     const shareDialog = readSource("../../components/ProjectShareDialog.tsx");
@@ -295,6 +310,9 @@ describe("project detail install panel", () => {
     expect(shareDialog).toContain('name="intent" value="update-project-share"');
     expect(shareDialog).toContain('name="intent" value="remove-project-share"');
     expect(shareDialog).toContain('name="role"');
+    expect(shareDialog).toContain("Shared user limit");
+    expect(shareDialog).toContain("shareLimitReached");
+    expect(shareDialog).toContain('href="/app/billing"');
   });
 
   it("places test impersonation and server-side calls side-by-side above the debug stream", () => {
@@ -323,7 +341,8 @@ describe("project detail install panel", () => {
 
     expect(eventStreamApi).toContain("Astro.locals.auth()");
     expect(eventStreamApi).toContain('headers: { "Cache-Control": "no-store" }');
-    expect(eventStreamApi).toContain("selectedEnvironment.recentEvents.slice(0, 12)");
+    expect(eventStreamApi).toContain('Astro.url.searchParams.get("limit")');
+    expect(eventStreamApi).toContain("selectedEnvironment.recentEvents.slice(0, limit)");
   });
 
   it("shows affiliate tracking and latent conversion windows in the project view", () => {
@@ -341,6 +360,7 @@ describe("project detail install panel", () => {
     expect(projectDetail).toContain("{attributionWindowDays} days");
     expect(projectDetail).toContain("affiliate.conversion");
     expect(projectDetail).toContain("postbackEndpointTemplate");
+    expect(projectDetail).toContain('Replace <code class="font-mono">{"{postbackToken}"}</code> with the token created in Tracking credentials above.');
   });
 
   it("gates paid project detail features by plan entitlements", () => {

@@ -25,6 +25,7 @@ export type PlanFeature =
 
 export interface PlanLimits {
   projects: number | null;
+  projectShares: number | null;
   eventsPerMonth: number | null;
   retentionDays: number | null;
   serverSecrets: number | null;
@@ -65,6 +66,7 @@ export const planDefinitions: PlanDefinition[] = [
     description: "Install Sarge, verify events, and debug one project.",
     limits: {
       projects: 1,
+      projectShares: 1,
       eventsPerMonth: 50_000,
       retentionDays: 7,
       serverSecrets: 0,
@@ -80,6 +82,7 @@ export const planDefinitions: PlanDefinition[] = [
     description: "Small-team tracking validation with basic server and partner callbacks.",
     limits: {
       projects: 3,
+      projectShares: 3,
       eventsPerMonth: 250_000,
       retentionDays: 30,
       serverSecrets: 1,
@@ -105,6 +108,7 @@ export const planDefinitions: PlanDefinition[] = [
     description: "Production diagnostics, exports, and configurable attribution for ecommerce teams.",
     limits: {
       projects: 10,
+      projectShares: 10,
       eventsPerMonth: 2_000_000,
       retentionDays: 90,
       serverSecrets: 10,
@@ -135,6 +139,7 @@ export const planDefinitions: PlanDefinition[] = [
     description: "Custom volume, dedicated infrastructure, security controls, and SLA.",
     limits: {
       projects: null,
+      projectShares: null,
       eventsPerMonth: null,
       retentionDays: null,
       serverSecrets: null,

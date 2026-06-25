@@ -22,6 +22,7 @@ describe("app navigation routes", () => {
     expect(layout).toContain("{account.plan.name}");
     expect(layout).toContain('active === "notifications"');
     expect(layout).toContain('active === "billing"');
+    expect(layout).toContain(">BETA<");
   });
 
   it("does not ship the old admin page", () => {
@@ -174,6 +175,10 @@ describe("app navigation routes", () => {
     expect(billing).toContain("Contact us");
     expect(billing).not.toContain("Enterprise");
     expect(billing).toContain("50k events/month");
+    expect(billing).toContain("1 shared user/project");
+    expect(billing).toContain("3 shared users/project");
+    expect(billing).toContain("10 shared users/project");
+    expect(billing).toContain("Unlimited shared users/project");
     expect(billing).toContain("2M events/month");
     expect(billing).toContain("Custom events/month");
   });
@@ -230,6 +235,10 @@ describe("app navigation routes", () => {
     expect(homepage).toContain("$99");
     expect(homepage).not.toContain("Enterprise");
     expect(homepage).toContain("Contact us");
+    expect(homepage).toContain("1 shared user/project");
+    expect(homepage).toContain("3 shared users/project");
+    expect(homepage).toContain("10 shared users/project");
+    expect(homepage).toContain("Unlimited shared users/project");
     expect(homepage).toContain("Tracked page monitoring");
     expect(homepage).toContain("tracked Production URLs for new 404s, 500s, timeouts");
     expect(pricingDoc).toContain("tracking assurance");

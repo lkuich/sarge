@@ -14,12 +14,14 @@ import {
 describe("pricing plan definitions", () => {
   it("defines the public Sarge plan ladder", () => {
     expect(planDefinitions.map((plan) => plan.id)).toEqual(["free", "starter", "growth", "scale"]);
+    expect(getPlanDefinition("free").limits.projectShares).toBe(1);
     expect(getPlanDefinition("starter")).toMatchObject({
       id: "starter",
       name: "Starter",
       monthlyPriceUsd: 19,
       limits: {
         projects: 3,
+        projectShares: 3,
         eventsPerMonth: 250_000,
         retentionDays: 30,
         serverSecrets: 1,
@@ -31,6 +33,7 @@ describe("pricing plan definitions", () => {
       monthlyPriceUsd: 99,
       limits: {
         projects: 10,
+        projectShares: 10,
         eventsPerMonth: 2_000_000,
         retentionDays: 90,
       },
@@ -40,6 +43,7 @@ describe("pricing plan definitions", () => {
       monthlyPriceUsd: null,
       limits: {
         projects: null,
+        projectShares: null,
         eventsPerMonth: null,
         retentionDays: null,
       },
@@ -67,6 +71,8 @@ describe("pricing plan definitions", () => {
 
   it("builds SQL limit cases from plan definitions", () => {
     expect(buildPlanLimitSqlCase("projects", 'w."planId"')).toContain("WHEN 'free' THEN 1");
+    expect(buildPlanLimitSqlCase("projectShares", 'w."planId"')).toContain("WHEN 'free' THEN 1");
+    expect(buildPlanLimitSqlCase("projectShares", 'w."planId"')).toContain("WHEN 'growth' THEN 10");
     expect(buildPlanLimitSqlCase("webhooks", 'w."planId"')).toContain("WHEN 'starter' THEN 3");
     expect(buildPlanLimitSqlCase("webhooks", 'w."planId"')).toContain("WHEN 'scale' THEN NULL");
   });

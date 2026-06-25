@@ -1,15 +1,5 @@
-import { useState, type CSSProperties } from "react";
-import { Check, ChevronDown, Copy, Terminal } from "lucide-react";
-import { Button, buttonVariants } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { cn } from "@/lib/utils";
-
-type AgentKey = "claude-code" | "codex" | "cursor";
+import { useState } from "react";
+import { Check, Copy, Terminal } from "lucide-react";
 
 interface InstallPanelProps {
   title?: string;
@@ -17,45 +7,29 @@ interface InstallPanelProps {
   prompt?: string;
 }
 
-const AGENT_LABELS: Record<AgentKey, string> = {
-  "claude-code": "Claude Code",
-  codex: "Codex",
-  cursor: "Cursor",
-};
-
 const DEFAULT_AGENT_PROMPT =
   `Add Sarge tracking. Read these docs first: - https://sargetrack.app/llms.txt - https://sargetrack.app/docs/install.md - https://sargetrack.app/docs/events.md Install this pixel snippet as early as possible in the page: <script> window._sarge = { queue: [["track", "page.view"]] }; </script> <script async src="https://track.sargetrack.app/pixel.js?env=XXXXX"></script> Then emit window.sarge("track", "event.name", properties) for page, product, cart, checkout, and purchase actions. Keep existing Meta, Google, or analytics pixels in place. After wiring, open https://sargetrack.app/verify/site_XXXXX and verify the expected events appear in the public Sarge event stream. Make sure I give you the full site ID to replace site_XXXXX before you start anything.`;
 
 const CLAUDE_ORANGE = "#D97757";
 
-const CLAUDE_RAYS = Array.from({ length: 12 }, (_, i) => {
-  const angle = (i * 30 * Math.PI) / 180;
-  const inner = 2.6;
-  const outer = i % 2 === 0 ? 9 : 6.6;
-  return {
-    x1: 12 + inner * Math.cos(angle),
-    y1: 12 + inner * Math.sin(angle),
-    x2: 12 + outer * Math.cos(angle),
-    y2: 12 + outer * Math.sin(angle),
-  };
-});
-
-function ClaudeMark({ className, style }: { className?: string; style?: CSSProperties }) {
+function ClaudeIcon({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" className={className} style={style} aria-hidden="true">
-      {CLAUDE_RAYS.map((ray, i) => (
-        <line
-          key={i}
-          x1={ray.x1}
-          y1={ray.y1}
-          x2={ray.x2}
-          y2={ray.y2}
-          stroke="currentColor"
-          strokeWidth={1.8}
-          strokeLinecap="round"
-        />
-      ))}
-    </svg>
+    <span
+      aria-hidden="true"
+      data-claude-icon
+      className={`inline-block ${className ?? ""}`}
+      style={{
+        backgroundColor: "currentColor",
+        maskImage: "url('/claude.svg')",
+        maskPosition: "center",
+        maskRepeat: "no-repeat",
+        maskSize: "contain",
+        WebkitMaskImage: "url('/claude.svg')",
+        WebkitMaskPosition: "center",
+        WebkitMaskRepeat: "no-repeat",
+        WebkitMaskSize: "contain",
+      }}
+    />
   );
 }
 
@@ -87,10 +61,7 @@ export default function InstallPanel({
   description = "Copy these instructions into your coding agent to wire Sarge tracking.",
   prompt = DEFAULT_AGENT_PROMPT,
 }: InstallPanelProps) {
-  const [agent, setAgent] = useState<AgentKey>("claude-code");
   const { copied, copy } = useCopied();
-
-  const isClaude = agent === "claude-code";
 
   const handlePrimary = () => {
     copy("primary", prompt);
@@ -106,49 +77,15 @@ export default function InstallPanel({
           </div>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
         </div>
-        <div className="inline-flex">
-          {isClaude ? (
-            <button
-              type="button"
-              onClick={handlePrimary}
-              className="inline-flex h-8 items-center gap-1.5 rounded-none px-3 text-sm font-medium text-white transition hover:opacity-90"
-              style={{ backgroundColor: CLAUDE_ORANGE }}
-            >
-              <ClaudeMark className="size-4" />
-              {copied === "primary" ? "Copied" : "Open in Claude Code"}
-            </button>
-          ) : (
-            <Button onClick={handlePrimary} className="rounded-r-none">
-              {copied === "primary" ? "Copied" : `Copy for ${AGENT_LABELS[agent]}`}
-            </Button>
-          )}
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              aria-label="Choose your coding agent"
-              className={
-                isClaude
-                  ? "inline-flex h-8 items-center justify-center rounded-none border-l border-black/15 px-2 text-white transition hover:opacity-90"
-                  : cn(
-                      buttonVariants({ variant: "default" }),
-                      "rounded-l-none border-l border-l-primary-foreground/20 px-2",
-                    )
-              }
-              style={isClaude ? { backgroundColor: CLAUDE_ORANGE } : undefined}
-            >
-              <ChevronDown className="size-4" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {(Object.keys(AGENT_LABELS) as AgentKey[]).map((key) => (
-                <DropdownMenuItem key={key} onClick={() => setAgent(key)}>
-                  {key === "claude-code" ? (
-                    <ClaudeMark className="size-4" style={{ color: CLAUDE_ORANGE }} />
-                  ) : null}
-                  {AGENT_LABELS[key]}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        <button
+          type="button"
+          onClick={handlePrimary}
+          className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-none px-3 text-sm font-medium text-white transition hover:opacity-90"
+          style={{ backgroundColor: CLAUDE_ORANGE }}
+        >
+          <ClaudeIcon className="size-4" />
+          {copied === "primary" ? "Copied" : "Copy setup prompt"}
+        </button>
       </div>
 
       <div className="p-4">

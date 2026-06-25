@@ -34,6 +34,8 @@ export interface SargeEvent {
   userId: string;
   url?: string;
   referrer?: string;
+  ref?: string;
+  affiliate?: string;
   title?: string;
   properties: Record<string, unknown>;
 }
@@ -367,6 +369,8 @@ export const getViewerAccount = async (
         e."userId",
         e.url,
         e.referrer,
+        e.ref,
+        e.affiliate,
         e.title,
         e.properties
       FROM "Event" e
@@ -579,6 +583,8 @@ export const getPublicEventStream = async (
         "userId",
         url,
         referrer,
+        ref,
+        affiliate,
         title,
         properties
       FROM "Event"
@@ -1308,6 +1314,8 @@ const mapEvent = (event: EventRow): SargeEvent => ({
   userId: event.userId,
   url: event.url ?? undefined,
   referrer: event.referrer ?? undefined,
+  ref: event.ref ?? undefined,
+  affiliate: event.affiliate ?? undefined,
   title: event.title ?? undefined,
   properties: (event.properties ?? {}) as Record<string, unknown>,
 });
@@ -1615,6 +1623,8 @@ interface EventRow {
   userId: string;
   url: string | null;
   referrer: string | null;
+  ref: string | null;
+  affiliate: string | null;
   title: string | null;
   properties: unknown;
 }

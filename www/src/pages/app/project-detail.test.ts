@@ -67,6 +67,22 @@ describe("project detail install panel", () => {
     expect(projectDetail).not.toContain("https://shop.example.com/?sarge_ref=summer-campaign");
   });
 
+  it("includes affiliate attribution fields in event streams and event details", () => {
+    const projectDetail = readSource("./projects/[projectId].astro");
+    const demoData = readSource("../../lib/sarge-demo.ts");
+
+    expect(demoData).toContain("ref?: string;");
+    expect(demoData).toContain("affiliate?: string;");
+    expect(demoData).toContain("e.ref,");
+    expect(demoData).toContain("e.affiliate,");
+    expect(demoData).toContain("ref: event.ref ?? undefined,");
+    expect(demoData).toContain("affiliate: event.affiliate ?? undefined,");
+    expect(projectDetail).toContain("sarge_ref");
+    expect(projectDetail).toContain("{event.ref ?? \"Not captured\"}");
+    expect(projectDetail).toContain("sarge_aff");
+    expect(projectDetail).toContain("{event.affiliate ?? \"Not captured\"}");
+  });
+
   it("uses site ids for project sharing instead of project slugs", () => {
     const projectDetail = readSource("./projects/[projectId].astro");
     const demoData = readSource("../../lib/sarge-demo.ts");

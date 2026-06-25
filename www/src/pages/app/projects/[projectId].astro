@@ -665,7 +665,7 @@ function resolveTrackedSiteDomain(value: string) {
             <InstallPanel
               client:only="react"
               title="LLM setup"
-              description="Copy a project-specific Sarge prompt for Claude Code, Codex, or Cursor."
+              description="Copy a project-specific Sarge prompt for Claude Code."
               prompt={llmInstallPrompt}
             />
           </div>
@@ -1017,6 +1017,14 @@ function resolveTrackedSiteDomain(value: string) {
                         <div>
                           <p class="text-xs text-muted-foreground">User</p>
                           <p class="mt-1 truncate font-mono">{event.userId}</p>
+                        </div>
+                        <div>
+                          <p class="text-xs text-muted-foreground">sarge_ref</p>
+                          <p class="mt-1 truncate font-mono">{event.ref ?? "Not captured"}</p>
+                        </div>
+                        <div>
+                          <p class="text-xs text-muted-foreground">sarge_aff</p>
+                          <p class="mt-1 truncate font-mono">{event.affiliate ?? "Not captured"}</p>
                         </div>
                         <div>
                           <p class="text-xs text-muted-foreground">Occurred</p>

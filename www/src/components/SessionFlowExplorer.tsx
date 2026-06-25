@@ -30,6 +30,8 @@ interface FlowEvent {
   userId: string;
   url?: string;
   referrer?: string;
+  ref?: string;
+  affiliate?: string;
   title?: string;
   properties: Record<string, unknown>;
 }
@@ -224,7 +226,7 @@ export function SessionFlowExplorer({ events }: SessionFlowExplorerProps) {
             <Input
               className="pl-8 pr-8"
               value={query}
-              placeholder={`Search ${mode === "session" ? "sessions" : "users"}, events, URLs`}
+              placeholder={`Search ${mode === "session" ? "sessions" : "users"}, events, URLs, sarge params`}
               onChange={(event) => {
                 setQuery(event.target.value);
                 setSelectedGroupId(null);
@@ -827,7 +829,19 @@ const filterGroups = (groups: FlowGroup[], query: string, selectedEventFilters: 
         if (!matchesFilter) return false;
         if (!normalizedQuery) return true;
 
-        return [group.id, event.name, event.sessionId, event.userId, event.url, event.referrer, event.title]
+        return [
+          group.id,
+          event.name,
+          event.sessionId,
+          event.userId,
+          event.url,
+          event.referrer,
+          event.ref,
+          event.affiliate,
+          event.title,
+          event.ref ? `sarge_ref:${event.ref}` : undefined,
+          event.affiliate ? `sarge_aff:${event.affiliate}` : undefined,
+        ]
           .filter(Boolean)
           .some((value) => String(value).toLowerCase().includes(normalizedQuery));
       });
@@ -931,6 +945,8 @@ function EventDetailsModal({ event, onClose }: { event: FlowEvent; onClose: () =
           <div className="grid gap-3 sm:grid-cols-2">
             <DetailRow label="Session" value={event.sessionId} />
             <DetailRow label="User" value={event.userId} />
+            <DetailRow label="sarge_ref" value={event.ref ?? "Not captured"} />
+            <DetailRow label="sarge_aff" value={event.affiliate ?? "Not captured"} />
             <DetailRow label="Occurred" value={new Date(event.occurredAt).toLocaleString()} />
             <DetailRow label="Received" value={new Date(event.receivedAt).toLocaleString()} />
           </div>

@@ -17,6 +17,7 @@ vi.mock("@xyflow/react", () => ({
     children,
     nodes = [],
     edges = [],
+    onNodeClick,
   }: {
     children: React.ReactNode;
     nodes?: Array<{
@@ -26,6 +27,7 @@ vi.mock("@xyflow/react", () => ({
       style?: Record<string, unknown>;
     }>;
     edges?: Array<{ id: string; style?: Record<string, unknown> }>;
+    onNodeClick?: (event: unknown, node: unknown) => void;
   }) => (
     <div>
       {nodes.map((node) => (
@@ -34,6 +36,7 @@ vi.mock("@xyflow/react", () => ({
           data-flow-node={node.id}
           data-flow-position={JSON.stringify(node.position ?? {})}
           data-flow-style={JSON.stringify(node.style ?? {})}
+          onClick={() => onNodeClick?.({}, node)}
         >
           {node.data.label}
         </div>
@@ -159,6 +162,45 @@ describe("SessionFlowExplorer event filters", () => {
     );
   });
 
+  it("filters by sarge attribution params and shows them in event details", () => {
+    render(
+      <SessionFlowExplorer
+        events={[
+          {
+            ...event("summer-page", "page.view", "summer-session", 0),
+            ref: "summer-campaign",
+            affiliate: "partner-42",
+          },
+          {
+            ...event("winter-page", "page.view", "winter-session", 1),
+            ref: "winter-campaign",
+            affiliate: "partner-99",
+          },
+        ]}
+      />,
+    );
+
+    const searchInput = container?.querySelector<HTMLInputElement>('input[placeholder^="Search"]');
+
+    act(() => {
+      if (!searchInput) return;
+      setInputValue(searchInput, "partner-42");
+      searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    expect(container?.querySelector('[data-flow-node="event:summer-page"]')).not.toBeNull();
+    expect(container?.querySelector('[data-flow-node="event:winter-page"]')).toBeNull();
+
+    act(() => {
+      container?.querySelector<HTMLElement>('[data-flow-node="event:summer-page"]')?.click();
+    });
+
+    expect(container?.textContent).toContain("sarge_ref");
+    expect(container?.textContent).toContain("summer-campaign");
+    expect(container?.textContent).toContain("sarge_aff");
+    expect(container?.textContent).toContain("partner-42");
+  });
+
   it("starts a new row for each page view while keeping the flow connected", () => {
     render(
       <SessionFlowExplorer
@@ -280,6 +322,11 @@ function flowStyle(selector: string) {
 
 function flowPosition(selector: string) {
   return JSON.parse(container?.querySelector<HTMLElement>(selector)?.dataset.flowPosition ?? "{}");
+}
+
+function setInputValue(input: HTMLInputElement, value: string) {
+  const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+  valueSetter?.call(input, value);
 }
 
 function event(id: string, name: string, sessionId: string, minute: number) {

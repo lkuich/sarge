@@ -22,7 +22,6 @@
     "@fontsource-variable/geist": "^5.2.9",
     "@neondatabase/serverless": "^1.1.0",
     "@sarge/core": "workspace:*",
-    "@sendgrid/mail": "^8.1.6",
     "@tailwindcss/vite": "^4.3.1",
     "@xyflow/react": "^12.11.0",
     "astro": "^6.4.7",

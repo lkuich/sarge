@@ -26,6 +26,7 @@ CLERK_SECRET_KEY=...
 PUBLIC_CLERK_SIGN_IN_URL=/sign-in
 PUBLIC_CLERK_SIGN_UP_URL=/sign-up
 DATABASE_URL=...
+SARGE_EMAIL_FROM=invites@sargetrack.app
 ```
 
 Run the app:
@@ -48,6 +49,13 @@ NEON_DATABASE_URL
 ```
 
 The Cloudflare token needs access to the `sargetrack.app` zone and permission to deploy Workers, edit Worker routes, and edit DNS records. `PUBLIC_CLERK_PUBLISHABLE_KEY` is used while building the client bundle. Runtime Clerk variables are managed in the Cloudflare dashboard and preserved during deploys. `NEON_DATABASE_URL` is installed on the Cloudflare Worker as the runtime `DATABASE_URL` secret so the portal can read live project and event data.
+
+Project invite emails use Cloudflare Email Service through the Worker `EMAIL` binding in `wrangler.jsonc`. Before invites can send, onboard the sender domain in Cloudflare Email Service and set `SARGE_EMAIL_FROM` to an address on that domain:
+
+```sh
+npx wrangler email sending enable sargetrack.app
+printf '%s' 'invites@sargetrack.app' | npx wrangler secret put SARGE_EMAIL_FROM
+```
 
 Manual deploy:
 

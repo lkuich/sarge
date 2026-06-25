@@ -135,6 +135,22 @@ describe("Cloudflare Worker hosted API", () => {
     expect(body).toContain('"endpoint":"https://sarge.events"');
   });
 
+  it("downloads the generated minified pixel when requested", async () => {
+    const { store } = createMemoryStore();
+    const handler = createWorkerHandler({ store });
+
+    const response = await handler.fetch(
+      new Request("https://sarge.events/pixel.js?env=env_shared_production&download=1"),
+      createEnv()
+    );
+    const body = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-disposition")).toBe('attachment; filename="sarge-pixel.min.js"');
+    expect(body).toContain('"siteId":"env_shared_production"');
+    expect(body).toContain("SargePixel");
+  });
+
   it("stores events for a matching hosted site", async () => {
     const { events, store } = createMemoryStore();
     const handler = createWorkerHandler({ store });

@@ -1,6 +1,6 @@
 ---
 import { env } from "cloudflare:workers";
-import { Activity, Bot, ChevronDown, Copy, ExternalLink, Globe2, KeyRound, Link2, Plus, Radio, RefreshCw, Search, TerminalSquare, UserRound, Webhook } from "lucide-react";
+import { Activity, Bot, ChevronDown, Copy, Download, ExternalLink, Globe2, KeyRound, Link2, Plus, Radio, RefreshCw, Search, TerminalSquare, UserRound, Webhook } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -96,7 +96,7 @@ if (Astro.request.method === "POST") {
           role: String(formData.get("role") ?? "view") as ProjectShareRole,
         },
         {
-          sendgridApiKey: runtimeEnv.SENDGRID_API_KEY,
+          emailSender: env.EMAIL,
           emailFrom: runtimeEnv.SARGE_EMAIL_FROM,
           appUrl: `${Astro.url.origin}/app`,
         },
@@ -223,6 +223,13 @@ ${snippet}
 Then emit window.sarge("track", "event.name", properties) for page, product, cart, checkout, and purchase actions. Keep existing Meta, Google, or analytics pixels in place. After wiring, open ${publicVerifyAbsoluteUrl} and verify the expected events appear in the public Sarge event stream.`;
 const endpointHealthUrl = selectedEnvironment.endpointHealthUrl;
 const pixelUrl = selectedEnvironment.pixelUrl;
+const pixelDownloadUrl = buildPixelDownloadUrl(pixelUrl);
+const customDomainExample = `events.${project.slug}.com`;
+const customDomainPixelUrl = `https://${customDomainExample}/pixel.js`;
+const customDomainSnippet = `<script>
+  window._sarge = { queue: [["track", "page.view"]] };
+</script>
+<script async src="${customDomainPixelUrl}"></script>`;
 const serverEventEndpoint = `https://${hostedEndpointHost}/v2/server/events`;
 const postbackEndpointTemplate = `https://${hostedEndpointHost}/v2/postback/${selectedEnvironment.id}/{postbackToken}`;
 const attributionWindowDays = selectedEnvironment.attributionTtlDays;
@@ -394,6 +401,12 @@ function hashId(value: string) {
 
   return (hash >>> 0).toString(36).padStart(6, "0");
 }
+
+function buildPixelDownloadUrl(value: string) {
+  const url = new URL(value);
+  url.searchParams.set("download", "1");
+  return url.toString();
+}
 ---
 
 <AppLayout
@@ -562,6 +575,14 @@ function hashId(value: string) {
             </a>
             <a
               class="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-sm font-medium whitespace-nowrap transition-all hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+              href={pixelDownloadUrl}
+              download="sarge-pixel.min.js"
+              data-download-pixel-script
+            >
+              <Download className="size-4" /> Download minified script
+            </a>
+            <a
+              class="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-sm font-medium whitespace-nowrap transition-all hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
               href={publicVerifyUrl}
               target="_blank"
               rel="noreferrer"
@@ -584,6 +605,34 @@ function hashId(value: string) {
             >
               View event names and payload examples <ExternalLink className="ml-1 size-3.5" />
             </a>
+          </div>
+          <div class="mt-4 grid gap-3 rounded-md border bg-muted/30 p-4 text-sm" data-custom-domain-guidance>
+            <div class="flex min-w-0 flex-wrap items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="font-medium">Bring your own tracking domain or subdomain</p>
+                <p class="mt-1 text-muted-foreground">
+                  For CORS-sensitive installs, use a domain or subdomain you control after Sarge maps it to this {selectedEnvironmentLabel} environment.
+                </p>
+              </div>
+              <Badge variant="outline">Optional</Badge>
+            </div>
+            <div class="grid gap-3 md:grid-cols-2">
+              <div class="rounded-md border bg-background p-3">
+                <p class="text-xs font-medium text-muted-foreground">DNS record</p>
+                <p class="mt-2 break-all font-mono text-xs">CNAME {customDomainExample} -&gt; {hostedEndpointHost}</p>
+              </div>
+              <div class="rounded-md border bg-background p-3">
+                <p class="text-xs font-medium text-muted-foreground">Mapped environment</p>
+                <p class="mt-2 break-all font-mono text-xs">{selectedEnvironment.id}</p>
+              </div>
+            </div>
+            <div>
+              <p class="text-xs font-medium text-muted-foreground">Custom-domain snippet after verification</p>
+              <pre class="mt-2 overflow-x-auto rounded-md border bg-background p-3 text-xs leading-5"><code>{customDomainSnippet}</code></pre>
+            </div>
+            <p class="text-xs leading-5 text-muted-foreground">
+              Send the subdomain to Sarge before switching the snippet. Until it is verified, keep using the install URL above.
+            </p>
           </div>
           <div class="mt-4">
             <InstallPanel

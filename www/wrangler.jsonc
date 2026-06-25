@@ -12,6 +12,11 @@
   "observability": {
     "enabled": true
   },
+  "send_email": [
+    {
+      "name": "EMAIL"
+    }
+  ],
   "vars": {
     "PUBLIC_CLERK_SIGN_IN_URL": "/sign-in",
     "PUBLIC_CLERK_SIGN_UP_URL": "/sign-up"

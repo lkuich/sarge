@@ -1,7 +1,15 @@
 import { pixelScript } from "./generated-pixel.js";
 import type { SiteRecord } from "./types.js";
 
-export const createPixelResponse = (site: SiteRecord, endpointHost = site.endpointHost) => {
+interface PixelResponseOptions {
+  download?: boolean;
+}
+
+export const createPixelResponse = (
+  site: SiteRecord,
+  endpointHost = site.endpointHost,
+  options: PixelResponseOptions = {}
+) => {
   const config = {
     siteId: site.id,
     endpoint: `https://${endpointHost}`,
@@ -14,10 +22,16 @@ export const createPixelResponse = (site: SiteRecord, endpointHost = site.endpoi
     '//# sourceURL=sarge-pixel.js'
   ].join("\n");
 
+  const headers = new Headers({
+    "cache-control": "public, max-age=300",
+    "content-type": "application/javascript; charset=utf-8"
+  });
+
+  if (options.download) {
+    headers.set("content-disposition", 'attachment; filename="sarge-pixel.min.js"');
+  }
+
   return new Response(body, {
-    headers: {
-      "cache-control": "public, max-age=300",
-      "content-type": "application/javascript; charset=utf-8"
-    }
+    headers
   });
 };

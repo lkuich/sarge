@@ -14,6 +14,20 @@ describe("project detail install panel", () => {
     expect(projectDetail).toContain("open={!isPixelActive}");
   });
 
+  it("surfaces custom domain guidance and a minified pixel download for CORS-sensitive installs", () => {
+    const projectDetail = readSource("./projects/[projectId].astro");
+
+    expect(projectDetail).toContain("const pixelDownloadUrl = buildPixelDownloadUrl(pixelUrl);");
+    expect(projectDetail).toContain("const customDomainExample = `events.${project.slug}.com`;");
+    expect(projectDetail).toContain("data-custom-domain-guidance");
+    expect(projectDetail).toContain("Bring your own tracking domain");
+    expect(projectDetail).toContain("CNAME");
+    expect(projectDetail).toContain("CORS-sensitive");
+    expect(projectDetail).toContain("data-download-pixel-script");
+    expect(projectDetail).toContain("Download minified script");
+    expect(projectDetail).toContain('download="sarge-pixel.min.js"');
+  });
+
   it("uses environment-specific event activity for the install badge and collapse state", () => {
     const projectDetail = readSource("./projects/[projectId].astro");
 
@@ -161,14 +175,21 @@ describe("project detail install panel", () => {
     expect(demoData).toContain("sharedProjects: SargeProject[];");
   });
 
-  it("sets up SendGrid-backed project invite mutations", () => {
+  it("sets up Cloudflare Email-backed project invite mutations", () => {
     const demoData = readSource("../../lib/sarge-demo.ts");
     const mailer = readSource("../../lib/project-invite-email.ts");
     const packageJson = readSource("../../../../www/package.json");
+    const wranglerConfig = readSource("../../../../www/wrangler.jsonc");
+    const projectDetail = readSource("./projects/[projectId].astro");
 
-    expect(packageJson).toContain('"@sendgrid/mail"');
-    expect(mailer).toContain('@sendgrid/mail');
-    expect(mailer).toContain("SENDGRID_API_KEY");
+    expect(packageJson).not.toContain('"@sendgrid/mail"');
+    expect(wranglerConfig).toContain('"send_email"');
+    expect(wranglerConfig).toContain('"name": "EMAIL"');
+    expect(projectDetail).toContain("emailSender: env.EMAIL");
+    expect(mailer).toContain("emailSender");
+    expect(mailer).toContain("Cloudflare Email");
+    expect(mailer).not.toContain('@sendgrid/mail');
+    expect(mailer).not.toContain("SENDGRID_API_KEY");
     expect(mailer).toContain("SARGE_EMAIL_FROM");
     expect(mailer).toContain("sendProjectInviteEmail");
     expect(mailer).toContain("Project invite saved, but email was not sent");

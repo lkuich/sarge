@@ -134,7 +134,7 @@ export interface ShareProjectInput {
 }
 
 export interface ProjectInviteEmailOptions {
-  sendgridApiKey?: string;
+  emailSender?: ProjectInviteEmailInput['emailSender'];
   emailFrom?: string;
   appUrl: string;
 }
@@ -886,7 +886,7 @@ export const shareProject = async (
       inviterLabel: 'A Sarge workspace admin',
       role,
       appUrl: emailOptions.appUrl,
-      sendgridApiKey: emailOptions.sendgridApiKey,
+      emailSender: emailOptions.emailSender,
       emailFrom: emailOptions.emailFrom,
     } satisfies ProjectInviteEmailInput);
 

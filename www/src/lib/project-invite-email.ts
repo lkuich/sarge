@@ -1,5 +1,14 @@
-import sgMail from '@sendgrid/mail';
 import type { ProjectShareRole } from './sarge-demo';
+
+interface CloudflareEmailSender {
+  send(message: {
+    to: string;
+    from: { email: string; name: string };
+    subject: string;
+    text: string;
+    html: string;
+  }): Promise<unknown>;
+}
 
 export interface ProjectInviteEmailInput {
   to: string;
@@ -7,7 +16,7 @@ export interface ProjectInviteEmailInput {
   inviterLabel: string;
   role: ProjectShareRole;
   appUrl: string;
-  sendgridApiKey?: string;
+  emailSender?: CloudflareEmailSender;
   emailFrom?: string;
 }
 
@@ -18,21 +27,19 @@ export type ProjectInviteEmailResult =
 export const sendProjectInviteEmail = async (
   input: ProjectInviteEmailInput,
 ): Promise<ProjectInviteEmailResult> => {
-  const apiKey = input.sendgridApiKey?.trim();
   const from = input.emailFrom?.trim();
 
-  if (!apiKey || !from) {
+  if (!input.emailSender || !from) {
     return {
       sent: false,
-      warning: 'Project invite saved, but email was not sent. Configure SENDGRID_API_KEY and SARGE_EMAIL_FROM to send invites.',
+      warning: 'Project invite saved, but email was not sent. Configure the Cloudflare Email binding and SARGE_EMAIL_FROM to send invites.',
     };
   }
 
   try {
-    sgMail.setApiKey(apiKey);
-    await sgMail.send({
+    await input.emailSender.send({
       to: input.to,
-      from,
+      from: { email: from, name: 'Sarge' },
       subject: `${input.inviterLabel} shared ${input.projectName} with you`,
       text: [
         `${input.inviterLabel} shared ${input.projectName} with you on Sarge.`,
@@ -44,10 +51,10 @@ export const sendProjectInviteEmail = async (
 
     return { sent: true };
   } catch (error) {
-    console.error('Unable to send project invite email with SendGrid', error);
+    console.error('Unable to send project invite email with Cloudflare Email', error);
     return {
       sent: false,
-      warning: 'Project invite saved, but email was not sent. Check the SendGrid configuration and try again.',
+      warning: 'Project invite saved, but email was not sent. Check the Cloudflare Email configuration and try again.',
     };
   }
 };

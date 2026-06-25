@@ -54,7 +54,7 @@ const handleRequest = async (request: Request, _env: WorkerEnv, store: EventStor
       return json({ success: false, error: "Pixel disabled" }, 403);
     }
 
-    return createPixelResponse(site, url.host);
+    return createPixelResponse(site, url.host, { download: isPixelDownloadRequest(url) });
   }
 
   if (isSharedHost && url.pathname === "/v2/events" && request.method === "POST") {
@@ -84,7 +84,7 @@ const handleRequest = async (request: Request, _env: WorkerEnv, store: EventStor
       return json({ success: false, error: "Pixel disabled" }, 403);
     }
 
-    return createPixelResponse(site);
+    return createPixelResponse(site, site.endpointHost, { download: isPixelDownloadRequest(url) });
   }
 
   if (url.pathname === "/v2/events" && request.method === "POST") {
@@ -210,6 +210,8 @@ const handlePostbackEvent = async (request: Request, url: URL, store: EventStore
     return handleIngestError(error);
   }
 };
+
+const isPixelDownloadRequest = (url: URL) => url.searchParams.get("download") === "1";
 
 const handleIngestError = (error: unknown) => {
   if (error instanceof ZodError || error instanceof SyntaxError) {

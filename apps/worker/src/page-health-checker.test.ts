@@ -7,6 +7,13 @@ const response = (status: number, url = "https://shop.example.com/page") => {
   return result as Response & { url: string };
 };
 
+const candidate = (index: number) => ({
+  url: `https://shop.example.com/page-${index}`,
+  eventCount: index + 1,
+  latestEventAt: `2026-06-19T12:0${index}:00.000Z`,
+  conversionLike: index % 2 === 0
+});
+
 describe("page health checker", () => {
   it("checks pages with HEAD first", async () => {
     const fetcher = vi.fn(async () => response(200));
@@ -131,5 +138,58 @@ describe("page health checker", () => {
         conversionLike: true
       })
     ]);
+  });
+
+  it("checks candidate batches with bounded concurrency while preserving result order", async () => {
+    const candidates = Array.from({ length: 6 }, (_, index) => candidate(index));
+    const pending = new Map<string, { resolve: (response: Response) => void }>();
+    const started: string[] = [];
+    let active = 0;
+    let maxActive = 0;
+    const fetcher = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      started.push(url);
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+
+      return new Promise<Response>((resolve) => {
+        pending.set(url, {
+          resolve: (pageResponse) => {
+            active -= 1;
+            resolve(pageResponse);
+          }
+        });
+      });
+    });
+
+    const resultsPromise = checkTrackedPageCandidates(candidates, { fetcher });
+    await Promise.resolve();
+
+    expect(started).toEqual(candidates.slice(0, 5).map((item) => item.url));
+    expect(maxActive).toBe(5);
+
+    pending.get(candidates[0].url)?.resolve(response(200, `${candidates[0].url}/final`));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(started).toEqual(candidates.map((item) => item.url));
+
+    for (const current of candidates.slice(1)) {
+      pending.get(current.url)?.resolve(response(200, `${current.url}/final`));
+    }
+
+    const results = await resultsPromise;
+
+    expect(fetcher).toHaveBeenCalledTimes(6);
+    expect(results).toEqual(
+      candidates.map((current) =>
+        expect.objectContaining({
+          url: current.url,
+          status: 200,
+          finalUrl: `${current.url}/final`,
+          eventCount: current.eventCount,
+          conversionLike: current.conversionLike
+        })
+      )
+    );
   });
 });

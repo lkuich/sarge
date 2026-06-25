@@ -23,6 +23,7 @@ const DEFAULT_SITE_LIMIT = 50;
 const DEFAULT_AI_MODEL = "@cf/meta/llama-3.1-8b-instruct";
 const DEFAULT_PAGE_HEALTH_URL_LIMIT = 25;
 const DEFAULT_PAGE_HEALTH_TIMEOUT_MS = 5_000;
+const DEFAULT_PAGE_HEALTH_RUN_URL_LIMIT = 100;
 
 export type PageHealthChecker = (
   candidates: TrackedPageCandidate[],
@@ -56,16 +57,21 @@ export const runScheduledDiagnostics = async (
     env.PAGE_HEALTH_TIMEOUT_MS,
     DEFAULT_PAGE_HEALTH_TIMEOUT_MS
   );
+  let remainingPageHealthUrlBudget = readPositiveInteger(
+    env.PAGE_HEALTH_RUN_URL_LIMIT,
+    DEFAULT_PAGE_HEALTH_RUN_URL_LIMIT
+  );
   const pageHealthChecker = options.pageHealthChecker ?? defaultPageHealthChecker;
   const eventWindowStart = new Date(eventWindowEnd.getTime() - lookbackMinutes * 60_000);
   const sites = await store.listActiveSitesForDiagnostics(DEFAULT_SITE_LIMIT);
 
   for (const site of sites) {
-    await runSiteDiagnostics(store, env, site, eventWindowStart, eventWindowEnd, eventLimit, {
+    const checkedUrlCount = await runSiteDiagnostics(store, env, site, eventWindowStart, eventWindowEnd, eventLimit, {
       pageHealthChecker,
-      pageHealthUrlLimit,
+      pageHealthUrlLimit: Math.min(pageHealthUrlLimit, remainingPageHealthUrlBudget),
       pageHealthTimeoutMs
     });
+    remainingPageHealthUrlBudget = Math.max(0, remainingPageHealthUrlBudget - checkedUrlCount);
   }
 };
 
@@ -86,9 +92,10 @@ const runSiteDiagnostics = async (
   const events = await store.listRecentEventsForSite(site.id, eventWindowStart, eventLimit);
   const diagnosticEvents = events.map(toDiagnosticEvent);
   const eventFindings = events.length > 0 ? analyzeEvents(diagnosticEvents).map(toStoredFinding) : [];
-  const pageFindings = events.length > 0
+  const pageHealthResult = events.length > 0
     ? await buildTrackedPageFindings(diagnosticEvents, pageHealthOptions)
-    : [];
+    : { findings: [], checkedUrlCount: 0 };
+  const pageFindings = pageHealthResult.findings;
   const findings = [...eventFindings, ...pageFindings];
   const aiSummary = findings.length > 0 ? await summarizeFindings(env.AI, env.AI_SUMMARY_MODEL, site, findings) : null;
   const completedAt = new Date();
@@ -107,6 +114,7 @@ const runSiteDiagnostics = async (
   };
 
   await store.saveDiagnosticRun(run);
+  return pageHealthResult.checkedUrlCount;
 };
 
 const buildTrackedPageFindings = async (
@@ -116,22 +124,29 @@ const buildTrackedPageFindings = async (
     pageHealthUrlLimit: number;
     pageHealthTimeoutMs: number;
   }
-): Promise<StoredDiagnosticFinding[]> => {
+): Promise<{ findings: StoredDiagnosticFinding[]; checkedUrlCount: number }> => {
+  if (options.pageHealthUrlLimit <= 0) {
+    return { findings: [], checkedUrlCount: 0 };
+  }
+
   const candidates = selectTrackedPageCandidates(events, { limit: options.pageHealthUrlLimit });
-  if (candidates.length === 0) return [];
+  if (candidates.length === 0) return { findings: [], checkedUrlCount: 0 };
 
   try {
     const results = await options.pageHealthChecker(candidates, {
       timeoutMs: options.pageHealthTimeoutMs
     });
 
-    return results
-      .map(buildTrackedPageFinding)
-      .filter((finding): finding is NonNullable<typeof finding> => Boolean(finding))
-      .map(toStoredFinding);
+    return {
+      findings: results
+        .map(buildTrackedPageFinding)
+        .filter((finding): finding is NonNullable<typeof finding> => Boolean(finding))
+        .map(toStoredFinding),
+      checkedUrlCount: candidates.length
+    };
   } catch (error) {
     console.error("Unable to run tracked page health checks", error);
-    return [];
+    return { findings: [], checkedUrlCount: candidates.length };
   }
 };
 

@@ -10,7 +10,14 @@ export interface CheckTrackedPageHealthOptions {
   fetcher?: Fetcher;
 }
 
+interface CheckTrackedPageCandidatesOptions {
+  timeoutMs?: number;
+  fetcher?: Fetcher;
+  concurrency?: number;
+}
+
 const DEFAULT_TIMEOUT_MS = 5_000;
+const DEFAULT_CONCURRENCY = 5;
 const USER_AGENT = "Sarge Page Monitoring/1.0";
 
 export const checkTrackedPageHealth = async (
@@ -33,20 +40,30 @@ export const checkTrackedPageHealth = async (
 
 export const checkTrackedPageCandidates = async (
   candidates: TrackedPageCandidate[],
-  options: { timeoutMs?: number; fetcher?: Fetcher } = {}
+  options: CheckTrackedPageCandidatesOptions = {}
 ) => {
-  const results: TrackedPageHealthResult[] = [];
+  const results = new Array<TrackedPageHealthResult>(candidates.length);
+  const concurrency = Math.min(normalizeConcurrency(options.concurrency), candidates.length);
+  let nextIndex = 0;
 
-  for (const candidate of candidates) {
-    results.push(
-      await checkTrackedPageHealth({
+  const checkNextCandidate = async () => {
+    while (nextIndex < candidates.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      const candidate = candidates[index];
+
+      results[index] = await checkTrackedPageHealth({
         url: candidate.url,
         eventCount: candidate.eventCount,
         conversionLike: candidate.conversionLike,
         timeoutMs: options.timeoutMs,
         fetcher: options.fetcher
-      })
-    );
+      });
+    }
+  };
+
+  if (concurrency > 0) {
+    await Promise.all(Array.from({ length: concurrency }, checkNextCandidate));
   }
 
   return results;
@@ -94,6 +111,13 @@ const requestPage = async (
 
 const shouldFallbackToGet = (status: number | undefined) =>
   status === 403 || status === 405 || status === 501;
+
+const normalizeConcurrency = (concurrency: number | undefined) => {
+  if (typeof concurrency !== "number" || !Number.isFinite(concurrency) || concurrency <= 0) {
+    return DEFAULT_CONCURRENCY;
+  }
+  return Math.max(1, Math.floor(concurrency));
+};
 
 const isTimeoutError = (error: unknown) => {
   if (error === "timeout") return true;

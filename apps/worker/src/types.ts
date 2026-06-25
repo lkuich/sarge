@@ -11,6 +11,7 @@ export interface WorkerEnv {
   DIAGNOSTIC_EVENT_LOOKBACK_MINUTES?: string;
   DIAGNOSTIC_EVENT_LIMIT_PER_SITE?: string;
   PAGE_HEALTH_URL_LIMIT?: string;
+  PAGE_HEALTH_RUN_URL_LIMIT?: string;
   PAGE_HEALTH_TIMEOUT_MS?: string;
   AI_SUMMARY_MODEL?: string;
   AI?: AiBinding;

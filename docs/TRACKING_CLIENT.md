@@ -98,6 +98,43 @@ sarge('impersonate', 'customer_123');
 sarge('clear_impersonation');
 ```
 
+## Affiliate Tracking
+
+Use Sarge affiliate tracking when a partner, creator, ad, or campaign sends traffic that may convert later. Add these parameters to the landing URL:
+
+```text
+https://shop.example.com/?sarge_ref=summer-campaign&sarge_aff=partner-42
+```
+
+- `sarge_ref` should identify the campaign, click, placement, or network click ID.
+- `sarge_aff` should identify the affiliate, partner, creator, or publisher.
+
+The browser pixel stores both values in `localStorage` and attaches them to later events as `attribution.ref` and `attribution.aff`. This means a checkout or purchase event can still carry the original affiliate context after the visitor navigates to other pages.
+
+### Latent conversions
+
+Latent conversions are conversions that happen after the initial affiliate click or visit. The default window is 28 days, controlled by `attributionTtlDays` on the pixel/environment. During that window, browser events include:
+
+```json
+{
+  "attribution": {
+    "ref": "summer-campaign",
+    "aff": "partner-42",
+    "expiresAt": "2026-07-22T12:00:00.000Z"
+  }
+}
+```
+
+When the window expires, new browser events stop carrying the stored affiliate values unless a fresh landing URL sets `sarge_ref` or `sarge_aff` again.
+
+For backend-confirmed orders, send `purchase.completed` through `/v2/server/events` with the same `userId`, `order_id`, `value`, and `currency` fields you use in the browser flow. For affiliate networks or partner tools that can only call a URL, create a postback token in the project view and give the partner a URL like:
+
+```text
+https://track.sargetrack.app/v2/postback/{siteEnvironmentId}/{postbackToken}?event=affiliate.conversion&click_id=click_123&order_id=order_123&value=42.50&currency=USD&aff=partner-42
+```
+
+Use `affiliate.conversion` for partner-reported conversion callbacks. Prefer server-side events when your backend can send an authorization header; use postbacks for external systems that only support URL callbacks.
+
 ## Attribution Storage
 
 On initialization, the pixel reads these URL parameters:

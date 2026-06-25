@@ -138,6 +138,16 @@ Example:
 https://shop.example.com/?sarge_ref=summer-campaign&sarge_aff=partner-42
 ```
 
+Use `sarge_ref` for the campaign, placement, click ID, or network click identifier. Use `sarge_aff` for the affiliate, creator, publisher, or partner ID.
+
+Sarge stores these values for the environment attribution window, which defaults to 28 days. During that window, latent conversions such as later `checkout.started`, `purchase.completed`, or server-confirmed order events can still be tied back to the original affiliate visit. After the window expires, browser events stop carrying the stored attribution unless the visitor arrives with fresh `sarge_ref` or `sarge_aff` values.
+
+For affiliate networks that report conversions by URL callback, create a postback token on the project detail screen and use an `affiliate.conversion` URL:
+
+```text
+https://track.sargetrack.app/v2/postback/{siteEnvironmentId}/{postbackToken}?event=affiliate.conversion&click_id=click_123&order_id=order_123&value=42.50&currency=USD&aff=partner-42
+```
+
 ## Verify Installation
 
 1. Open the target site in a browser.

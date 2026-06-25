@@ -61,6 +61,7 @@ export interface SargeProjectEnvironment {
   pixelUrl: string;
   endpointHealthUrl: string;
   status: ProjectStatus;
+  attributionTtlDays: number;
   serverEventSecretConfigured: boolean;
   postbackTokenConfigured: boolean;
   eventCount24h: number;
@@ -332,6 +333,7 @@ export const getViewerAccount = async (
         se."siteId",
         se.environment,
         se."endpointHost",
+        se."attributionTtlDays",
         se."pixelEnabled",
         se."serverEventSecretHash",
         se."postbackTokenHash",
@@ -1096,6 +1098,7 @@ const mapProjectEnvironment = (
   pixelUrl: buildPixelUrl(environment.id),
   endpointHealthUrl: buildHealthUrl(),
   status: environment.pixelEnabled ? 'active' : 'paused',
+  attributionTtlDays: environment.attributionTtlDays,
   serverEventSecretConfigured: Boolean(environment.serverEventSecretHash),
   postbackTokenConfigured: Boolean(environment.postbackTokenHash),
   eventCount24h: environment.eventCount24h ?? 0,
@@ -1137,7 +1140,7 @@ const createProjectEnvironments = async (
           28,
           true
         )
-        RETURNING id, "siteId", environment, "endpointHost", "pixelEnabled", "serverEventSecretHash", "postbackTokenHash", 0::int AS "eventCount24h", NULL::timestamp AS "lastOccurredAt"
+        RETURNING id, "siteId", environment, "endpointHost", "attributionTtlDays", "pixelEnabled", "serverEventSecretHash", "postbackTokenHash", 0::int AS "eventCount24h", NULL::timestamp AS "lastOccurredAt"
       `) as SiteEnvironmentSummaryRow[];
 
       return rows[0];
@@ -1175,6 +1178,7 @@ const buildFallbackProject = (input: {
       pixelUrl: buildPixelUrl(id),
       endpointHealthUrl: buildHealthUrl(),
       status: input.status,
+      attributionTtlDays: 28,
       serverEventSecretConfigured: false,
       postbackTokenConfigured: false,
       eventCount24h: environment === 'production' ? input.eventCount24h : 0,
@@ -1315,6 +1319,7 @@ interface SiteEnvironmentSummaryRow {
   siteId: string;
   environment: ProjectEnvironment;
   endpointHost: string;
+  attributionTtlDays: number;
   pixelEnabled: boolean;
   serverEventSecretHash: string | null;
   postbackTokenHash: string | null;

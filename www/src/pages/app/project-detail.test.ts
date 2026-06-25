@@ -207,4 +207,41 @@ describe("project detail install panel", () => {
     expect(serverSideCard).toBeGreaterThan(impersonationCard);
     expect(debugStreamCard).toBeGreaterThan(serverSideCard);
   });
+
+  it("shows affiliate tracking and latent conversion windows in the project view", () => {
+    const projectDetail = readSource("./projects/[projectId].astro");
+    const demoData = readSource("../../lib/sarge-demo.ts");
+
+    expect(demoData).toContain("attributionTtlDays: number;");
+    expect(demoData).toContain("attributionTtlDays: environment.attributionTtlDays");
+    expect(projectDetail).toContain("const attributionWindowDays = selectedEnvironment.attributionTtlDays;");
+    expect(projectDetail).toContain("data-affiliate-tracking-card");
+    expect(projectDetail).toContain("Affiliate tracking");
+    expect(projectDetail).toContain("Latent conversion window");
+    expect(projectDetail).toContain("sarge_ref");
+    expect(projectDetail).toContain("sarge_aff");
+    expect(projectDetail).toContain("{attributionWindowDays} days");
+    expect(projectDetail).toContain("affiliate.conversion");
+    expect(projectDetail).toContain("postbackEndpointTemplate");
+  });
+
+  it("documents affiliate tracking and latent conversions in the tracking client guide", () => {
+    const trackingGuide = readSource("../../../../docs/TRACKING_CLIENT.md");
+    const installGuide = readSource("../../../../docs/INSTALLATION.md");
+    const publicInstallGuide = readSource("../../../../www/public/docs/install.md");
+
+    expect(trackingGuide).toContain("## Affiliate Tracking");
+    expect(trackingGuide).toContain("Latent conversions");
+    expect(trackingGuide).toContain("default window is 28 days");
+    expect(trackingGuide).toContain("sarge_ref");
+    expect(trackingGuide).toContain("sarge_aff");
+    expect(trackingGuide).toContain("affiliate.conversion");
+    expect(trackingGuide).toContain("https://track.sargetrack.app/v2/postback/{siteEnvironmentId}/{postbackToken}");
+    expect(installGuide).toContain("environment attribution window");
+    expect(installGuide).toContain("defaults to 28 days");
+    expect(installGuide).toContain("affiliate.conversion");
+    expect(publicInstallGuide).toContain("environment attribution window");
+    expect(publicInstallGuide).toContain("defaults to 28 days");
+    expect(publicInstallGuide).toContain("affiliate.conversion");
+  });
 });

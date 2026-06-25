@@ -1,6 +1,6 @@
 ---
 import { env } from "cloudflare:workers";
-import { Activity, Bot, ChevronDown, Copy, ExternalLink, Globe2, KeyRound, Plus, Radio, RefreshCw, Search, TerminalSquare, UserRound, Webhook } from "lucide-react";
+import { Activity, Bot, ChevronDown, Copy, ExternalLink, Globe2, KeyRound, Link2, Plus, Radio, RefreshCw, Search, TerminalSquare, UserRound, Webhook } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -212,6 +212,7 @@ const endpointHealthUrl = selectedEnvironment.endpointHealthUrl;
 const pixelUrl = selectedEnvironment.pixelUrl;
 const serverEventEndpoint = `https://${hostedEndpointHost}/v2/server/events`;
 const postbackEndpointTemplate = `https://${hostedEndpointHost}/v2/postback/${selectedEnvironment.id}/{postbackToken}`;
+const attributionWindowDays = selectedEnvironment.attributionTtlDays;
 const createdServerCredentialCurl = createdServerCredentialToken
   ? `curl -X POST "${serverEventEndpoint}" \\
   -H "authorization: Bearer ${createdServerCredentialToken}" \\
@@ -968,6 +969,37 @@ function hashId(value: string) {
           <div>
             <p class="text-xs text-muted-foreground">Snippet version</p>
             <p>{selectedEnvironment.pixelVersion}</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card data-affiliate-tracking-card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Link2 className="size-4" /> Affiliate tracking</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4 text-sm">
+          <div class="rounded-md border p-3">
+            <p class="text-xs text-muted-foreground">Latent conversion window</p>
+            <p class="mt-1 text-2xl font-semibold">{attributionWindowDays} days</p>
+            <p class="mt-1 text-xs text-muted-foreground">
+              Sarge keeps affiliate attribution available for delayed purchases until this environment window expires.
+            </p>
+          </div>
+
+          <div class="grid gap-2">
+            <p class="font-medium">Capture links</p>
+            <p class="text-muted-foreground">
+              Add <code class="font-mono">sarge_ref</code> for the campaign or click ID and <code class="font-mono">sarge_aff</code> for the partner ID on affiliate landing URLs.
+            </p>
+            <pre class="overflow-x-auto rounded-md border bg-muted p-3 text-xs leading-5"><code>https://shop.example.com/?sarge_ref=summer-campaign&amp;sarge_aff=partner-42</code></pre>
+          </div>
+
+          <div class="grid gap-2">
+            <p class="font-medium">Partner callbacks</p>
+            <p class="text-muted-foreground">
+              Use <code class="font-mono">affiliate.conversion</code> for network or partner postbacks that report conversions outside the browser session.
+            </p>
+            <p class="break-all rounded-md border bg-muted p-3 font-mono text-xs">{postbackEndpointTemplate}</p>
           </div>
         </CardContent>
       </Card>

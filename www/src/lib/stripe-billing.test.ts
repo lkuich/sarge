@@ -10,24 +10,22 @@ import {
 const env = {
   STRIPE_PRICE_STARTER: "price_starter",
   STRIPE_PRICE_GROWTH: "price_growth",
-  STRIPE_PRICE_SCALE: "price_scale",
 } satisfies StripeBillingEnv;
 
 describe("Stripe billing helpers", () => {
   it("maps paid Sarge plans to Stripe price env vars", () => {
     expect(getStripePriceIdForPlan(env, "starter")).toEqual({ success: true, priceId: "price_starter" });
     expect(getStripePriceIdForPlan(env, "growth")).toEqual({ success: true, priceId: "price_growth" });
-    expect(getStripePriceIdForPlan(env, "scale")).toEqual({ success: true, priceId: "price_scale" });
   });
 
-  it("does not create checkout for free or enterprise plans", () => {
+  it("does not create checkout for free or scale plans", () => {
     expect(getStripePriceIdForPlan(env, "free")).toEqual({
       success: false,
       error: "Free does not require checkout.",
     });
-    expect(getStripePriceIdForPlan(env, "enterprise")).toEqual({
+    expect(getStripePriceIdForPlan(env, "scale")).toEqual({
       success: false,
-      error: "Enterprise billing is handled by sales.",
+      error: "Scale billing is handled by sales.",
     });
   });
 
@@ -75,10 +73,10 @@ describe("Stripe billing helpers", () => {
       appUrl: "https://sargetrack.app",
       customerEmail: "owner@example.com",
       customerId: "cus_123",
-      priceId: "price_scale",
+      priceId: "price_growth",
       userId: "user_123",
       workspaceId: "wrk_123",
-      planId: "scale",
+      planId: "growth",
     });
 
     expect(params.customer).toBe("cus_123");

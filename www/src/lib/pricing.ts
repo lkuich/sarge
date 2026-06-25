@@ -1,4 +1,4 @@
-export type PlanId = "free" | "starter" | "growth" | "scale" | "enterprise";
+export type PlanId = "free" | "starter" | "growth" | "scale";
 
 export type PlanFeature =
   | "installPixel"
@@ -60,7 +60,7 @@ export const planDefinitions: PlanDefinition[] = [
   {
     id: "starter",
     name: "Starter",
-    monthlyPriceUsd: 49,
+    monthlyPriceUsd: 19,
     description: "Small-team tracking validation with basic server and partner callbacks.",
     limits: {
       projects: 3,
@@ -85,7 +85,7 @@ export const planDefinitions: PlanDefinition[] = [
   {
     id: "growth",
     name: "Growth",
-    monthlyPriceUsd: 149,
+    monthlyPriceUsd: 99,
     description: "Production diagnostics, exports, and configurable attribution for ecommerce teams.",
     limits: {
       projects: 10,
@@ -115,39 +115,6 @@ export const planDefinitions: PlanDefinition[] = [
   {
     id: "scale",
     name: "Scale",
-    monthlyPriceUsd: 399,
-    description: "Agency and multi-brand controls with deeper retention and automation.",
-    limits: {
-      projects: 25,
-      eventsPerMonth: 10_000_000,
-      retentionDays: 180,
-      serverSecrets: null,
-      postbackTokens: null,
-      webhooks: null,
-    },
-    features: [
-      "installPixel",
-      "debugStream",
-      "publicVerify",
-      "basicAffiliateAttribution",
-      "sessionFlowExplorer",
-      "serverEvents",
-      "postbacks",
-      "webhooks",
-      "viewSharing",
-      "editSharing",
-      "aiReview",
-      "exports",
-      "alerts",
-      "configurableAttributionWindow",
-      "clientWorkspaces",
-      "scheduledAiAudits",
-      "apiExport",
-    ],
-  },
-  {
-    id: "enterprise",
-    name: "Enterprise",
     monthlyPriceUsd: null,
     description: "Custom volume, dedicated infrastructure, security controls, and SLA.",
     limits: {

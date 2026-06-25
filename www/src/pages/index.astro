@@ -111,7 +111,7 @@ const plans = [
   },
   {
     name: "Starter",
-    price: "$49",
+    price: "$19",
     priceSuffix: " /mo",
     description: "Small-team tracking validation with server calls and partner postbacks.",
     icon: Cloud,
@@ -122,7 +122,7 @@ const plans = [
   },
   {
     name: "Growth",
-    price: "$149",
+    price: "$99",
     priceSuffix: " /mo",
     description: "Production AI review, active monitoring, and configurable attribution for ecommerce teams.",
     icon: Bot,
@@ -133,22 +133,11 @@ const plans = [
   },
   {
     name: "Scale",
-    price: "$399",
-    priceSuffix: " /mo",
-    description: "Agency and multi-brand controls with deeper retention and automation.",
-    icon: ShieldCheck,
-    cta: "Sign up",
-    href: "/sign-up",
-    variant: "outline" as const,
-    features: ["25 projects", "10M events/month", "180-day retention", "Scheduled AI audits", "Client workspaces", "API export"],
-  },
-  {
-    name: "Enterprise",
     price: "Contact us",
     description: "Custom volume, dedicated infrastructure, security controls, and SLA.",
     icon: ShieldCheck,
     cta: "Contact us",
-    href: "mailto:hello@sargetrack.app?subject=Sarge%20Enterprise",
+    href: "mailto:hello@sargetrack.app?subject=Sarge%20Scale",
     variant: "outline" as const,
     features: ["Custom events/month", "1-year+ retention", "Dedicated endpoint", "SSO/SAML", "Audit logs", "Warehouse sync"],
   },
@@ -293,7 +282,7 @@ const plans = [
         </p>
       </div>
 
-      <div class="mt-8 grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      <div class="mt-8 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {
           plans.map(({ name, price, pricePrefix, priceSuffix, description, icon: Icon, cta, href, variant, features }) => (
             <article class="flex flex-col rounded-lg border bg-card p-5">

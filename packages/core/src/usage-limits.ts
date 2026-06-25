@@ -2,8 +2,7 @@ export const planEventLimits: Record<string, number | null> = {
   free: 50_000,
   starter: 250_000,
   growth: 2_000_000,
-  scale: 10_000_000,
-  enterprise: null,
+  scale: null,
 };
 
 export class UsageLimitExceededError extends Error {

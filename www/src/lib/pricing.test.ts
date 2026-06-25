@@ -4,11 +4,11 @@ import { buildPlanLimitSqlCase, canUseFeature, formatPlanLimit, getPlanDefinitio
 
 describe("pricing plan definitions", () => {
   it("defines the public Sarge plan ladder", () => {
-    expect(planDefinitions.map((plan) => plan.id)).toEqual(["free", "starter", "growth", "scale", "enterprise"]);
+    expect(planDefinitions.map((plan) => plan.id)).toEqual(["free", "starter", "growth", "scale"]);
     expect(getPlanDefinition("starter")).toMatchObject({
       id: "starter",
       name: "Starter",
-      monthlyPriceUsd: 49,
+      monthlyPriceUsd: 19,
       limits: {
         projects: 3,
         eventsPerMonth: 250_000,
@@ -19,7 +19,7 @@ describe("pricing plan definitions", () => {
       },
     });
     expect(getPlanDefinition("growth")).toMatchObject({
-      monthlyPriceUsd: 149,
+      monthlyPriceUsd: 99,
       limits: {
         projects: 10,
         eventsPerMonth: 2_000_000,
@@ -28,13 +28,13 @@ describe("pricing plan definitions", () => {
       features: expect.arrayContaining(["aiReview", "exports", "configurableAttributionWindow", "editSharing"]),
     });
     expect(getPlanDefinition("scale")).toMatchObject({
-      monthlyPriceUsd: 399,
+      monthlyPriceUsd: null,
       limits: {
-        projects: 25,
-        eventsPerMonth: 10_000_000,
-        retentionDays: 180,
+        projects: null,
+        eventsPerMonth: null,
+        retentionDays: null,
       },
-      features: expect.arrayContaining(["clientWorkspaces", "scheduledAiAudits", "apiExport"]),
+      features: expect.arrayContaining(["clientWorkspaces", "scheduledAiAudits", "apiExport", "sso", "auditLogs"]),
     });
   });
 

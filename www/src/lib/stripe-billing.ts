@@ -7,7 +7,6 @@ export interface StripeBillingEnv {
   STRIPE_WEBHOOK_SECRET?: string;
   STRIPE_PRICE_STARTER?: string;
   STRIPE_PRICE_GROWTH?: string;
-  STRIPE_PRICE_SCALE?: string;
 }
 
 export type BillingStatus = "active" | "past_due" | "canceled";
@@ -32,7 +31,6 @@ type SqlClient = ReturnType<typeof neon>;
 const paidPlanPriceEnv: Partial<Record<PlanId, keyof StripeBillingEnv>> = {
   starter: "STRIPE_PRICE_STARTER",
   growth: "STRIPE_PRICE_GROWTH",
-  scale: "STRIPE_PRICE_SCALE",
 };
 
 export const createStripeClient = (secretKey: string) =>
@@ -49,8 +47,8 @@ export const getStripePriceIdForPlan = (
   if (planId === "free") {
     return { success: false, error: "Free does not require checkout." };
   }
-  if (planId === "enterprise") {
-    return { success: false, error: "Enterprise billing is handled by sales." };
+  if (planId === "scale") {
+    return { success: false, error: "Scale billing is handled by sales." };
   }
 
   const envName = paidPlanPriceEnv[planId];
@@ -229,7 +227,7 @@ const syncCheckoutSession = async (sql: SqlClient, session: Stripe.Checkout.Sess
 
   const workspaceId = getMetadataValue(session.metadata, "workspaceId") ?? session.client_reference_id;
   const planId = normalizePlanId(getMetadataValue(session.metadata, "planId"));
-  if (!workspaceId || !planId || planId === "free" || planId === "enterprise") return;
+  if (!workspaceId || !planId || planId === "free" || planId === "scale") return;
 
   const customerId = getStripeId(session.customer);
   const subscriptionId = getStripeId(session.subscription);
@@ -317,7 +315,7 @@ const normalizeAppUrl = (appUrl: string) => {
 };
 
 const normalizePlanId = (value: string | null | undefined): PlanId | null => {
-  if (value === "free" || value === "starter" || value === "growth" || value === "scale" || value === "enterprise") {
+  if (value === "free" || value === "starter" || value === "growth" || value === "scale") {
     return value;
   }
 

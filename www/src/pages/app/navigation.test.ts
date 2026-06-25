@@ -138,13 +138,13 @@ describe("app navigation routes", () => {
     expect(billing).toContain('name="intent" value="billing-portal"');
     expect(billing).toContain('name="planId"');
     expect(billing).toContain("Free");
-    expect(billing).toContain("$49");
-    expect(billing).toContain("$149");
-    expect(billing).toContain("$399");
+    expect(billing).toContain("$19");
+    expect(billing).toContain("$99");
     expect(billing).toContain("Contact us");
+    expect(billing).not.toContain("Enterprise");
     expect(billing).toContain("50k events/month");
     expect(billing).toContain("2M events/month");
-    expect(billing).toContain("10M events/month");
+    expect(billing).toContain("Custom events/month");
   });
 
   it("receives Stripe webhooks through a signature-verified endpoint", () => {
@@ -161,10 +161,9 @@ describe("app navigation routes", () => {
     const pricingDoc = readSource("../../../../docs/PRICING.md");
 
     expect(homepage).toContain("Free");
-    expect(homepage).toContain("$49");
-    expect(homepage).toContain("$149");
-    expect(homepage).toContain("$399");
-    expect(homepage).toContain("Enterprise");
+    expect(homepage).toContain("$19");
+    expect(homepage).toContain("$99");
+    expect(homepage).not.toContain("Enterprise");
     expect(homepage).toContain("Contact us");
     expect(homepage).toContain("Tracked page monitoring");
     expect(homepage).toContain("tracked Production URLs for new 404s, 500s, timeouts");

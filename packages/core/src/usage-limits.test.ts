@@ -59,13 +59,14 @@ describe("workspace usage limits", () => {
     });
   });
 
-  it("maps enterprise to an unlimited event plan", () => {
-    expect(getPlanEventLimit("enterprise")).toBeNull();
+  it("maps scale to an unlimited event plan", () => {
+    expect(getPlanEventLimit("scale")).toBeNull();
     expect(new UsageLimitExceededError()).toBeInstanceOf(Error);
   });
 
   it("builds SQL plan limit cases from the shared runtime limits", () => {
     expect(buildPlanEventLimitSqlCase('w."planId"')).toContain("WHEN 'free' THEN 50000");
-    expect(buildPlanEventLimitSqlCase('w."planId"')).toContain("WHEN 'enterprise' THEN NULL");
+    expect(buildPlanEventLimitSqlCase('w."planId"')).toContain("WHEN 'scale' THEN NULL");
+    expect(buildPlanEventLimitSqlCase('w."planId"')).not.toContain("enterprise");
   });
 });

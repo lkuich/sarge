@@ -234,6 +234,7 @@ const endpointHealthUrl = selectedEnvironment.endpointHealthUrl;
 const pixelUrl = selectedEnvironment.pixelUrl;
 const customDomain = project.customDomain;
 const trackingDomain = resolveSargeTrackingDomain(customDomain);
+const trackedSiteDomain = resolveTrackedSiteDomain(customDomain);
 const displayedTrackingDomain = trackingDomain;
 const customDomainHeadingLink = {
   label: customDomain,
@@ -248,6 +249,7 @@ const customDomainSnippet = `<script>
 const serverEventEndpoint = `https://${hostedEndpointHost}/v2/server/events`;
 const postbackEndpointTemplate = `https://${hostedEndpointHost}/v2/postback/${selectedEnvironment.id}/{postbackToken}`;
 const attributionWindowDays = selectedEnvironment.attributionTtlDays;
+const affiliateCaptureUrl = `https://${trackedSiteDomain}/?sarge_ref=summer-campaign&sarge_aff=partner-42`;
 const createdServerCredentialCurl = createdServerCredentialToken
   ? `curl -X POST "${serverEventEndpoint}" \\
   -H "authorization: Bearer ${createdServerCredentialToken}" \\
@@ -427,6 +429,11 @@ function buildCustomPixelDownloadUrl(value: string, endpointHost: string) {
 function resolveSargeTrackingDomain(value: string) {
   const hostname = value.toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/^www\./, "");
   return hostname.startsWith("sarge.") ? hostname : `sarge.${hostname}`;
+}
+
+function resolveTrackedSiteDomain(value: string) {
+  const hostname = value.toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/^www\./, "");
+  return hostname.startsWith("sarge.") ? hostname.slice("sarge.".length) : hostname;
 }
 ---
 
@@ -1087,7 +1094,7 @@ function resolveSargeTrackingDomain(value: string) {
             <p class="text-muted-foreground">
               Add <code class="font-mono">sarge_ref</code> for the campaign or click ID and <code class="font-mono">sarge_aff</code> for the partner ID on affiliate landing URLs.
             </p>
-            <pre class="overflow-x-auto rounded-md border bg-muted p-3 text-xs leading-5"><code>https://shop.example.com/?sarge_ref=summer-campaign&amp;sarge_aff=partner-42</code></pre>
+            <pre class="overflow-x-auto rounded-md border bg-muted p-3 text-xs leading-5"><code>{affiliateCaptureUrl}</code></pre>
           </div>
 
           {

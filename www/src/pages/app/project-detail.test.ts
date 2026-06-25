@@ -58,6 +58,15 @@ describe("project detail install panel", () => {
     expect(appLayout).toContain("{headingLink.label}");
   });
 
+  it("uses the tracked site domain in affiliate capture link examples", () => {
+    const projectDetail = readSource("./projects/[projectId].astro");
+
+    expect(projectDetail).toContain("const trackedSiteDomain = resolveTrackedSiteDomain(customDomain);");
+    expect(projectDetail).toContain("const affiliateCaptureUrl = `https://${trackedSiteDomain}/?sarge_ref=summer-campaign&sarge_aff=partner-42`;");
+    expect(projectDetail).toContain("{affiliateCaptureUrl}");
+    expect(projectDetail).not.toContain("https://shop.example.com/?sarge_ref=summer-campaign");
+  });
+
   it("uses site ids for project sharing instead of project slugs", () => {
     const projectDetail = readSource("./projects/[projectId].astro");
     const demoData = readSource("../../lib/sarge-demo.ts");

@@ -21,6 +21,19 @@ export {
   type TrackingPlanEvent
 } from "./diagnostics.js";
 
+export {
+  buildTrackedPageFinding,
+  classifyTrackedPageHealth,
+  normalizeTrackedPageUrl,
+  selectTrackedPageCandidates,
+  type TrackedPageCandidate,
+  type TrackedPageCandidateOptions,
+  type TrackedPageClassification,
+  type TrackedPageFailureRuleId,
+  type TrackedPageFinding,
+  type TrackedPageHealthResult
+} from "./tracked-page-monitoring.js";
+
 export { sha256Hex, tokenMatchesHash } from "./secrets.js";
 
 export {

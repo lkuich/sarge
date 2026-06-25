@@ -67,6 +67,14 @@ Run the new migration before relying on scheduled diagnostics:
 pnpm prisma:deploy
 ```
 
+## Tracked Page Monitoring
+
+Scheduled diagnostics also check a bounded set of Production page URLs that recently emitted Sarge events. Sarge normalizes and deduplicates recent event URLs, checks up to 25 pages per environment by default, and reports failures through the same AI review findings list.
+
+The monitor flags missing pages (`404` and `410`), server errors (`5xx`), DNS/TLS failures, request timeouts, and redirects to a different host. It does not crawl a site, check every incoming event URL, or require users to configure pinned URLs.
+
+These checks run outside the ingestion path and do not add synchronous work to event collection.
+
 ## Agent Install Skill
 
 The repo includes a local skill for coding agents:

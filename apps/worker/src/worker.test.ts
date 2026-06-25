@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
-import { UsageLimitExceededError } from "@sarge/core";
+import { describe, expect, it, vi } from "vitest";
+import { UsageLimitExceededError, type TrackedPageHealthResult } from "@sarge/core";
 import { createWorkerHandler } from "./index.js";
 import type { EventStore, StoredDiagnosticRun, StoredEvent, WorkerEnv } from "./types.js";
 
@@ -345,7 +345,7 @@ describe("Cloudflare Worker hosted API", () => {
     const { ctx, promises } = createExecutionContext();
     const { diagnosticEvents, diagnosticRuns, store } = createMemoryStore();
     const aiCalls: unknown[] = [];
-    const handler = createWorkerHandler({ store });
+    const handler = createWorkerHandler({ store, pageHealthChecker: async () => [] });
     diagnosticEvents.push(
       {
         id: "evt_page",
@@ -395,11 +395,318 @@ describe("Cloudflare Worker hosted API", () => {
     });
   });
 
+  it("adds tracked page health failures to scheduled diagnostics", async () => {
+    const { ctx, promises } = createExecutionContext();
+    const { diagnosticEvents, diagnosticRuns, store } = createMemoryStore();
+    const handler = createWorkerHandler({
+      store,
+      pageHealthChecker: async () => [
+        {
+          url: "https://shop.example.com/checkout",
+          status: 500,
+          eventCount: 1,
+          conversionLike: true
+        } satisfies TrackedPageHealthResult
+      ]
+    });
+    diagnosticEvents.push({
+      id: "evt_checkout",
+      siteId: "env_shared_production",
+      name: "checkout.started",
+      occurredAt: "2026-06-19T12:00:00.000Z",
+      sessionId: "sess_checkout",
+      userId: "user_123",
+      properties: { value: 84, currency: "USD" },
+      url: "https://shop.example.com/checkout",
+      title: "Checkout"
+    });
+
+    await handler.scheduled(createScheduledController(), createEnv(), ctx);
+    await Promise.all(promises);
+
+    expect(diagnosticRuns).toHaveLength(1);
+    expect(diagnosticRuns[0].findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          ruleId: "tracked_page_server_error",
+          severity: "critical",
+          evidence: expect.arrayContaining([
+            "https://shop.example.com/checkout returned HTTP 500 during the scheduled page health check."
+          ])
+        })
+      ])
+    );
+  });
+
+  it("includes tracked page evidence in the AI summary prompt", async () => {
+    const { ctx, promises } = createExecutionContext();
+    const { diagnosticEvents, store } = createMemoryStore();
+    const aiCalls: unknown[] = [];
+    const handler = createWorkerHandler({
+      store,
+      pageHealthChecker: async () => [
+        {
+          url: "https://shop.example.com/checkout",
+          status: 404,
+          eventCount: 3
+        } satisfies TrackedPageHealthResult
+      ]
+    });
+    diagnosticEvents.push({
+      id: "evt_page",
+      siteId: "env_shared_production",
+      name: "page.view",
+      occurredAt: "2026-06-19T12:00:00.000Z",
+      sessionId: "sess_page",
+      userId: "user_123",
+      properties: {},
+      url: "https://shop.example.com/checkout",
+      title: "Checkout"
+    });
+
+    await handler.scheduled(createScheduledController(), createEnv({
+      AI: {
+        async run(model, input) {
+          aiCalls.push(input);
+          return { response: "The checkout page returned 404." };
+        }
+      }
+    }), ctx);
+    await Promise.all(promises);
+
+    expect(JSON.stringify(aiCalls[0])).toContain("tracked_page_missing");
+    expect(JSON.stringify(aiCalls[0])).toContain("https://shop.example.com/checkout returned HTTP 404");
+  });
+
+  it("passes configured page health URL limit and timeout to scheduled diagnostics checker", async () => {
+    const { ctx, promises } = createExecutionContext();
+    const { diagnosticEvents, diagnosticRuns, store } = createMemoryStore();
+    const pageHealthCalls: Array<{
+      candidates: Array<{ url: string }>;
+      options: { timeoutMs: number };
+    }> = [];
+    const handler = createWorkerHandler({
+      store,
+      pageHealthChecker: async (candidates, options) => {
+        pageHealthCalls.push({ candidates, options });
+        return [];
+      }
+    });
+    diagnosticEvents.push(
+      {
+        id: "evt_page_1",
+        siteId: "env_shared_production",
+        name: "page.view",
+        occurredAt: "2026-06-19T12:00:00.000Z",
+        sessionId: "sess_1",
+        userId: "user_123",
+        properties: {},
+        url: "https://shop.example.com/a",
+        title: "A"
+      },
+      {
+        id: "evt_page_2",
+        siteId: "env_shared_production",
+        name: "page.view",
+        occurredAt: "2026-06-19T12:01:00.000Z",
+        sessionId: "sess_2",
+        userId: "user_123",
+        properties: {},
+        url: "https://shop.example.com/b",
+        title: "B"
+      },
+      {
+        id: "evt_page_3",
+        siteId: "env_shared_production",
+        name: "page.view",
+        occurredAt: "2026-06-19T12:02:00.000Z",
+        sessionId: "sess_3",
+        userId: "user_123",
+        properties: {},
+        url: "https://shop.example.com/c",
+        title: "C"
+      }
+    );
+
+    await handler.scheduled(createScheduledController(), createEnv({
+      PAGE_HEALTH_URL_LIMIT: "2",
+      PAGE_HEALTH_TIMEOUT_MS: "1234"
+    }), ctx);
+    await Promise.all(promises);
+
+    expect(diagnosticRuns).toHaveLength(1);
+    expect(pageHealthCalls).toHaveLength(1);
+    expect(pageHealthCalls[0].candidates).toHaveLength(2);
+    expect(pageHealthCalls[0].options).toEqual({ timeoutMs: 1234 });
+  });
+
+  it("skips tracked page checks when scheduled diagnostics events have no usable URLs", async () => {
+    const { ctx, promises } = createExecutionContext();
+    const { diagnosticEvents, diagnosticRuns, store } = createMemoryStore();
+    const pageHealthChecker = vi.fn(async () => []);
+    const handler = createWorkerHandler({
+      store,
+      pageHealthChecker
+    });
+    diagnosticEvents.push(
+      {
+        id: "evt_page_without_url",
+        siteId: "env_shared_production",
+        name: "page.view",
+        occurredAt: "2026-06-19T12:00:00.000Z",
+        sessionId: "sess_page",
+        userId: "user_123",
+        properties: {},
+        url: null,
+        title: "Missing URL"
+      },
+      {
+        id: "evt_page_mailto",
+        siteId: "env_shared_production",
+        name: "page.view",
+        occurredAt: "2026-06-19T12:01:00.000Z",
+        sessionId: "sess_page",
+        userId: "user_123",
+        properties: {},
+        url: "mailto:support@example.com",
+        title: "Email"
+      }
+    );
+
+    await handler.scheduled(createScheduledController(), createEnv(), ctx);
+    await Promise.all(promises);
+
+    expect(pageHealthChecker).not.toHaveBeenCalled();
+    expect(diagnosticRuns).toHaveLength(1);
+    expect(diagnosticRuns[0]).toMatchObject({
+      status: "completed",
+      findings: []
+    });
+  });
+
+  it("caps scheduled page health checks across sites while keeping event diagnostics", async () => {
+    const { ctx, promises } = createExecutionContext();
+    const { diagnosticEvents, diagnosticRuns, store } = createMemoryStore();
+    const pageHealthCalls: Array<Array<{ url: string }>> = [];
+    const secondSite = {
+      id: "env_other_production",
+      siteId: "site_other",
+      environment: "production" as const,
+      endpointHost: "other.sarge.events",
+      attributionTtlDays: 28,
+      pixelEnabled: true,
+      serverEventSecretHash: null,
+      postbackTokenHash: null
+    };
+    store.listActiveSitesForDiagnostics = async () => [
+      {
+        id: "env_shared_production",
+        siteId: "site_shared",
+        environment: "production",
+        endpointHost: "shared.sarge.events",
+        attributionTtlDays: 28,
+        pixelEnabled: true,
+        serverEventSecretHash: "82f1c19229bdefda9e677f85bcacf68d8a173a21dae2ac685dbb91ed54a83fd3",
+        postbackTokenHash: "22bf18421c010149a42fa386fe4a2fbd28e36da37ac813025b1293c9700c1e5b"
+      },
+      secondSite
+    ];
+    const handler = createWorkerHandler({
+      store,
+      pageHealthChecker: async (candidates) => {
+        pageHealthCalls.push(candidates);
+        return [];
+      }
+    });
+    diagnosticEvents.push(
+      {
+        id: "evt_first_a",
+        siteId: "env_shared_production",
+        name: "page.view",
+        occurredAt: "2026-06-19T12:00:00.000Z",
+        sessionId: "sess_first_a",
+        userId: "user_123",
+        properties: {},
+        url: "https://shop.example.com/a",
+        title: "A"
+      },
+      {
+        id: "evt_first_b",
+        siteId: "env_shared_production",
+        name: "page.view",
+        occurredAt: "2026-06-19T12:01:00.000Z",
+        sessionId: "sess_first_b",
+        userId: "user_123",
+        properties: {},
+        url: "https://shop.example.com/b",
+        title: "B"
+      },
+      {
+        id: "evt_second_checkout",
+        siteId: "env_other_production",
+        name: "checkout.started",
+        occurredAt: "2026-06-19T12:02:00.000Z",
+        sessionId: "sess_second",
+        userId: "user_123",
+        properties: { value: 84, currency: "USD" },
+        url: "https://other.example.com/checkout",
+        title: "Checkout"
+      }
+    );
+
+    await handler.scheduled(createScheduledController(), createEnv({
+      PAGE_HEALTH_URL_LIMIT: "25",
+      PAGE_HEALTH_RUN_URL_LIMIT: "2"
+    }), ctx);
+    await Promise.all(promises);
+
+    expect(pageHealthCalls).toHaveLength(1);
+    expect(pageHealthCalls[0]).toHaveLength(2);
+    expect(diagnosticRuns).toHaveLength(2);
+    expect(diagnosticRuns[1].findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          ruleId: "checkout-without-purchase"
+        })
+      ])
+    );
+  });
+
+  it("continues scheduled diagnostics when tracked page checks throw", async () => {
+    const { ctx, promises } = createExecutionContext();
+    const { diagnosticEvents, diagnosticRuns, store } = createMemoryStore();
+    const handler = createWorkerHandler({
+      store,
+      pageHealthChecker: async () => {
+        throw new Error("fetch platform unavailable");
+      }
+    });
+    diagnosticEvents.push({
+      id: "evt_page",
+      siteId: "env_shared_production",
+      name: "page.view",
+      occurredAt: "2026-06-19T12:00:00.000Z",
+      sessionId: "sess_page",
+      userId: "user_123",
+      properties: {},
+      url: "https://shop.example.com",
+      title: "Shop"
+    });
+
+    await handler.scheduled(createScheduledController(), createEnv(), ctx);
+    await Promise.all(promises);
+
+    expect(diagnosticRuns).toHaveLength(1);
+    expect(diagnosticRuns[0]).toMatchObject({
+      status: "completed"
+    });
+  });
+
   it("stores diagnostics without calling AI when there are no findings", async () => {
     const { ctx, promises } = createExecutionContext();
     const { diagnosticEvents, diagnosticRuns, store } = createMemoryStore();
     const aiCalls: unknown[] = [];
-    const handler = createWorkerHandler({ store });
+    const handler = createWorkerHandler({ store, pageHealthChecker: async () => [] });
     diagnosticEvents.push(
       {
         id: "evt_page",

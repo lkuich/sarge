@@ -15,10 +15,12 @@ describe("app navigation routes", () => {
     expect(layout).not.toContain('label: "Admin"');
     expect(layout).toContain('href="/app"');
     expect(layout).toContain('href="/docs"');
+    expect(layout).toContain('href="/app/notifications"');
     expect(layout).toContain('Docs');
     expect(layout).toContain("{account.name}");
     expect(layout).toContain("{account.role}");
     expect(layout).toContain("{account.plan.name}");
+    expect(layout).toContain('active === "notifications"');
     expect(layout).toContain('active === "billing"');
   });
 
@@ -149,6 +151,34 @@ describe("app navigation routes", () => {
     expect(billing).toContain("50k events/month");
     expect(billing).toContain("2M events/month");
     expect(billing).toContain("Custom events/month");
+  });
+
+  it("adds notification preferences with durable email settings and dedupe", () => {
+    const notificationsPage = readSource("./notifications.astro");
+    const notifications = readSource("../../lib/notifications.ts");
+    const schema = readSource("../../../../apps/api/prisma/schema.prisma");
+
+    expect(schema).toContain("model NotificationPreference");
+    expect(schema).toContain("model NotificationDelivery");
+    expect(schema).toContain("@@unique([workspaceId, userId, category])");
+    expect(schema).toContain("@@unique([workspaceId, recipientEmail, category, fingerprint])");
+
+    expect(notifications).toContain("tracking_stopped");
+    expect(notifications).toContain("page_health_failure");
+    expect(notifications).toContain("usage_limit_risk");
+    expect(notifications).toContain("billing_action_needed");
+    expect(notifications).toContain("collaboration_access");
+    expect(notifications).toContain("sendNotificationWithDedupe");
+    expect(notifications).toContain("loadNotificationPreferences");
+    expect(notifications).toContain("saveNotificationPreferences");
+
+    expect(notificationsPage).toContain('active="notifications"');
+    expect(notificationsPage).toContain("NotificationPreference");
+    expect(notificationsPage).toContain("data-notification-preferences");
+    expect(notificationsPage).toContain('name="intent" value="save-notifications"');
+    expect(notificationsPage).toContain('type="checkbox"');
+    expect(notificationsPage).toContain("Always sent");
+    expect(notificationsPage).toContain("Upgrade to Growth");
   });
 
   it("receives Stripe webhooks through a signature-verified endpoint", () => {

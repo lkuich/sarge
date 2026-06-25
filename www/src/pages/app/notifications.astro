@@ -1,0 +1,192 @@
+---
+import { env } from "cloudflare:workers";
+import { AlertCircle, Bell, CheckCircle2, LockKeyhole } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import AppLayout from "@/layouts/AppLayout.astro";
+import { canUseFeature } from "@/lib/pricing";
+import { getViewerAccount } from "@/lib/sarge-demo";
+import {
+  loadNotificationPreferences,
+  notificationCategories,
+  saveNotificationPreferences,
+  type NotificationCategoryId,
+} from "@/lib/notifications";
+
+const { userId } = Astro.locals.auth();
+if (!userId) return Astro.redirect("/sign-in");
+const currentUser = await Astro.locals.currentUser();
+const viewerEmails = currentUser?.emailAddresses.map((email) => email.emailAddress).filter(Boolean) ?? [];
+const primaryEmail = currentUser?.primaryEmailAddress?.emailAddress ?? viewerEmails[0] ?? "";
+let saveError = "";
+let saveSuccess = false;
+
+const account = await getViewerAccount(userId, env.DATABASE_URL, { viewerEmails });
+const alertsIncluded = canUseFeature(account.planId, "alerts");
+const runtimeEnv = env as unknown as Record<string, string | undefined>;
+const emailFrom = runtimeEnv.SARGE_EMAIL_FROM?.trim() ?? "";
+const emailConfigured = Boolean(emailFrom && env.EMAIL);
+
+if (Astro.request.method === "POST") {
+  const formData = await Astro.request.formData();
+  const intent = String(formData.get("intent") ?? "");
+
+  if (intent === "save-notifications") {
+    const enabledCategoryIds = formData
+      .getAll("emailEnabled")
+      .filter((value): value is NotificationCategoryId =>
+        typeof value === "string" && notificationCategories.some((category) => category.id === value),
+      );
+    const editableCategoryIds = formData
+      .getAll("editableCategory")
+      .filter((value): value is NotificationCategoryId =>
+        typeof value === "string" && notificationCategories.some((category) => category.id === value),
+      );
+    const result = await saveNotificationPreferences({
+      databaseUrl: env.DATABASE_URL,
+      workspaceId: account.id,
+      userId,
+      email: primaryEmail,
+      role: account.role,
+      enabledCategoryIds,
+      editableCategoryIds,
+    });
+
+    if (result.success) {
+      saveSuccess = true;
+    } else {
+      saveError = result.error;
+    }
+  }
+}
+
+const preferences = await loadNotificationPreferences({
+  databaseUrl: env.DATABASE_URL,
+  workspaceId: account.id,
+  userId,
+  role: account.role,
+});
+const preferenceModelLabel = "NotificationPreference";
+---
+
+<AppLayout
+  account={account}
+  title="Notifications | Sarge"
+  heading="Notifications"
+  description="Control the email alerts Sarge sends for operational issues, usage risk, billing, and access changes."
+  active="notifications"
+  breadcrumbs={[{ label: "Overview", href: "/app" }, { label: "Notifications" }]}
+>
+  <section class="grid gap-4">
+    {
+      saveError && (
+        <Alert variant="destructive">
+          <AlertCircle className="size-4" />
+          <AlertTitle>Preferences were not saved</AlertTitle>
+          <AlertDescription>{saveError}</AlertDescription>
+        </Alert>
+      )
+    }
+    {
+      saveSuccess && (
+        <Alert>
+          <CheckCircle2 className="size-4" />
+          <AlertTitle>Notification preferences saved</AlertTitle>
+          <AlertDescription>Email alert settings were updated for {primaryEmail}.</AlertDescription>
+        </Alert>
+      )
+    }
+
+    <Card>
+      <CardHeader>
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <CardTitle>Email status</CardTitle>
+            <p class="mt-1 text-sm text-muted-foreground">
+              Alerts use Cloudflare Email Service and the workspace sender configured for Sarge.
+            </p>
+          </div>
+          <Badge variant={emailConfigured ? "default" : "secondary"}>{emailConfigured ? "Configured" : "Needs setup"}</Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="grid gap-3 text-sm md:grid-cols-3">
+        <div class="rounded-md border p-3">
+          <p class="text-xs font-medium text-muted-foreground">Recipient</p>
+          <p class="mt-1 break-all font-medium">{primaryEmail || "No verified email"}</p>
+        </div>
+        <div class="rounded-md border p-3">
+          <p class="text-xs font-medium text-muted-foreground">Sender</p>
+          <p class="mt-1 break-all font-medium">{emailFrom || "SARGE_EMAIL_FROM missing"}</p>
+        </div>
+        <div class="rounded-md border p-3">
+          <p class="text-xs font-medium text-muted-foreground">Plan</p>
+          <p class="mt-1 font-medium">{alertsIncluded ? "Operational alerts included" : "Operational alerts require Growth"}</p>
+        </div>
+      </CardContent>
+    </Card>
+
+    <form method="post" data-notification-preferences data-model={preferenceModelLabel}>
+      <input type="hidden" name="intent" value="save-notifications" />
+      <Card>
+        <CardHeader>
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle>Email preferences</CardTitle>
+              <p class="mt-1 text-sm text-muted-foreground">
+                Immediate alerts are deduped by condition so repeated checks do not send the same email.
+              </p>
+            </div>
+            <Button type="submit" disabled={!primaryEmail || !account.workspaceSetupComplete}>
+              Save preferences
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="grid gap-0">
+          {
+            preferences.map((preference, index) => {
+              const category = preference.category;
+              const planLocked = category.requiresAlertsPlan && !alertsIncluded;
+              const disabled = planLocked || !category.toggleable;
+
+              return (
+                <div>
+                  {index > 0 && <Separator />}
+                  <div class="grid gap-4 py-4 md:grid-cols-[1fr_auto] md:items-center">
+                    <div class="min-w-0">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <Bell className="size-4 text-primary" />
+                        <p class="font-medium">{category.label}</p>
+                        {!category.toggleable && <Badge variant="outline">Always sent</Badge>}
+                        {planLocked && <Badge variant="secondary">Upgrade to Growth</Badge>}
+                      </div>
+                      <p class="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{category.description}</p>
+                      <p class="mt-1 text-xs text-muted-foreground">{category.defaultBehavior}</p>
+                      {!disabled && <input type="hidden" name="editableCategory" value={category.id} />}
+                    </div>
+                    <label class="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-2 text-sm md:min-w-44">
+                      <span class="inline-flex items-center gap-2">
+                        {disabled && <LockKeyhole className="size-3.5 text-muted-foreground" />}
+                        Email
+                      </span>
+                      <input
+                        class="size-4 accent-primary"
+                        type="checkbox"
+                        name="emailEnabled"
+                        value={category.id}
+                        checked={preference.emailEnabled}
+                        disabled={disabled}
+                      />
+                    </label>
+                  </div>
+                </div>
+              );
+            })
+          }
+        </CardContent>
+      </Card>
+    </form>
+  </section>
+</AppLayout>

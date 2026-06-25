@@ -20,6 +20,16 @@ export interface ProjectInviteEmailInput {
   emailFrom?: string;
 }
 
+export interface ProjectAccessNotificationEmailInput {
+  to: string;
+  projectName: string;
+  role?: ProjectShareRole;
+  appUrl: string;
+  action: 'role-updated' | 'access-removed';
+  emailSender?: CloudflareEmailSender;
+  emailFrom?: string;
+}
+
 export type ProjectInviteEmailResult =
   | { sent: true }
   | { sent: false; warning: string };
@@ -55,6 +65,47 @@ export const sendProjectInviteEmail = async (
     return {
       sent: false,
       warning: 'Project invite saved, but email was not sent. Check the Cloudflare Email configuration and try again.',
+    };
+  }
+};
+
+export const sendProjectAccessNotificationEmail = async (
+  input: ProjectAccessNotificationEmailInput,
+): Promise<ProjectInviteEmailResult> => {
+  const from = input.emailFrom?.trim();
+
+  if (!input.emailSender || !from) {
+    return {
+      sent: false,
+      warning: 'Project access changed, but email was not sent. Configure the Cloudflare Email binding and SARGE_EMAIL_FROM to send access notices.',
+    };
+  }
+
+  const subject =
+    input.action === 'role-updated'
+      ? `Your access to ${input.projectName} changed`
+      : `Your access to ${input.projectName} was removed`;
+  const summary =
+    input.action === 'role-updated'
+      ? `Your Sarge access for ${input.projectName} was changed to ${input.role}.`
+      : `Your Sarge access for ${input.projectName} was removed.`;
+  const linkText = input.action === 'role-updated' ? 'Open Sarge' : 'View Sarge';
+
+  try {
+    await input.emailSender.send({
+      to: input.to,
+      from: { email: from, name: 'Sarge' },
+      subject,
+      text: [summary, `Open Sarge: ${input.appUrl}`].join('\n\n'),
+      html: `<p>${escapeHtml(summary)}</p><p><a href="${escapeHtml(input.appUrl)}">${linkText}</a></p>`,
+    });
+
+    return { sent: true };
+  } catch (error) {
+    console.error('Unable to send project access notification email with Cloudflare Email', error);
+    return {
+      sent: false,
+      warning: 'Project access changed, but email was not sent. Check the Cloudflare Email configuration and try again.',
     };
   }
 };

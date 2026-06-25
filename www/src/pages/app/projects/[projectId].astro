@@ -121,6 +121,11 @@ if (Astro.request.method === "POST") {
         env.DATABASE_URL,
         String(formData.get("shareId") ?? ""),
         String(formData.get("role") ?? "view") as ProjectShareRole,
+        {
+          emailSender: env.EMAIL,
+          emailFrom: runtimeEnv.SARGE_EMAIL_FROM,
+          appUrl: `${Astro.url.origin}/app`,
+        },
       );
 
       if (result.success) {
@@ -137,7 +142,11 @@ if (Astro.request.method === "POST") {
       shareError = "Only project owners can remove project shares.";
     } else {
       const shareId = String(formData.get("shareId") ?? "");
-      const result = await removeProjectShare(userId, env.DATABASE_URL, shareId);
+      const result = await removeProjectShare(userId, env.DATABASE_URL, shareId, {
+        emailSender: env.EMAIL,
+        emailFrom: runtimeEnv.SARGE_EMAIL_FROM,
+        appUrl: `${Astro.url.origin}/app`,
+      });
 
       if (result.success) {
         project.shares = project.shares.filter((share) => share.id !== shareId);

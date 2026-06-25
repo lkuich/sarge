@@ -21,6 +21,8 @@ model Workspace {
   stripePriceId           String?
   createdAt               DateTime @default(now())
   sites                   Site[]
+  notificationPreferences NotificationPreference[]
+  notificationDeliveries  NotificationDelivery[]
 }
 
 model Site {
@@ -183,4 +185,45 @@ model ProjectShare {
   @@unique([siteId, email])
   @@index([email])
   @@index([acceptedUserId])
+}
+
+model NotificationPreference {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  userId       String
+  email        String
+  category     String
+  emailEnabled Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId, category])
+  @@index([userId])
+  @@index([email])
+}
+
+model NotificationDelivery {
+  id                String    @id @default(cuid())
+  workspaceId       String
+  siteId            String?
+  siteEnvironmentId String?
+  userId            String?
+  recipientEmail    String
+  category          String
+  fingerprint       String
+  subject           String
+  status            String
+  error             String?
+  sentAt            DateTime?
+  createdAt         DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, recipientEmail, category, fingerprint])
+  @@index([workspaceId, createdAt])
+  @@index([category, status])
+  @@index([siteId])
+  @@index([siteEnvironmentId])
 }

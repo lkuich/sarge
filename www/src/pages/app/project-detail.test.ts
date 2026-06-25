@@ -192,11 +192,13 @@ describe("project detail install panel", () => {
     expect(mailer).not.toContain("SENDGRID_API_KEY");
     expect(mailer).toContain("SARGE_EMAIL_FROM");
     expect(mailer).toContain("sendProjectInviteEmail");
+    expect(mailer).toContain("sendProjectAccessNotificationEmail");
     expect(mailer).toContain("Project invite saved, but email was not sent");
 
     expect(demoData).toContain("export const shareProject");
     expect(demoData).toContain("export const updateProjectShare");
     expect(demoData).toContain("export const removeProjectShare");
+    expect(demoData).toContain("sendProjectAccessNotificationEmail");
     expect(demoData).toContain("normalizeInviteEmail");
   });
 

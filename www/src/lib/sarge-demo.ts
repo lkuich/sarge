@@ -1,6 +1,6 @@
 import { neon } from '@neondatabase/serverless';
 import { summarizeEventHosts, type EventHostSummary } from './event-hosts';
-import { sendProjectInviteEmail, type ProjectInviteEmailInput } from './project-invite-email';
+import { sendProjectAccessNotificationEmail, sendProjectInviteEmail, type ProjectInviteEmailInput } from './project-invite-email';
 import { analyzeProjectEvents, type ProjectDiagnostic } from './project-diagnostics';
 import { buildPlanLimitSqlCase, getPlanDefinition, type PlanDefinition, type PlanId } from './pricing';
 
@@ -909,6 +909,7 @@ export const updateProjectShare = async (
   databaseUrl: string | undefined,
   shareId: string,
   role: ProjectShareRole,
+  emailOptions?: ProjectInviteEmailOptions,
 ): Promise<UpdateProjectShareResult> => {
   if (!databaseUrl) return { success: false, error: 'DATABASE_URL is not configured.' };
 
@@ -925,10 +926,22 @@ export const updateProjectShare = async (
       WHERE ps.id = ${shareId}
         AND ps."siteId" = s.id
         AND w."ownerUserId" = ${userId}
-      RETURNING ps.id, ps."siteId", ps.email, ps.role, ps."acceptedUserId", ps."createdAt", ps."acceptedAt"
-    `) as ProjectShareRow[];
+      RETURNING ps.id, ps."siteId", ps.email, ps.role, ps."acceptedUserId", ps."createdAt", ps."acceptedAt", s.name AS "projectName"
+    `) as (ProjectShareRow & { projectName: string })[];
     const share = rows.at(0);
     if (!share) return { success: false, error: 'Project share was not found.' };
+
+    if (emailOptions) {
+      await sendProjectAccessNotificationEmail({
+        to: share.email,
+        projectName: share.projectName,
+        role: normalizedRole,
+        action: 'role-updated',
+        appUrl: emailOptions.appUrl,
+        emailSender: emailOptions.emailSender,
+        emailFrom: emailOptions.emailFrom,
+      });
+    }
 
     return {
       success: true,
@@ -947,6 +960,7 @@ export const removeProjectShare = async (
   userId: string,
   databaseUrl: string | undefined,
   shareId: string,
+  emailOptions?: ProjectInviteEmailOptions,
 ): Promise<RemoveProjectShareResult> => {
   if (!databaseUrl) return { success: false, error: 'DATABASE_URL is not configured.' };
 
@@ -959,9 +973,21 @@ export const removeProjectShare = async (
       WHERE ps.id = ${shareId}
         AND ps."siteId" = s.id
         AND w."ownerUserId" = ${userId}
-      RETURNING ps.id
-    `) as { id: string }[];
-    if (!rows.at(0)) return { success: false, error: 'Project share was not found.' };
+      RETURNING ps.id, ps.email, ps.role, s.name AS "projectName"
+    `) as { id: string; email: string; role: string; projectName: string }[];
+    const removedShare = rows.at(0);
+    if (!removedShare) return { success: false, error: 'Project share was not found.' };
+
+    if (emailOptions) {
+      await sendProjectAccessNotificationEmail({
+        to: removedShare.email,
+        projectName: removedShare.projectName,
+        action: 'access-removed',
+        appUrl: emailOptions.appUrl,
+        emailSender: emailOptions.emailSender,
+        emailFrom: emailOptions.emailFrom,
+      });
+    }
 
     return { success: true };
   } catch (error) {

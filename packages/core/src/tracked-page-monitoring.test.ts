@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildTrackedPageFinding,
   classifyTrackedPageHealth,
+  normalizeTrackedPageUrl,
   selectTrackedPageCandidates,
   type TrackedPageHealthResult
 } from "./tracked-page-monitoring.js";
@@ -38,6 +39,14 @@ describe("tracked page monitoring", () => {
       eventCount: 2,
       latestEventAt: "2026-06-19T12:00:00.000Z"
     });
+  });
+
+  it("strips common tracking query parameters while preserving meaningful parameters", () => {
+    expect(
+      normalizeTrackedPageUrl(
+        "https://shop.example.com/products/flask?variant=blue&utm_source=ad&fbclid=fb&gclid=google&msclkid=ms&sarge_ref=abc&sarge_aff=partner#details"
+      )
+    ).toBe("https://shop.example.com/products/flask?variant=blue");
   });
 
   it("prioritizes conversion-like URLs, then volume, then recency", () => {
@@ -81,8 +90,24 @@ describe("tracked page monitoring", () => {
     ]);
   });
 
+  it("applies the default candidate cap", () => {
+    const candidates = selectTrackedPageCandidates(
+      Array.from({ length: 30 }, (_, index) =>
+        event("page.view", { url: `https://shop.example.com/page-${index}` })
+      )
+    );
+
+    expect(candidates).toHaveLength(25);
+    expect(candidates[0]?.url).toBe("https://shop.example.com/page-0");
+    expect(candidates.at(-1)?.url).toBe("https://shop.example.com/page-24");
+  });
+
   it("classifies unavailable tracked pages", () => {
     expect(classifyTrackedPageHealth({ url: "https://shop.example.com/missing", status: 404 })).toMatchObject({
+      ruleId: "tracked_page_missing",
+      severity: "warning"
+    });
+    expect(classifyTrackedPageHealth({ url: "https://shop.example.com/gone", status: 410 })).toMatchObject({
       ruleId: "tracked_page_missing",
       severity: "warning"
     });

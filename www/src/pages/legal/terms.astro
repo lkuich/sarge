@@ -1,0 +1,126 @@
+---
+import { FileText, Mail } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import SiteLayout from "@/layouts/SiteLayout.astro";
+
+const sections = [
+  {
+    title: "Using Sarge",
+    items: [
+      "You may use Sarge only for lawful business purposes and in accordance with these terms.",
+      "You are responsible for your account, workspace, projects, users, credentials, tracking configuration, notices, consent flows, and customer content.",
+      "You must keep credentials, server event secrets, postback tokens, and verification links secure and promptly rotate anything you believe has been exposed.",
+    ],
+  },
+  {
+    title: "Customer content and event data",
+    items: [
+      "Customer content includes project settings, event payloads, browser event data, server events, webhook configuration, support requests, and other materials you submit to Sarge.",
+      "You retain ownership of your customer content. You grant Sarge the rights needed to host, process, transmit, display, secure, troubleshoot, and improve the service.",
+      "Do not send sensitive personal information, payment card numbers, passwords, health information, or other regulated data unless Sarge has agreed in writing.",
+    ],
+  },
+  {
+    title: "Acceptable use",
+    items: [
+      "These acceptable use rules protect Sarge, our customers, and the people whose events customers choose to send through the service.",
+      "Do not use Sarge to violate laws, invade privacy, track people without required notice or consent, send malware, overload systems, bypass security controls, or interfere with other customers.",
+      "Do not reverse engineer hosted service code, scrape the dashboard, probe infrastructure without permission, or use Sarge to build a competing service.",
+      "We may suspend access, throttle traffic, disable endpoints, or remove content if needed to protect the service, customers, or the public.",
+    ],
+  },
+  {
+    title: "Plans, billing, and limits",
+    items: [
+      "Some features are limited by plan, volume, retention, infrastructure, or product availability.",
+      "Paid plans are billed through our payment provider. Fees are non-refundable except where required by law or expressly stated in writing.",
+      "We may change plans, prices, or included limits with notice. Continued use after the effective date means you accept the updated commercial terms.",
+    ],
+  },
+  {
+    title: "Availability and support",
+    items: [
+      "Sarge is provided on an as-available basis unless a separate written agreement says otherwise.",
+      "We may modify, suspend, or discontinue features as the service evolves. We will use reasonable efforts to avoid unnecessary disruption.",
+      "Beta, preview, or experimental features may change quickly and may not be covered by the same reliability commitments as generally available features.",
+    ],
+  },
+  {
+    title: "Disclaimers and liability",
+    items: [
+      "Sarge helps diagnose tracking and event issues, but you remain responsible for validating your own analytics, advertising, billing, and compliance outcomes.",
+      "To the maximum extent permitted by law, Sarge is provided without warranties of merchantability, fitness for a particular purpose, or non-infringement.",
+      "To the maximum extent permitted by law, Sarge will not be liable for indirect, incidental, special, consequential, punitive, or lost-profit damages.",
+    ],
+  },
+];
+---
+
+<SiteLayout title="Terms of Service | Sarge">
+  <section class="border-y bg-muted/30 px-4 py-14 md:px-6">
+    <div class="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[320px_1fr]">
+      <aside class="lg:sticky lg:top-24 lg:self-start">
+        <Badge variant="outline">Effective June 25, 2026</Badge>
+        <h1 class="mt-4 text-4xl font-semibold tracking-tight md:text-5xl">Terms of Service</h1>
+        <p class="mt-4 text-sm leading-6 text-muted-foreground">
+          These terms govern access to Sarge websites, dashboards, hosted tracking endpoints, APIs, verification tools, and related services.
+        </p>
+        <div class="mt-6 flex flex-wrap gap-3">
+          <a href="mailto:terms@sargetrack.app?subject=Terms%20question">
+            <Button>
+              <Mail className="mr-2 size-4" /> Contact terms
+            </Button>
+          </a>
+          <a href="/legal/privacy">
+            <Button variant="outline">View privacy</Button>
+          </a>
+        </div>
+      </aside>
+
+      <div class="grid gap-5">
+        <article class="rounded-lg border bg-card p-6">
+          <div class="flex items-start gap-3">
+            <FileText className="mt-1 size-5 shrink-0 text-primary" />
+            <div>
+              <h2 class="text-xl font-semibold">Agreement</h2>
+              <p class="mt-2 text-sm leading-6 text-muted-foreground">
+                By creating an account, accepting these terms in the dashboard, installing the Sarge pixel, calling Sarge APIs, or otherwise using Sarge, you agree to these Terms of Service and the Privacy Policy.
+              </p>
+            </div>
+          </div>
+        </article>
+
+        {
+          sections.map((section) => (
+            <article class="rounded-lg border bg-card p-6">
+              <h2 class="text-xl font-semibold">{section.title}</h2>
+              <ul class="mt-4 grid gap-3 text-sm leading-6 text-muted-foreground">
+                {section.items.map((item) => (
+                  <li class="flex gap-3">
+                    <span class="mt-2 size-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </article>
+          ))
+        }
+
+        <article class="rounded-lg border bg-card p-6">
+          <h2 class="text-xl font-semibold">Changes to these terms</h2>
+          <p class="mt-3 text-sm leading-6 text-muted-foreground">
+            We may update these terms as Sarge changes. If changes are material, we will update the effective date and may require workspace owners to accept the new version before continuing to administer a workspace.
+          </p>
+        </article>
+
+        <article class="rounded-lg border bg-card p-6">
+          <h2 class="text-xl font-semibold">Questions</h2>
+          <p class="mt-3 text-sm leading-6 text-muted-foreground">
+            Contact <a class="font-medium text-foreground underline underline-offset-4" href="mailto:terms@sargetrack.app">terms@sargetrack.app</a> for terms questions and <a class="font-medium text-foreground underline underline-offset-4" href="mailto:privacy@sargetrack.app">privacy@sargetrack.app</a> for privacy requests.
+          </p>
+        </article>
+      </div>
+    </div>
+  </section>
+</SiteLayout>

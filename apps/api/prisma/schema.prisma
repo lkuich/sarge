@@ -19,6 +19,11 @@ model Workspace {
   stripeCustomerId        String?  @unique
   stripeSubscriptionId    String?  @unique
   stripePriceId           String?
+  termsAcceptedAt         DateTime?
+  termsAcceptedVersion    String?
+  privacyAcceptedVersion  String?
+  termsAcceptedIp         String?
+  termsAcceptedUserAgent  String?
   createdAt               DateTime @default(now())
   sites                   Site[]
   notificationPreferences NotificationPreference[]

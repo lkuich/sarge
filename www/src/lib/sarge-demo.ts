@@ -112,6 +112,10 @@ export interface SargeAccount {
   plan: PlanDefinition;
   billingStatus: 'active' | 'past_due' | 'canceled';
   currentPeriodEventCount: number;
+  termsAcceptedAt: Date | null;
+  termsAcceptedVersion: string | null;
+  privacyAcceptedVersion: string | null;
+  workspaceLegalAcceptanceRequired: boolean;
   workspaceSetupComplete: boolean;
   ownedProjects: SargeProject[];
   sharedProjects: SargeProject[];
@@ -127,6 +131,9 @@ export interface PublicEventStream {
 
 export interface CreateWorkspaceInput {
   name: string;
+  acceptLegalTerms?: boolean;
+  acceptedIp?: string | null;
+  acceptedUserAgent?: string | null;
 }
 
 export interface CreateProjectInput {
@@ -165,6 +172,10 @@ export type CreateWorkspaceResult =
   | { success: true; account: Pick<SargeAccount, 'id' | 'name' | 'slug'> }
   | { success: false; error: string };
 
+export type AcceptWorkspaceLegalTermsResult =
+  | { success: true }
+  | { success: false; error: string };
+
 export type DeleteWorkspaceResult =
   | { success: true }
   | { success: false; error: string };
@@ -194,6 +205,8 @@ export type CreatePublicVerificationLinkResult =
   | { success: false; error: string };
 
 export const hostedEndpointHost = 'track.sargetrack.app';
+export const CURRENT_LEGAL_VERSION = "2026-06-25";
+export const CURRENT_PRIVACY_VERSION = "2026-06-25";
 const demoAccountName = 'Demo Account';
 type SqlClient = ReturnType<typeof neon>;
 const projectLimitSqlCase = buildPlanLimitSqlCase('projects', 'w."planId"');
@@ -235,7 +248,16 @@ const resolveRole = (userId: string): AccountRole => {
 
 const getViewerWorkspace = async (sql: SqlClient, userId: string) => {
   const workspaces = (await sql`
-    SELECT id, slug, name, "planId", "billingStatus", "currentPeriodEventCount"
+    SELECT
+      id,
+      slug,
+      name,
+      "planId",
+      "billingStatus",
+      "currentPeriodEventCount",
+      "termsAcceptedAt",
+      "termsAcceptedVersion",
+      "privacyAcceptedVersion"
     FROM "Workspace"
     WHERE "ownerUserId" = ${userId}
     LIMIT 1
@@ -314,6 +336,15 @@ const normalizeInviteEmail = (email: string) => {
   const normalized = email.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) return '';
   return normalized;
+};
+
+const workspaceLegalAcceptanceRequired = (workspace: Pick<WorkspaceRow, 'termsAcceptedAt' | 'termsAcceptedVersion' | 'privacyAcceptedVersion'> | null) => {
+  if (!workspace) return false;
+  return (
+    !workspace.termsAcceptedAt ||
+    workspace.termsAcceptedVersion !== CURRENT_LEGAL_VERSION ||
+    workspace.privacyAcceptedVersion !== CURRENT_PRIVACY_VERSION
+  );
 };
 
 export const getViewerAccount = async (
@@ -522,6 +553,7 @@ export const getViewerAccount = async (
 
     const isPlaceholderWorkspace = workspace?.name === demoAccountName && sites.length === 0;
     const planId = workspace?.planId ?? 'free';
+    const requiresLegalAcceptance = workspaceLegalAcceptanceRequired(workspace);
 
     const ownedProjects = sites.map((site) => {
       const environments = siteEnvironments
@@ -594,6 +626,10 @@ export const getViewerAccount = async (
       plan: getPlanDefinition(planId),
       billingStatus: workspace?.billingStatus ?? 'active',
       currentPeriodEventCount: workspace?.currentPeriodEventCount ?? 0,
+      termsAcceptedAt: workspace?.termsAcceptedAt ?? null,
+      termsAcceptedVersion: workspace?.termsAcceptedVersion ?? null,
+      privacyAcceptedVersion: workspace?.privacyAcceptedVersion ?? null,
+      workspaceLegalAcceptanceRequired: requiresLegalAcceptance,
       workspaceSetupComplete: Boolean(workspace && !isPlaceholderWorkspace),
       ownedProjects,
       sharedProjects,
@@ -729,6 +765,9 @@ export const createWorkspace = async (
 
   const name = input.name.trim();
   if (!name) return { success: false, error: 'Workspace name is required.' };
+  if (!input.acceptLegalTerms) {
+    return { success: false, error: 'Legal acceptance is required before creating a workspace.' };
+  }
   if (name.toLowerCase() === demoAccountName.toLowerCase()) {
     return { success: false, error: 'Use your company, team, or store name for the workspace.' };
   }
@@ -738,10 +777,37 @@ export const createWorkspace = async (
     const existingWorkspace = await getViewerWorkspace(sql, userId);
     const id = existingWorkspace?.id ?? `wrk_${crypto.randomUUID()}`;
     const slug = existingWorkspace?.slug ?? buildViewerWorkspaceSlug(userId);
+    const acceptedAt = new Date();
     const rows = (await sql`
-      INSERT INTO "Workspace" (id, slug, name, "ownerUserId")
-      VALUES (${id}, ${slug}, ${name}, ${userId})
-      ON CONFLICT ("ownerUserId") DO UPDATE SET name = EXCLUDED.name
+      INSERT INTO "Workspace" (
+        id,
+        slug,
+        name,
+        "ownerUserId",
+        "termsAcceptedAt",
+        "termsAcceptedVersion",
+        "privacyAcceptedVersion",
+        "termsAcceptedIp",
+        "termsAcceptedUserAgent"
+      )
+      VALUES (
+        ${id},
+        ${slug},
+        ${name},
+        ${userId},
+        ${acceptedAt.toISOString()},
+        ${CURRENT_LEGAL_VERSION},
+        ${CURRENT_PRIVACY_VERSION},
+        ${input.acceptedIp ?? null},
+        ${input.acceptedUserAgent ?? null}
+      )
+      ON CONFLICT ("ownerUserId") DO UPDATE SET
+        name = EXCLUDED.name,
+        "termsAcceptedAt" = EXCLUDED."termsAcceptedAt",
+        "termsAcceptedVersion" = EXCLUDED."termsAcceptedVersion",
+        "privacyAcceptedVersion" = EXCLUDED."privacyAcceptedVersion",
+        "termsAcceptedIp" = EXCLUDED."termsAcceptedIp",
+        "termsAcceptedUserAgent" = EXCLUDED."termsAcceptedUserAgent"
       RETURNING id, slug, name
     `) as WorkspaceRow[];
     const account = rows[0];
@@ -756,6 +822,39 @@ export const createWorkspace = async (
     return {
       success: false,
       error: 'Workspace could not be created. Try a different name.',
+    };
+  }
+};
+
+export const acceptWorkspaceLegalTerms = async (
+  userId: string,
+  databaseUrl: string | undefined,
+  input: Pick<CreateWorkspaceInput, 'acceptedIp' | 'acceptedUserAgent'> = {},
+): Promise<AcceptWorkspaceLegalTermsResult> => {
+  if (!databaseUrl) return { success: false, error: 'DATABASE_URL is not configured.' };
+
+  try {
+    const sql = neon(databaseUrl);
+    const acceptedAt = new Date();
+    const rows = (await sql`
+      UPDATE "Workspace"
+      SET
+        "termsAcceptedAt" = ${acceptedAt.toISOString()},
+        "termsAcceptedVersion" = ${CURRENT_LEGAL_VERSION},
+        "privacyAcceptedVersion" = ${CURRENT_PRIVACY_VERSION},
+        "termsAcceptedIp" = ${input.acceptedIp ?? null},
+        "termsAcceptedUserAgent" = ${input.acceptedUserAgent ?? null}
+      WHERE "ownerUserId" = ${userId}
+      RETURNING id
+    `) as { id: string }[];
+
+    if (!rows.at(0)) return { success: false, error: 'Workspace was not found.' };
+    return { success: true };
+  } catch (error) {
+    console.error('Unable to accept Sarge legal terms', error);
+    return {
+      success: false,
+      error: 'Legal acceptance could not be saved.',
     };
   }
 };
@@ -1444,6 +1543,10 @@ const getFallbackAccount = (role: AccountRole): SargeAccount => {
     plan: getPlanDefinition('free'),
     billingStatus: 'active',
     currentPeriodEventCount: 184,
+    termsAcceptedAt: new Date('2026-06-25T00:00:00.000Z'),
+    termsAcceptedVersion: CURRENT_LEGAL_VERSION,
+    privacyAcceptedVersion: CURRENT_PRIVACY_VERSION,
+    workspaceLegalAcceptanceRequired: false,
     workspaceSetupComplete: true,
     ownedProjects,
     sharedProjects: [],
@@ -1461,6 +1564,10 @@ const getSetupAccount = (role: AccountRole): SargeAccount => ({
   plan: getPlanDefinition('free'),
   billingStatus: 'active',
   currentPeriodEventCount: 0,
+  termsAcceptedAt: null,
+  termsAcceptedVersion: null,
+  privacyAcceptedVersion: null,
+  workspaceLegalAcceptanceRequired: false,
   workspaceSetupComplete: false,
   ownedProjects: [],
   sharedProjects: [],
@@ -1794,6 +1901,9 @@ interface WorkspaceRow {
   planId: PlanId;
   billingStatus: 'active' | 'past_due' | 'canceled';
   currentPeriodEventCount: number;
+  termsAcceptedAt: Date | null;
+  termsAcceptedVersion: string | null;
+  privacyAcceptedVersion: string | null;
 }
 
 interface SiteSummaryRow {

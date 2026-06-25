@@ -9,7 +9,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import AppLayout from "@/layouts/AppLayout.astro";
 import { getLimitUsagePrompt } from "@/lib/pricing";
-import { canAdministerAccount, createWorkspace, deleteWorkspace, environmentLabels, formatCount, getAccountUsage, getViewerAccount } from "@/lib/sarge-demo";
+import {
+  acceptWorkspaceLegalTerms,
+  canAdministerAccount,
+  createWorkspace,
+  deleteWorkspace,
+  environmentLabels,
+  formatCount,
+  getAccountUsage,
+  getViewerAccount,
+} from "@/lib/sarge-demo";
 
 const { userId } = Astro.locals.auth();
 if (!userId) return Astro.redirect("/sign-in");
@@ -18,6 +27,7 @@ const viewerEmails = currentUser?.emailAddresses.map((email) => email.emailAddre
 
 let workspaceError = "";
 let workspaceDeleteError = "";
+let legalAcceptanceError = "";
 let workspaceValues = {
   name: "",
 };
@@ -31,10 +41,21 @@ if (Astro.request.method === "POST") {
       name: String(formData.get("workspaceName") ?? ""),
     };
 
-    const result = await createWorkspace(userId, env.DATABASE_URL, workspaceValues);
+    const result = await createWorkspace(userId, env.DATABASE_URL, {
+      ...workspaceValues,
+      acceptLegalTerms: formData.get("acceptLegalTerms") === "on",
+      ...getLegalRequestMetadata(Astro.request.headers),
+    });
     if (result.success) return Astro.redirect("/app", 303);
 
     workspaceError = result.error;
+  }
+
+  if (intent === "accept-legal-terms") {
+    const result = await acceptWorkspaceLegalTerms(userId, env.DATABASE_URL, getLegalRequestMetadata(Astro.request.headers));
+    if (result.success) return Astro.redirect("/app", 303);
+
+    legalAcceptanceError = result.error;
   }
 
   if (intent === "delete-workspace") {
@@ -69,6 +90,7 @@ const needsWorkspaceSetup = !account.workspaceSetupComplete;
 const shouldShowSetupGuide = needsWorkspaceSetup || !hasOwnedProjects;
 const canCreateProjects = canAdministerAccount(account);
 const canDeleteWorkspace = canCreateProjects && account.workspaceSetupComplete && account.ownedProjects.length === 0;
+const needsLegalAcceptance = account.workspaceLegalAcceptanceRequired;
 const projectCountLabel = `${account.ownedProjects.length} ${account.ownedProjects.length === 1 ? "project" : "projects"} under ${account.name}`;
 const activeProjects = account.projects.filter((project) => project.status === "active").length;
 const collectingProjects = account.projects.filter((project) => project.eventCount24h > 0).length;
@@ -104,6 +126,16 @@ function buildProjectDistribution(projects: typeof account.projects) {
     share: Math.round((item.value / total) * 100),
   }));
 }
+
+function getLegalRequestMetadata(headers: Headers) {
+  const forwardedFor = headers.get("cf-connecting-ip") ?? headers.get("x-forwarded-for")?.split(",").at(0)?.trim() ?? null;
+  const userAgent = headers.get("user-agent") ?? null;
+
+  return {
+    acceptedIp: forwardedFor,
+    acceptedUserAgent: userAgent,
+  };
+}
 ---
 
 <AppLayout
@@ -116,6 +148,27 @@ function buildProjectDistribution(projects: typeof account.projects) {
   active="overview"
   breadcrumbs={[{ label: "Overview" }]}
 >
+  {
+    needsLegalAcceptance && (
+      <section class="mb-6" data-legal-acceptance-required>
+        <Alert>
+          <AlertTriangle className="size-4" />
+          <AlertTitle>Review Sarge legal terms</AlertTitle>
+          <AlertDescription>
+            <span class="block">
+              We need a workspace owner to accept the current <a class="font-medium underline underline-offset-4" href="/legal/terms">Terms of Service</a> and acknowledge the <a class="font-medium underline underline-offset-4" href="/legal/privacy">Privacy Policy</a>.
+            </span>
+            {legalAcceptanceError && <span class="mt-2 block font-medium">{legalAcceptanceError}</span>}
+            <form method="post" class="mt-3">
+              <input type="hidden" name="intent" value="accept-legal-terms" />
+              <Button type="submit" size="sm">Accept current terms</Button>
+            </form>
+          </AlertDescription>
+        </Alert>
+      </section>
+    )
+  }
+
   {
     shouldShowSetupGuide && (
       <section class="mb-6">
@@ -162,6 +215,17 @@ function buildProjectDistribution(projects: typeof account.projects) {
                         <Label htmlFor="workspaceName">Workspace name</Label>
                         <Input id="workspaceName" name="workspaceName" value={workspaceValues.name} placeholder="Acme Growth" required />
                       </div>
+                      <label class="flex gap-3 rounded-md border bg-muted/30 p-3 text-sm leading-6">
+                        <input class="mt-1 size-4 shrink-0 accent-primary" type="checkbox" name="acceptLegalTerms" required />
+                        <span>
+                          I agree to the Terms of Service and acknowledge the Privacy Policy.
+                          <span class="block text-xs text-muted-foreground">
+                            Legal acceptance is required before creating a workspace.
+                            Read the <a class="font-medium text-foreground underline underline-offset-4" href="/legal/terms">Terms of Service</a> and
+                            <a class="font-medium text-foreground underline underline-offset-4" href="/legal/privacy">Privacy Policy</a>.
+                          </span>
+                        </span>
+                      </label>
                       <div>
                         <Button type="submit">Create workspace</Button>
                       </div>

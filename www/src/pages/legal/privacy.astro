@@ -1,0 +1,130 @@
+---
+import { Mail, ShieldCheck } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import SiteLayout from "@/layouts/SiteLayout.astro";
+
+const sections = [
+  {
+    title: "Information we collect",
+    items: [
+      "Account information, such as your name, email address, authentication identifiers, workspace name, billing status, and plan selection.",
+      "Product configuration, such as projects, environments, tracking domains, notification settings, webhook destinations, and collaboration invites.",
+      "Browser event data sent through the Sarge pixel, including event names, timestamps, page URLs, referrers, session identifiers, user identifiers supplied by your implementation, affiliate/referral fields, and event properties.",
+      "Server and postback event data that you send to Sarge for order, subscription, affiliate, or conversion reconciliation.",
+      "Operational data, such as IP address, user agent, request metadata, logs, diagnostics, security events, and support communications.",
+    ],
+  },
+  {
+    title: "How we use information",
+    items: [
+      "Provide Sarge dashboards, event streams, diagnostics, monitoring, alerts, verification links, and agent-ready troubleshooting context.",
+      "Maintain account security, investigate abuse, enforce limits, debug outages, and improve reliability.",
+      "Process billing, manage subscriptions, and communicate product, security, legal, and support updates.",
+      "Analyze aggregated or de-identified usage so we can improve the service without identifying individual visitors.",
+    ],
+  },
+  {
+    title: "Sharing and service providers",
+    items: [
+      "We use service providers for hosting, authentication, database infrastructure, payments, email delivery, analytics, and customer support.",
+      "We do not sell personal information. We do not use customer event data to build advertising profiles.",
+      "We may disclose information if required by law, to protect Sarge or others, or as part of a merger, financing, acquisition, or sale of assets.",
+    ],
+  },
+  {
+    title: "Customer responsibilities",
+    items: [
+      "You decide what browser event data, identifiers, and properties your implementation sends to Sarge.",
+      "Do not send sensitive personal information, payment card numbers, passwords, health information, or other regulated data unless a separate written agreement permits it.",
+      "You are responsible for any notices, consent banners, opt-out flows, and lawful bases required for your own websites, apps, and visitors.",
+    ],
+  },
+  {
+    title: "Retention and deletion",
+    items: [
+      "Event retention depends on your plan and product configuration. Billing, security, and legal records may be retained longer when needed for legitimate business or legal purposes.",
+      "Workspace owners can request export, correction, or deletion of account data. Some records may remain in backups for a limited period before automatic rotation.",
+      "We may retain aggregated or de-identified information that no longer identifies a person or workspace visitor.",
+    ],
+  },
+  {
+    title: "Security",
+    items: [
+      "We use access controls, transport encryption, credential hashing, security headers, scoped tokens, and tenant-scoped data access patterns.",
+      "No internet service is perfectly secure. Please report suspected vulnerabilities to security@sargetrack.app.",
+    ],
+  },
+];
+---
+
+<SiteLayout title="Privacy Policy | Sarge">
+  <section class="border-y bg-muted/30 px-4 py-14 md:px-6">
+    <div class="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[320px_1fr]">
+      <aside class="lg:sticky lg:top-24 lg:self-start">
+        <Badge variant="outline">Effective June 25, 2026</Badge>
+        <h1 class="mt-4 text-4xl font-semibold tracking-tight md:text-5xl">Privacy Policy</h1>
+        <p class="mt-4 text-sm leading-6 text-muted-foreground">
+          This policy explains how Sarge collects, uses, shares, and protects information when you use our tracking diagnostics service.
+        </p>
+        <div class="mt-6 flex flex-wrap gap-3">
+          <a href="mailto:privacy@sargetrack.app?subject=Privacy%20request">
+            <Button>
+              <Mail className="mr-2 size-4" /> Contact privacy
+            </Button>
+          </a>
+          <a href="/legal/terms">
+            <Button variant="outline">View terms</Button>
+          </a>
+        </div>
+      </aside>
+
+      <div class="grid gap-5">
+        <article class="rounded-lg border bg-card p-6">
+          <div class="flex items-start gap-3">
+            <ShieldCheck className="mt-1 size-5 shrink-0 text-primary" />
+            <div>
+              <h2 class="text-xl font-semibold">Scope</h2>
+              <p class="mt-2 text-sm leading-6 text-muted-foreground">
+                This Privacy Policy applies to Sarge websites, dashboards, hosted tracking endpoints, verification pages, and related services. Customer websites that install Sarge remain responsible for their own privacy notices and consent flows.
+              </p>
+            </div>
+          </div>
+        </article>
+
+        {
+          sections.map((section) => (
+            <article class="rounded-lg border bg-card p-6">
+              <h2 class="text-xl font-semibold">{section.title}</h2>
+              <ul class="mt-4 grid gap-3 text-sm leading-6 text-muted-foreground">
+                {section.items.map((item) => (
+                  <li class="flex gap-3">
+                    <span class="mt-2 size-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </article>
+          ))
+        }
+
+        <article id="data-subject-request" class="rounded-lg border bg-card p-6">
+          <h2 class="text-xl font-semibold">Your choices and requests</h2>
+          <p class="mt-3 text-sm leading-6 text-muted-foreground">
+            To request access, correction, deletion, export, or another privacy review, email <a class="font-medium text-foreground underline underline-offset-4" href="mailto:privacy@sargetrack.app?subject=Data%20subject%20request">privacy@sargetrack.app</a>. We may need to verify your authority over the relevant workspace before acting on a request.
+          </p>
+          <p class="mt-3 text-sm leading-6 text-muted-foreground">
+            If you are a visitor to a customer website that uses Sarge, contact that website owner first. Sarge acts as a service provider or processor for customer-controlled event data.
+          </p>
+        </article>
+
+        <article class="rounded-lg border bg-card p-6">
+          <h2 class="text-xl font-semibold">Changes</h2>
+          <p class="mt-3 text-sm leading-6 text-muted-foreground">
+            We may update this policy as Sarge changes. If changes are material, we will update the effective date and may require workspace owners to acknowledge the new version in the dashboard.
+          </p>
+        </article>
+      </div>
+    </div>
+  </section>
+</SiteLayout>

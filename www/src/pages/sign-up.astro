@@ -5,7 +5,13 @@ import SiteLayout from "@/layouts/SiteLayout.astro";
 
 <SiteLayout title="Sign up | Sarge">
   <section class="auth-page">
-    <SignUp forceRedirectUrl="/app" fallbackRedirectUrl="/app" signInUrl="/sign-in" />
+    <div class="grid gap-4">
+      <SignUp forceRedirectUrl="/app" fallbackRedirectUrl="/app" signInUrl="/sign-in" />
+      <p class="mx-auto max-w-sm text-center text-xs leading-5 text-muted-foreground">
+        By creating an account, you agree to the <a class="font-medium text-foreground underline underline-offset-4" href="/legal/terms">Terms of Service</a>
+        and acknowledge the <a class="font-medium text-foreground underline underline-offset-4" href="/legal/privacy">Privacy Policy</a>.
+      </p>
+    </div>
   </section>
 </SiteLayout>
 

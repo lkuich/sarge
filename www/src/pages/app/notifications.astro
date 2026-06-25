@@ -26,9 +26,6 @@ let saveSuccess = false;
 
 const account = await getViewerAccount(userId, env.DATABASE_URL, { viewerEmails });
 const alertsIncluded = canUseFeature(account.planId, "alerts");
-const runtimeEnv = env as unknown as Record<string, string | undefined>;
-const emailFrom = runtimeEnv.SARGE_EMAIL_FROM?.trim() ?? "";
-const emailConfigured = Boolean(emailFrom && env.EMAIL);
 
 if (Astro.request.method === "POST") {
   const formData = await Astro.request.formData();
@@ -69,14 +66,13 @@ const preferences = await loadNotificationPreferences({
   userId,
   role: account.role,
 });
-const preferenceModelLabel = "NotificationPreference";
 ---
 
 <AppLayout
   account={account}
   title="Notifications | Sarge"
   heading="Notifications"
-  description="Control the email alerts Sarge sends for operational issues, usage risk, billing, and access changes."
+  description="Choose which email alerts you want to receive."
   active="notifications"
   breadcrumbs={[{ label: "Overview", href: "/app" }, { label: "Notifications" }]}
 >
@@ -100,35 +96,7 @@ const preferenceModelLabel = "NotificationPreference";
       )
     }
 
-    <Card>
-      <CardHeader>
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <CardTitle>Email status</CardTitle>
-            <p class="mt-1 text-sm text-muted-foreground">
-              Alerts use Cloudflare Email Service and the workspace sender configured for Sarge.
-            </p>
-          </div>
-          <Badge variant={emailConfigured ? "default" : "secondary"}>{emailConfigured ? "Configured" : "Needs setup"}</Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="grid gap-3 text-sm md:grid-cols-3">
-        <div class="rounded-md border p-3">
-          <p class="text-xs font-medium text-muted-foreground">Recipient</p>
-          <p class="mt-1 break-all font-medium">{primaryEmail || "No verified email"}</p>
-        </div>
-        <div class="rounded-md border p-3">
-          <p class="text-xs font-medium text-muted-foreground">Sender</p>
-          <p class="mt-1 break-all font-medium">{emailFrom || "SARGE_EMAIL_FROM missing"}</p>
-        </div>
-        <div class="rounded-md border p-3">
-          <p class="text-xs font-medium text-muted-foreground">Plan</p>
-          <p class="mt-1 font-medium">{alertsIncluded ? "Operational alerts included" : "Operational alerts require Growth"}</p>
-        </div>
-      </CardContent>
-    </Card>
-
-    <form method="post" data-notification-preferences data-model={preferenceModelLabel}>
+    <form method="post" data-notification-preferences>
       <input type="hidden" name="intent" value="save-notifications" />
       <Card>
         <CardHeader>
@@ -136,7 +104,7 @@ const preferenceModelLabel = "NotificationPreference";
             <div>
               <CardTitle>Email preferences</CardTitle>
               <p class="mt-1 text-sm text-muted-foreground">
-                Immediate alerts are deduped by condition so repeated checks do not send the same email.
+                We only send alerts for important changes that need attention.
               </p>
             </div>
             <Button type="submit" disabled={!primaryEmail || !account.workspaceSetupComplete}>

@@ -173,12 +173,18 @@ describe("app navigation routes", () => {
     expect(notifications).toContain("saveNotificationPreferences");
 
     expect(notificationsPage).toContain('active="notifications"');
-    expect(notificationsPage).toContain("NotificationPreference");
     expect(notificationsPage).toContain("data-notification-preferences");
     expect(notificationsPage).toContain('name="intent" value="save-notifications"');
     expect(notificationsPage).toContain('type="checkbox"');
     expect(notificationsPage).toContain("Always sent");
     expect(notificationsPage).toContain("Upgrade to Growth");
+    expect(notificationsPage).toContain("Choose which email alerts you want to receive.");
+    expect(notificationsPage).not.toContain("Email status");
+    expect(notificationsPage).not.toContain("Cloudflare");
+    expect(notificationsPage).not.toContain("SARGE_EMAIL_FROM");
+    expect(notificationsPage).not.toContain("workspace sender");
+    expect(notificationsPage).not.toContain("deduped");
+    expect(notificationsPage).not.toContain("data-model");
   });
 
   it("receives Stripe webhooks through a signature-verified endpoint", () => {

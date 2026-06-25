@@ -130,17 +130,26 @@ export const createCheckoutSession = async (input: {
   if (!workspace) return { success: false, error: "Create your workspace before choosing a plan." };
 
   const stripe = createStripeClient(stripeSecretKey);
-  const session = await stripe.checkout.sessions.create(
-    buildCheckoutSessionParams({
-      appUrl: input.appUrl,
-      customerEmail: input.customerEmail,
-      customerId: workspace.stripeCustomerId,
-      priceId: price.priceId,
-      userId: input.userId,
-      workspaceId: workspace.id,
-      planId: input.planId,
-    }),
-  );
+  let session: Stripe.Checkout.Session;
+  try {
+    session = await stripe.checkout.sessions.create(
+      buildCheckoutSessionParams({
+        appUrl: input.appUrl,
+        customerEmail: input.customerEmail,
+        customerId: workspace.stripeCustomerId,
+        priceId: price.priceId,
+        userId: input.userId,
+        workspaceId: workspace.id,
+        planId: input.planId,
+      }),
+    );
+  } catch (error) {
+    console.error("Stripe checkout creation failed", error);
+    return {
+      success: false,
+      error: `Stripe could not start checkout. Check the configured ${getPlanDefinition(input.planId).name} price in Stripe.`,
+    };
+  }
 
   if (!session.url) return { success: false, error: "Stripe did not return a Checkout URL." };
   return { success: true, url: session.url };

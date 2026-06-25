@@ -1,18 +1,44 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildCheckoutSessionParams,
+  createCheckoutSession,
   getStripePriceIdForPlan,
   mapStripeSubscriptionStatus,
   resolvePlanIdForStripePrice,
   type StripeBillingEnv,
 } from "./stripe-billing";
 
+const stripeCheckoutSessionsCreate = vi.hoisted(() => vi.fn());
+const neonQuery = vi.hoisted(() => vi.fn());
+
+vi.mock("@neondatabase/serverless", () => ({
+  neon: vi.fn(() => neonQuery),
+}));
+
+vi.mock("stripe", () => ({
+  default: vi.fn(function StripeMock() {
+    return {
+      checkout: {
+        sessions: {
+          create: stripeCheckoutSessionsCreate,
+        },
+      },
+    };
+  }),
+}));
+
 const env = {
+  STRIPE_SECRET_KEY: "sk_test_123",
   STRIPE_PRICE_STARTER: "price_starter",
   STRIPE_PRICE_GROWTH: "price_growth",
 } satisfies StripeBillingEnv;
 
 describe("Stripe billing helpers", () => {
+  beforeEach(() => {
+    stripeCheckoutSessionsCreate.mockReset();
+    neonQuery.mockReset();
+  });
+
   it("maps paid Sarge plans to Stripe price env vars", () => {
     expect(getStripePriceIdForPlan(env, "starter")).toEqual({ success: true, priceId: "price_starter" });
     expect(getStripePriceIdForPlan(env, "growth")).toEqual({ success: true, priceId: "price_growth" });
@@ -81,6 +107,36 @@ describe("Stripe billing helpers", () => {
 
     expect(params.customer).toBe("cus_123");
     expect(params).not.toHaveProperty("customer_email");
+  });
+
+  it("returns a billing error when Stripe cannot create checkout", async () => {
+    neonQuery.mockResolvedValue([
+      {
+        id: "wrk_123",
+        name: "Acme",
+        ownerUserId: "user_123",
+        planId: "free",
+        billingStatus: "active",
+        stripeCustomerId: null,
+        stripeSubscriptionId: null,
+        stripePriceId: null,
+      },
+    ]);
+    stripeCheckoutSessionsCreate.mockRejectedValue(new Error("No such price: price_starter"));
+
+    await expect(
+      createCheckoutSession({
+        env,
+        databaseUrl: "postgres://example",
+        userId: "user_123",
+        customerEmail: "owner@example.com",
+        appUrl: "https://sargetrack.app/app/billing",
+        planId: "starter",
+      }),
+    ).resolves.toEqual({
+      success: false,
+      error: "Stripe could not start checkout. Check the configured Starter price in Stripe.",
+    });
   });
 
   it("normalizes Stripe subscription statuses to Sarge billing statuses", () => {

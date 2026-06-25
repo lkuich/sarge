@@ -50,7 +50,7 @@ export const selectTrackedPageCandidates = (
   events: DiagnosticEvent[],
   options: TrackedPageCandidateOptions = {}
 ): TrackedPageCandidate[] => {
-  const limit = options.limit ?? DEFAULT_LIMIT;
+  const limit = normalizeCandidateLimit(options.limit);
   const byUrl = new Map<string, TrackedPageCandidate>();
 
   for (const event of events) {
@@ -138,7 +138,7 @@ export const buildTrackedPageFinding = (
   const eventCount = result.eventCount ?? 0;
 
   return {
-    id: classification.ruleId,
+    id: buildTrackedPageFindingId(classification.ruleId, result.url),
     ruleId: classification.ruleId,
     title: text.title,
     severity: classification.severity,
@@ -161,6 +161,16 @@ const compareCandidates = (left: TrackedPageCandidate, right: TrackedPageCandida
 };
 
 const isConversionLikeEvent = (eventName: string) => CONVERSION_EVENT_NAMES.has(eventName);
+
+const normalizeCandidateLimit = (limit: number | undefined) => {
+  if (typeof limit !== "number" || !Number.isFinite(limit) || limit <= 0) {
+    return DEFAULT_LIMIT;
+  }
+  return Math.max(1, Math.floor(limit));
+};
+
+const buildTrackedPageFindingId = (ruleId: TrackedPageFailureRuleId, url: string) =>
+  `${ruleId}:${encodeURIComponent(url)}`;
 
 const hasRedirectHostMismatch = (originalUrl: string, finalUrl: string | undefined) => {
   if (!finalUrl || finalUrl === originalUrl) return false;

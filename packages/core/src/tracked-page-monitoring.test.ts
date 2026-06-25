@@ -102,6 +102,16 @@ describe("tracked page monitoring", () => {
     expect(candidates.at(-1)?.url).toBe("https://shop.example.com/page-24");
   });
 
+  it("uses the default cap for invalid limits and floors positive decimal limits", () => {
+    const events = Array.from({ length: 30 }, (_, index) =>
+      event("page.view", { url: `https://shop.example.com/page-${index}` })
+    );
+
+    expect(selectTrackedPageCandidates(events, { limit: -1 })).toHaveLength(25);
+    expect(selectTrackedPageCandidates(events, { limit: Number.NaN })).toHaveLength(25);
+    expect(selectTrackedPageCandidates(events, { limit: 2.9 })).toHaveLength(2);
+  });
+
   it("classifies unavailable tracked pages", () => {
     expect(classifyTrackedPageHealth({ url: "https://shop.example.com/missing", status: 404 })).toMatchObject({
       ruleId: "tracked_page_missing",
@@ -158,7 +168,7 @@ describe("tracked page monitoring", () => {
     if (!finding) throw new Error("Expected tracked page finding");
 
     expect(finding).toMatchObject({
-      id: "tracked_page_server_error",
+      id: "tracked_page_server_error:https%3A%2F%2Fshop.example.com%2Fcheckout",
       ruleId: "tracked_page_server_error",
       severity: "critical",
       title: "Tracked page returns a server error"
@@ -170,5 +180,23 @@ describe("tracked page monitoring", () => {
       ])
     );
     expect(finding.agentPrompt).toContain("Inspect the route, deployment logs, and recent changes");
+  });
+
+  it("builds stable unique finding IDs for the same rule on different URLs", () => {
+    const checkoutFinding = buildTrackedPageFinding({
+      url: "https://shop.example.com/checkout",
+      status: 500
+    });
+    const cartFinding = buildTrackedPageFinding({
+      url: "https://shop.example.com/cart",
+      status: 500
+    });
+    if (!checkoutFinding || !cartFinding) throw new Error("Expected tracked page findings");
+
+    expect(checkoutFinding.ruleId).toBe("tracked_page_server_error");
+    expect(cartFinding.ruleId).toBe("tracked_page_server_error");
+    expect(checkoutFinding.id).toBe("tracked_page_server_error:https%3A%2F%2Fshop.example.com%2Fcheckout");
+    expect(cartFinding.id).toBe("tracked_page_server_error:https%3A%2F%2Fshop.example.com%2Fcart");
+    expect(checkoutFinding.id).not.toBe(cartFinding.id);
   });
 });

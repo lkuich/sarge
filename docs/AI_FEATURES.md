@@ -73,7 +73,7 @@ Scheduled diagnostics also check a bounded set of Production page URLs that rece
 
 The monitor flags missing pages (`404` and `410`), server errors (`5xx`), DNS/TLS failures, request timeouts, and redirects to a different host. It does not crawl a site, check every incoming event URL, or require users to configure pinned URLs.
 
-These checks run outside the ingestion path, so page monitoring cannot slow down event collection.
+These checks run outside the ingestion path and do not add synchronous work to event collection.
 
 ## Agent Install Skill
 

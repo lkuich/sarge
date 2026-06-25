@@ -22,14 +22,14 @@ const canCreateMoreProjects = canCreateProjectForPlan(account);
 let error = "";
 let values = {
   name: "",
-  slug: "",
+  customDomain: "",
 };
 
 if (Astro.request.method === "POST") {
   const formData = await Astro.request.formData();
   values = {
     name: String(formData.get("name") ?? ""),
-    slug: String(formData.get("slug") ?? ""),
+    customDomain: String(formData.get("customDomain") ?? ""),
   };
   if (!canCreateMoreProjects) {
     error = "Upgrade to add more projects.";
@@ -37,7 +37,7 @@ if (Astro.request.method === "POST") {
     const result = await createProject(userId, env.DATABASE_URL, values);
 
     if (result.success) {
-      return Astro.redirect(`/app/projects/${result.project.slug}`, 303);
+      return Astro.redirect(`/app/projects/${result.project.siteId}`, 303);
     }
 
     error = result.error;
@@ -83,9 +83,9 @@ if (Astro.request.method === "POST") {
           </div>
 
           <div class="grid gap-2">
-            <Label htmlFor="slug">Slug</Label>
-            <Input id="slug" name="slug" value={values.slug} placeholder="checkout-qa" />
-            <p class="text-xs text-muted-foreground">Used for the portal URL and install link. Leave blank to generate it from the name.</p>
+            <Label htmlFor="customDomain">Tracking subdomain</Label>
+            <Input id="customDomain" name="customDomain" value={values.customDomain} placeholder="events.example.com" required />
+            <p class="text-xs text-muted-foreground">Enter the exact subdomain you will CNAME to Sarge for custom-domain installs.</p>
           </div>
 
           <div class="flex flex-wrap gap-2">
@@ -112,7 +112,7 @@ if (Astro.request.method === "POST") {
             <p class="font-medium text-foreground">Included</p>
             <p>Hosted pixel, live event stream, scheduled reviews, and webhook destinations.</p>
           </div>
-          <p>Custom tracking domains can be added later without changing your event setup.</p>
+          <p>Sarge will generate DNS guidance and custom-domain install assets from your tracking subdomain.</p>
         </CardContent>
       </Card>
     </aside>

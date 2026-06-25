@@ -57,6 +57,7 @@ export interface ProjectShare {
 
 export interface SargeProjectEnvironment {
   id: string;
+  siteId: string;
   environment: ProjectEnvironment;
   endpointHost: string;
   pixelUrl: string;
@@ -80,6 +81,7 @@ export interface SargeProjectEnvironment {
 export interface SargeProject extends SargeProjectEnvironment {
   slug: string;
   name: string;
+  customDomain: string;
   workspaceName?: string;
   ownership: "owned" | "shared";
   shareRole?: ProjectShareRole;
@@ -115,6 +117,7 @@ export interface CreateWorkspaceInput {
 
 export interface CreateProjectInput {
   name: string;
+  customDomain: string;
   slug?: string;
 }
 
@@ -316,6 +319,7 @@ export const getViewerAccount = async (
         s.id,
         s.slug,
         s.name,
+        s."customDomain",
         w.name AS "workspaceName"
       FROM "Site" s
       JOIN "Workspace" w ON w.id = s."workspaceId"
@@ -329,7 +333,8 @@ export const getViewerAccount = async (
       SELECT
         s.id,
         s.slug,
-        s.name
+        s.name,
+        s."customDomain"
       FROM "Site" s
       WHERE s."workspaceId" = ${workspace.id}
       ORDER BY s."createdAt" ASC
@@ -488,6 +493,8 @@ export const getViewerAccount = async (
         ...productionEnvironment,
         slug: site.slug,
         name: site.name,
+        siteId: site.id,
+        customDomain: site.customDomain,
         ownership: "owned",
         shares: projectSharesBySite.get(site.id) ?? [],
         eventCount24h,
@@ -517,6 +524,8 @@ export const getViewerAccount = async (
         ...productionEnvironment,
         slug: site.slug,
         name: site.name,
+        siteId: site.id,
+        customDomain: site.customDomain,
         workspaceName: site.workspaceName,
         ownership: "shared",
         shareRole: normalizeShareRole(viewerShare?.role) ?? "view",
@@ -690,9 +699,11 @@ export const createProject = async (
   if (!databaseUrl) return { success: false, error: 'DATABASE_URL is not configured.' };
 
   const name = input.name.trim();
-  const slug = normalizeSlug(input.slug || input.name);
+  const customDomain = normalizeTrackingSubdomain(input.customDomain);
+  const slug = normalizeSlug(input.slug || input.name || customDomain || '');
   if (!name) return { success: false, error: 'Project name is required.' };
   if (!slug) return { success: false, error: 'Project slug is required.' };
+  if (!customDomain) return { success: false, error: 'Tracking subdomain is required.' };
 
   try {
     const sql = neon(databaseUrl);
@@ -734,10 +745,10 @@ export const createProject = async (
           ) < ${tx.unsafe(projectLimitSqlCase)}
       ),
       inserted_site AS (
-      INSERT INTO "Site" (id, "workspaceId", slug, name, "endpointHost", "attributionTtlDays", "pixelEnabled")
-      SELECT ${id}, lw.id, ${slug}, ${name}, ${endpointHost}, 28, true
+      INSERT INTO "Site" (id, "workspaceId", slug, name, "customDomain", "endpointHost", "attributionTtlDays", "pixelEnabled")
+      SELECT ${id}, lw.id, ${slug}, ${name}, ${customDomain}, ${endpointHost}, 28, true
       FROM limited_workspace lw
-      RETURNING id, slug, name, "endpointHost", "pixelEnabled"
+      RETURNING id, slug, name, "customDomain", "endpointHost", "pixelEnabled"
       ),
       inserted_environments AS (
         INSERT INTO "SiteEnvironment" (
@@ -762,6 +773,7 @@ export const createProject = async (
         inserted_site.id AS "siteId",
         inserted_site.slug,
         inserted_site.name,
+        inserted_site."customDomain",
         inserted_site."endpointHost" AS "siteEndpointHost",
         inserted_site."pixelEnabled" AS "sitePixelEnabled",
         inserted_environments.id,
@@ -809,6 +821,8 @@ export const createProject = async (
         ...productionEnvironment,
         slug: siteRow.slug,
         name: siteRow.name,
+        siteId: siteRow.siteId,
+        customDomain: siteRow.customDomain,
         ownership: "owned",
         shares: [],
         environments,
@@ -818,13 +832,13 @@ export const createProject = async (
     console.error('Unable to create Sarge project', error);
     return {
       success: false,
-      error: 'Project could not be created. The slug may already be in use for this account.',
+      error: 'Project could not be created. The slug or tracking subdomain may already be in use for this account.',
     };
   }
 };
 
-export const getProject = (account: SargeAccount, slug: string) =>
-  account.projects.find((project) => project.slug === slug);
+export const getProject = (account: SargeAccount, projectId: string) =>
+  account.projects.find((project) => project.siteId === projectId || project.slug === projectId);
 
 export const canAdministerAccount = (account: SargeAccount) => account.role === 'admin';
 
@@ -1348,6 +1362,7 @@ const mapProjectEnvironment = (
   },
 ): SargeProjectEnvironment => ({
   id: environment.id,
+  siteId: environment.siteId,
   environment: environment.environment,
   endpointHost: environment.endpointHost,
   pixelUrl: buildPixelUrl(environment.id),
@@ -1382,6 +1397,7 @@ const buildFallbackProject = (input: {
 
     return {
       id,
+      siteId: input.id,
       environment,
       endpointHost:
         environment === 'production'
@@ -1411,6 +1427,8 @@ const buildFallbackProject = (input: {
     ...productionEnvironment,
     slug: input.slug,
     name: input.name,
+    siteId: input.id,
+    customDomain: `events.${input.slug}.example.com`,
     ownership: "owned",
     shares: [],
     eventCount24h: input.eventCount24h,
@@ -1459,6 +1477,35 @@ const normalizeSlug = (value: string) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 48);
+
+export const normalizeTrackingSubdomain = (value: string) => {
+  const rawValue = value.trim().toLowerCase();
+  if (!rawValue) return null;
+
+  const hostValue = rawValue.includes('://') ? rawValue : `https://${rawValue}`;
+  let hostname = '';
+
+  try {
+    hostname = new URL(hostValue).hostname.replace(/\.$/, '');
+  } catch {
+    return null;
+  }
+
+  if (!hostname || hostname.endsWith('.sargetrack.app')) return null;
+
+  const labels = hostname.split('.');
+  if (labels.length < 3) return null;
+
+  const isValidLabel = (label: string) =>
+    label.length > 0 &&
+    label.length <= 63 &&
+    /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label);
+
+  if (!labels.every(isValidLabel)) return null;
+  if (hostname.length > 253) return null;
+
+  return hostname;
+};
 
 const parseEventNames = (value: string) =>
   Array.from(
@@ -1521,6 +1568,7 @@ interface SiteSummaryRow {
   id: string;
   slug: string;
   name: string;
+  customDomain: string;
   endpointHost: string;
   pixelEnabled: boolean;
 }
@@ -1546,6 +1594,7 @@ interface NewProjectEnvironmentRow {
   siteId: string;
   slug: string;
   name: string;
+  customDomain: string;
   siteEndpointHost: string;
   sitePixelEnabled: boolean;
   id: string;

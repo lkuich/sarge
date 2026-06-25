@@ -30,6 +30,7 @@ model Site {
   workspaceId           String
   slug                  String
   name                  String
+  customDomain          String              @unique
   endpointHost          String              @unique
   attributionTtlDays    Int                 @default(28)
   pixelEnabled          Boolean             @default(true)

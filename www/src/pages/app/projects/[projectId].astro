@@ -40,6 +40,7 @@ const viewerEmails = currentUser?.emailAddresses.map((email) => email.emailAddre
 const account = await getViewerAccount(userId, env.DATABASE_URL, { viewerEmails });
 const project = getProject(account, Astro.params.projectId ?? "");
 if (!project) return Astro.redirect("/app");
+if (Astro.params.projectId !== project.siteId) return Astro.redirect(`/app/projects/${project.siteId}${Astro.url.search}`, 301);
 
 const requestedEnvironment = Astro.url.searchParams.get("environment");
 const selectedEnvironment =
@@ -50,7 +51,7 @@ const selectedEnvironment =
 const selectedEnvironmentLabel = environmentLabels[selectedEnvironment.environment];
 const environmentOptions = projectEnvironmentOptions.map((environment) => ({
   label: environmentLabels[environment],
-  href: environment === "production" ? `/app/projects/${project.slug}` : `/app/projects/${project.slug}?environment=${environment}`,
+  href: environment === "production" ? `/app/projects/${project.siteId}` : `/app/projects/${project.siteId}?environment=${environment}`,
   selected: environment === selectedEnvironment.environment,
 }));
 
@@ -232,9 +233,10 @@ ${snippet}
 Then emit window.sarge("track", "event.name", properties) for page, product, cart, checkout, and purchase actions. Keep existing Meta, Google, or analytics pixels in place. After wiring, open ${publicVerifyAbsoluteUrl} and verify the expected events appear in the public Sarge event stream.`;
 const endpointHealthUrl = selectedEnvironment.endpointHealthUrl;
 const pixelUrl = selectedEnvironment.pixelUrl;
-const pixelDownloadUrl = buildPixelDownloadUrl(pixelUrl);
-const customDomainExample = `events.${project.slug}.com`;
-const customDomainPixelUrl = `https://${customDomainExample}/pixel.js`;
+const customDomain = project.customDomain;
+const displayedTrackingDomain = customDomain;
+const customDomainPixelUrl = customDomain ? `https://${customDomain}/pixel.js?env=${encodeURIComponent(selectedEnvironment.id)}` : "";
+const customDomainPixelDownloadUrl = customDomainPixelUrl ? buildPixelDownloadUrl(customDomainPixelUrl) : "";
 const customDomainSnippet = `<script>
   window._sarge = { queue: [["track", "page.view"]] };
 </script>
@@ -584,14 +586,6 @@ function buildPixelDownloadUrl(value: string) {
             </a>
             <a
               class="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-sm font-medium whitespace-nowrap transition-all hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-              href={pixelDownloadUrl}
-              download="sarge-pixel.min.js"
-              data-download-pixel-script
-            >
-              <Download className="size-4" /> Download minified script
-            </a>
-            <a
-              class="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-sm font-medium whitespace-nowrap transition-all hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
               href={publicVerifyUrl}
               target="_blank"
               rel="noreferrer"
@@ -620,15 +614,15 @@ function buildPixelDownloadUrl(value: string) {
               <div class="min-w-0">
                 <p class="font-medium">Bring your own tracking domain or subdomain</p>
                 <p class="mt-1 text-muted-foreground">
-                  For CORS-sensitive installs, use a domain or subdomain you control after Sarge maps it to this {selectedEnvironmentLabel} environment.
+                  For CORS-sensitive installs, use your configured tracking subdomain after Sarge maps it to this {selectedEnvironmentLabel} environment.
                 </p>
               </div>
-              <Badge variant="outline">Optional</Badge>
+              <Badge variant="outline">{customDomain ? "Configured" : "Missing"}</Badge>
             </div>
             <div class="grid gap-3 md:grid-cols-2">
               <div class="rounded-md border bg-background p-3">
                 <p class="text-xs font-medium text-muted-foreground">DNS record</p>
-                <p class="mt-2 break-all font-mono text-xs">CNAME {customDomainExample} -&gt; {hostedEndpointHost}</p>
+                <p class="mt-2 break-all font-mono text-xs">CNAME {customDomain} -&gt; {hostedEndpointHost}</p>
               </div>
               <div class="rounded-md border bg-background p-3">
                 <p class="text-xs font-medium text-muted-foreground">Mapped environment</p>
@@ -638,6 +632,16 @@ function buildPixelDownloadUrl(value: string) {
             <div>
               <p class="text-xs font-medium text-muted-foreground">Custom-domain snippet after verification</p>
               <pre class="mt-2 overflow-x-auto rounded-md border bg-background p-3 text-xs leading-5"><code>{customDomainSnippet}</code></pre>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <a
+                class="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-sm font-medium whitespace-nowrap transition-all hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                href={customDomainPixelDownloadUrl}
+                download="sarge-custom-domain-pixel.min.js"
+                data-download-custom-domain-pixel-script
+              >
+                <Download className="size-4" /> Download custom minified script
+              </a>
             </div>
             <p class="text-xs leading-5 text-muted-foreground">
               Send the subdomain to Sarge before switching the snippet. Until it is verified, keep using the install URL above.
@@ -1036,7 +1040,7 @@ function buildPixelDownloadUrl(value: string) {
         <CardContent className="space-y-3 text-sm">
           <div>
             <p class="text-xs text-muted-foreground">Tracking domain</p>
-            <p class="font-mono">{selectedEnvironment.endpointHost}</p>
+            <p class="font-mono">{displayedTrackingDomain}</p>
           </div>
           <Separator />
           <div>

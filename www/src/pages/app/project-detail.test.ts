@@ -16,16 +16,36 @@ describe("project detail install panel", () => {
 
   it("surfaces custom domain guidance and a minified pixel download for CORS-sensitive installs", () => {
     const projectDetail = readSource("./projects/[projectId].astro");
+    const newProject = readSource("./projects/new.astro");
+    const demoData = readSource("../../lib/sarge-demo.ts");
+    const schema = readSource("../../../../apps/api/prisma/schema.prisma");
 
-    expect(projectDetail).toContain("const pixelDownloadUrl = buildPixelDownloadUrl(pixelUrl);");
-    expect(projectDetail).toContain("const customDomainExample = `events.${project.slug}.com`;");
+    expect(projectDetail).toContain("const customDomainPixelDownloadUrl = customDomainPixelUrl ? buildPixelDownloadUrl(customDomainPixelUrl) : \"\";");
+    expect(projectDetail).toContain("const customDomain = project.customDomain;");
+    expect(projectDetail).toContain("const displayedTrackingDomain = customDomain;");
+    expect(projectDetail).toContain("const customDomainPixelUrl = customDomain ? `https://${customDomain}/pixel.js?env=${encodeURIComponent(selectedEnvironment.id)}` : \"\";");
     expect(projectDetail).toContain("data-custom-domain-guidance");
     expect(projectDetail).toContain("Bring your own tracking domain");
     expect(projectDetail).toContain("CNAME");
     expect(projectDetail).toContain("CORS-sensitive");
-    expect(projectDetail).toContain("data-download-pixel-script");
-    expect(projectDetail).toContain("Download minified script");
-    expect(projectDetail).toContain('download="sarge-pixel.min.js"');
+    expect(projectDetail).toContain("data-download-custom-domain-pixel-script");
+    expect(projectDetail).toContain('download="sarge-custom-domain-pixel.min.js"');
+    expect(projectDetail).not.toContain("data-download-pixel-script");
+    expect(projectDetail).not.toContain('download="sarge-pixel.min.js"');
+    expect(newProject).toContain('name="customDomain"');
+    expect(newProject).toContain("Tracking subdomain");
+    expect(newProject).toContain("required");
+    expect(newProject).not.toContain('name="slug"');
+    expect(demoData).toContain("customDomain: string;");
+    expect(demoData).toContain("normalizeTrackingSubdomain(input.customDomain)");
+    expect(schema).toContain("customDomain          String              @unique");
+  });
+
+  it("keeps slug-derived scoped hosts out of the install details card", () => {
+    const projectDetail = readSource("./projects/[projectId].astro");
+
+    expect(projectDetail).toContain("{displayedTrackingDomain}");
+    expect(projectDetail).not.toContain("<p class=\"font-mono\">{selectedEnvironment.endpointHost}</p>");
   });
 
   it("uses environment-specific event activity for the install badge and collapse state", () => {

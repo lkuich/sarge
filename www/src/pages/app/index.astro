@@ -361,8 +361,8 @@ function buildProjectDistribution(projects: typeof account.projects) {
                       <CardHeader>
                         <div class="flex items-start justify-between gap-3">
                           <div class="min-w-0">
-                            <CardTitle><a href={`/app/projects/${project.slug}`}>{project.name}</a></CardTitle>
-                            <p class="mt-1 truncate font-mono text-xs text-muted-foreground">{project.endpointHost}</p>
+                            <CardTitle><a href={`/app/projects/${project.siteId}`}>{project.name}</a></CardTitle>
+                            <p class="mt-1 truncate font-mono text-xs text-muted-foreground">{project.customDomain}</p>
                           </div>
                           <Badge variant={project.status === "active" ? "default" : "secondary"}>{project.status}</Badge>
                         </div>
@@ -429,8 +429,8 @@ function buildProjectDistribution(projects: typeof account.projects) {
                       <CardHeader>
                         <div class="flex items-start justify-between gap-3">
                           <div class="min-w-0">
-                            <CardTitle><a href={`/app/projects/${project.slug}`}>{project.name}</a></CardTitle>
-                            <p class="mt-1 truncate font-mono text-xs text-muted-foreground">{project.endpointHost}</p>
+                            <CardTitle><a href={`/app/projects/${project.siteId}`}>{project.name}</a></CardTitle>
+                            <p class="mt-1 truncate font-mono text-xs text-muted-foreground">{project.customDomain}</p>
                             {project.workspaceName && <p class="mt-1 truncate text-xs text-muted-foreground">{project.workspaceName}</p>}
                           </div>
                           <Badge variant={project.shareRole === "edit" ? "default" : "secondary"}>{project.shareRole ?? "view"}</Badge>

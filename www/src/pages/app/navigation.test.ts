@@ -35,7 +35,7 @@ describe("app navigation routes", () => {
     expect(overview).toContain('heading={needsWorkspaceSetup ? "Create your workspace" : "Overview"}');
     expect(overview).toContain("projectCountLabel");
     expect(overview).toContain("New project");
-    expect(overview).toContain('href={`/app/projects/${project.slug}`}');
+    expect(overview).toContain('href={`/app/projects/${project.siteId}`}');
   });
 
   it("keeps overview metrics high-level without duplicating the project list", () => {
@@ -60,6 +60,21 @@ describe("app navigation routes", () => {
     expect(projectDetail).not.toContain('Astro.redirect("/app/projects")');
     expect(newProject).toContain('href="/app"');
     expect(projectDetail).toContain('Astro.redirect("/app")');
+  });
+
+  it("uses stable site ids for project routes instead of user-facing slugs", () => {
+    const overview = readSource("./index.astro");
+    const newProject = readSource("./projects/new.astro");
+    const projectDetail = readSource("./projects/[projectId].astro");
+    const demoData = readSource("../../lib/sarge-demo.ts");
+
+    expect(overview).toContain('href={`/app/projects/${project.siteId}`}');
+    expect(newProject).toContain("Astro.redirect(`/app/projects/${result.project.siteId}`, 303)");
+    expect(projectDetail).toContain('href: environment === "production" ? `/app/projects/${project.siteId}` : `/app/projects/${project.siteId}?environment=${environment}`,');
+    expect(projectDetail).toContain('if (Astro.params.projectId !== project.siteId) return Astro.redirect(`/app/projects/${project.siteId}${Astro.url.search}`, 301);');
+    expect(projectDetail).not.toContain('href: environment === "production" ? `/app/projects/${project.slug}`');
+    expect(demoData).toContain("siteId: string;");
+    expect(demoData).toContain("project.siteId === projectId || project.slug === projectId");
   });
 
   it("lets an owner delete an empty workspace from overview", () => {

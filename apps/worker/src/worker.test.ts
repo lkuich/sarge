@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { TrackedPageHealthResult } from "@sarge/core";
 import { createWorkerHandler } from "./index.js";
 import type { EventStore, StoredDiagnosticRun, StoredEvent, WorkerEnv } from "./types.js";
@@ -397,6 +397,46 @@ describe("Cloudflare Worker hosted API", () => {
     );
   });
 
+  it("includes tracked page evidence in the AI summary prompt", async () => {
+    const { ctx, promises } = createExecutionContext();
+    const { diagnosticEvents, store } = createMemoryStore();
+    const aiCalls: unknown[] = [];
+    const handler = createWorkerHandler({
+      store,
+      pageHealthChecker: async () => [
+        {
+          url: "https://shop.example.com/checkout",
+          status: 404,
+          eventCount: 3
+        } satisfies TrackedPageHealthResult
+      ]
+    });
+    diagnosticEvents.push({
+      id: "evt_page",
+      siteId: "env_shared_production",
+      name: "page.view",
+      occurredAt: "2026-06-19T12:00:00.000Z",
+      sessionId: "sess_page",
+      userId: "user_123",
+      properties: {},
+      url: "https://shop.example.com/checkout",
+      title: "Checkout"
+    });
+
+    await handler.scheduled(createScheduledController(), createEnv({
+      AI: {
+        async run(model, input) {
+          aiCalls.push(input);
+          return { response: "The checkout page returned 404." };
+        }
+      }
+    }), ctx);
+    await Promise.all(promises);
+
+    expect(JSON.stringify(aiCalls[0])).toContain("tracked_page_missing");
+    expect(JSON.stringify(aiCalls[0])).toContain("https://shop.example.com/checkout returned HTTP 404");
+  });
+
   it("passes configured page health URL limit and timeout to scheduled diagnostics checker", async () => {
     const { ctx, promises } = createExecutionContext();
     const { diagnosticEvents, diagnosticRuns, store } = createMemoryStore();
@@ -462,13 +502,10 @@ describe("Cloudflare Worker hosted API", () => {
   it("skips tracked page checks when scheduled diagnostics events have no usable URLs", async () => {
     const { ctx, promises } = createExecutionContext();
     const { diagnosticEvents, diagnosticRuns, store } = createMemoryStore();
-    const pageHealthCalls: unknown[] = [];
+    const pageHealthChecker = vi.fn(async () => []);
     const handler = createWorkerHandler({
       store,
-      pageHealthChecker: async (candidates, options) => {
-        pageHealthCalls.push({ candidates, options });
-        return [];
-      }
+      pageHealthChecker
     });
     diagnosticEvents.push(
       {
@@ -498,7 +535,7 @@ describe("Cloudflare Worker hosted API", () => {
     await handler.scheduled(createScheduledController(), createEnv(), ctx);
     await Promise.all(promises);
 
-    expect(pageHealthCalls).toHaveLength(0);
+    expect(pageHealthChecker).not.toHaveBeenCalled();
     expect(diagnosticRuns).toHaveLength(1);
     expect(diagnosticRuns[0]).toMatchObject({
       status: "completed",

@@ -8,12 +8,16 @@ datasource db {
 }
 
 model Workspace {
-  id          String   @id @default(cuid())
-  slug        String   @unique
-  name        String
-  ownerUserId String?  @unique
-  createdAt   DateTime @default(now())
-  sites       Site[]
+  id                      String   @id @default(cuid())
+  slug                    String   @unique
+  name                    String
+  ownerUserId             String?  @unique
+  planId                  String   @default("free")
+  billingStatus           String   @default("active")
+  currentPeriodStart      DateTime @default(now())
+  currentPeriodEventCount Int      @default(0)
+  createdAt               DateTime @default(now())
+  sites                   Site[]
 }
 
 model Site {

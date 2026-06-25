@@ -57,7 +57,7 @@ describe("project detail install panel", () => {
     expect(projectDetail).toContain("selectedEnvironmentLabel");
     expect(projectDetail).toContain("selectedEnvironment.pixelUrl");
     expect(projectDetail).toContain("selectedEnvironment.recentEvents");
-    expect(projectDetail).toContain('const isAiReviewEnabled = selectedEnvironment.environment === "production";');
+    expect(projectDetail).toContain('const isAiReviewEnabled = selectedEnvironment.environment === "production" && canUseAiReview;');
     expect(projectDetail).toContain("AI recommendations are available for Production");
     expect(projectDetail).not.toContain("Staging is planned");
     expect(projectDetail).not.toContain("disabled>Staging</button>");
@@ -119,6 +119,12 @@ describe("project detail install panel", () => {
     expect(demoData).toContain("export const createEnvironmentCredential");
     expect(demoData).toContain("serverEventSecretHash");
     expect(demoData).toContain("postbackTokenHash");
+    expect(demoData).toContain("serverSecretLimitSqlCase");
+    expect(demoData).toContain("postbackTokenLimitSqlCase");
+    expect(demoData).toContain("Upgrade to add more server event secrets.");
+    expect(demoData).toContain("Upgrade to add more postback tokens.");
+    expect(demoData).toContain('te."serverEventSecretHash" IS NOT NULL');
+    expect(demoData).toContain('te."postbackTokenHash" IS NOT NULL');
   });
 
   it("shows rotated server and postback credentials inside their own rows", () => {
@@ -185,8 +191,8 @@ describe("project detail install panel", () => {
     expect(projectDetail).toContain('intent === "remove-project-share"');
     expect(projectDetail).toContain("<ProjectShareDialog");
     expect(projectDetail).toContain("{canShareProject &&");
-    expect(projectDetail).toContain("canCreateWebhooks = canManageProject(project)");
-    expect(projectDetail).toContain("canManageCredentials = canManageProject(project)");
+    expect(projectDetail).toContain("canCreateWebhooks = canManageProject(project) && canUseWebhooks");
+    expect(projectDetail).toContain("canManageCredentials = canManageProject(project) && (canUseServerEvents || canUsePostbacks)");
 
     expect(shareDialog).toContain("data-project-share-dialog");
     expect(shareDialog).toContain('name="intent" value="share-project"');
@@ -223,6 +229,18 @@ describe("project detail install panel", () => {
     expect(projectDetail).toContain("{attributionWindowDays} days");
     expect(projectDetail).toContain("affiliate.conversion");
     expect(projectDetail).toContain("postbackEndpointTemplate");
+  });
+
+  it("gates paid project detail features by plan entitlements", () => {
+    const projectDetail = readSource("./projects/[projectId].astro");
+
+    expect(projectDetail).toContain('canUseFeature(account.planId, "aiReview")');
+    expect(projectDetail).toContain('canUseFeature(account.planId, "webhooks")');
+    expect(projectDetail).toContain('canUseFeature(account.planId, "serverEvents")');
+    expect(projectDetail).toContain('canUseFeature(account.planId, "postbacks")');
+    expect(projectDetail).toContain("AI review is available on Growth and higher");
+    expect(projectDetail).toContain("Webhooks are available on Starter and higher");
+    expect(projectDetail).toContain("Server-side calls are available on Starter and higher");
   });
 
   it("documents affiliate tracking and latent conversions in the tracking client guide", () => {

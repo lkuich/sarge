@@ -3,7 +3,8 @@ import {
   normalizePostbackEvent,
   normalizeServerEvent,
   parseCompactEventQuery,
-  tokenMatchesHash
+  tokenMatchesHash,
+  UsageLimitExceededError
 } from "@sarge/core";
 import { ZodError } from "zod";
 import { runScheduledDiagnostics } from "./diagnostic-runner.js";
@@ -210,6 +211,10 @@ const handlePostbackEvent = async (request: Request, url: URL, store: EventStore
 const handleIngestError = (error: unknown) => {
   if (error instanceof ZodError || error instanceof SyntaxError) {
     return json({ success: false, error: "Invalid event payload" }, 400);
+  }
+
+  if (error instanceof UsageLimitExceededError) {
+    return json({ success: false, error: error.message }, 429);
   }
 
   console.error(error);

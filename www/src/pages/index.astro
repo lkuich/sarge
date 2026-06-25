@@ -102,34 +102,45 @@ const plans = [
   {
     name: "Free",
     price: "$0",
-    description: "The pixel, the watchdog, and on-demand diagnostics for a single site.",
+    description: "Install Sarge, verify one project, and inspect recent debug events.",
     icon: Zap,
     cta: "Sign up free",
     href: "/sign-up",
     variant: "outline" as const,
-    features: ["One tracked site", "Hosted pixel snippet", "Debug stream", "Test traffic filters", "Meta, Google, and dataLayer watchdog"],
+    features: ["1 project", "50k events/month", "7-day retention", "Basic affiliate attribution"],
   },
   {
-    name: "Hosted",
-    price: "$20",
-    pricePrefix: "from ",
+    name: "Starter",
+    price: "$49",
     priceSuffix: " /mo",
-    description: "We host everything: your pixel, event intake, and scheduled diagnostics. Drop in the snippet and go.",
+    description: "Small-team tracking validation with server calls and partner postbacks.",
     icon: Cloud,
     cta: "Sign up",
     href: "/sign-up",
     variant: "default" as const,
-    features: ["Hosted event intake", "Test traffic filters", "Scheduled AI reviews", "Saved findings", "Agent-ready fix prompts"],
+    features: ["3 projects", "250k events/month", "30-day retention", "1 server secret", "1 postback token", "3 webhooks"],
   },
   {
-    name: "Self-hosted",
-    price: "BYO",
-    description: "Run the scripts, API, and database yourself when you need the debug loop inside your own stack.",
-    icon: TerminalSquare,
-    cta: "Read how",
-    href: "/docs/self-hosting",
+    name: "Growth",
+    price: "$149",
+    priceSuffix: " /mo",
+    description: "Production diagnostics and configurable attribution for ecommerce teams.",
+    icon: Bot,
+    cta: "Sign up",
+    href: "/sign-up",
     variant: "outline" as const,
-    features: ["Run your own database", "Deploy wherever your team works", "Keep data in your account", "Use the same event model"],
+    features: ["10 projects", "2M events/month", "90-day retention", "AI review", "exports", "alerts"],
+  },
+  {
+    name: "Scale",
+    price: "$399",
+    priceSuffix: " /mo",
+    description: "Agency and multi-brand controls with deeper retention and automation.",
+    icon: ShieldCheck,
+    cta: "Sign up",
+    href: "/sign-up",
+    variant: "outline" as const,
+    features: ["25 projects", "10M events/month", "180-day retention", "client workspaces", "API export"],
   },
 ];
 
@@ -269,7 +280,7 @@ const plans = [
         <h2 class="mt-4 text-3xl font-semibold md:text-5xl">Simple pricing.</h2>
       </div>
 
-      <div class="mt-8 grid gap-3 md:grid-cols-3">
+      <div class="mt-8 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
         {
           plans.map(({ name, price, pricePrefix, priceSuffix, description, icon: Icon, cta, href, variant, features }) => (
             <article class="flex flex-col rounded-lg border bg-card p-5">

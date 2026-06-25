@@ -18,7 +18,8 @@ describe("app navigation routes", () => {
     expect(layout).toContain('Docs');
     expect(layout).toContain("{account.name}");
     expect(layout).toContain("{account.role}");
-    expect(layout).toContain("{account.plan}");
+    expect(layout).toContain("{account.plan.name}");
+    expect(layout).toContain('active === "billing"');
   });
 
   it("does not ship the old admin page", () => {
@@ -91,5 +92,66 @@ describe("app navigation routes", () => {
     expect(demoData).toContain("viewerEmails?: string[];");
     expect(demoData).toContain("mapProjectShare");
     expect(demoData).toContain("ownership: \"shared\"");
+  });
+
+  it("models billing plan and usage on the workspace account", () => {
+    const demoData = readSource("../../lib/sarge-demo.ts");
+    const schema = readSource("../../../../apps/api/prisma/schema.prisma");
+    const layout = readSource("../../layouts/AppLayout.astro");
+
+    expect(schema).toContain("planId");
+    expect(schema).toContain("billingStatus");
+    expect(schema).toContain("currentPeriodEventCount");
+    expect(demoData).toContain("planId: PlanId;");
+    expect(demoData).toContain("plan: PlanDefinition;");
+    expect(demoData).toContain("currentPeriodEventCount: number;");
+    expect(layout).toContain("account.plan.name");
+  });
+
+  it("surfaces project and event usage limits from the active plan", () => {
+    const demoData = readSource("../../lib/sarge-demo.ts");
+    const overview = readSource("./index.astro");
+    const newProject = readSource("./projects/new.astro");
+
+    expect(demoData).toContain("canCreateProjectForPlan");
+    expect(demoData).toContain("getAccountUsage");
+    expect(demoData).toContain("limited_workspace");
+    expect(demoData).toContain("inserted_environments");
+    expect(demoData.match(/sql\.transaction/g)?.length).toBeGreaterThanOrEqual(4);
+    expect(demoData.match(/FOR UPDATE/g)?.length).toBeGreaterThanOrEqual(4);
+    expect(demoData).not.toContain("const createProjectEnvironments");
+    expect(overview).toContain("data-plan-usage-panel");
+    expect(overview).toContain("account.plan.limits.eventsPerMonth");
+    expect(newProject).toContain("canCreateProjectForPlan(account)");
+    expect(newProject).toContain("Upgrade to add more projects");
+  });
+
+  it("adds a billing page with the recommended pricing ladder", () => {
+    const billing = readSource("./billing.astro");
+    const layout = readSource("../../layouts/AppLayout.astro");
+
+    expect(layout).toContain('href="/app/billing"');
+    expect(billing).toContain('active="billing"');
+    expect(billing).toContain("Free");
+    expect(billing).toContain("$49");
+    expect(billing).toContain("$149");
+    expect(billing).toContain("$399");
+    expect(billing).toContain("Contact us");
+    expect(billing).toContain("50k events/month");
+    expect(billing).toContain("2M events/month");
+    expect(billing).toContain("10M events/month");
+  });
+
+  it("documents the public pricing and feature gating strategy", () => {
+    const homepage = readSource("../index.astro");
+    const pricingDoc = readSource("../../../../docs/PRICING.md");
+
+    expect(homepage).toContain("Free");
+    expect(homepage).toContain("$49");
+    expect(homepage).toContain("$149");
+    expect(homepage).toContain("$399");
+    expect(pricingDoc).toContain("tracking assurance");
+    expect(pricingDoc).toContain("Do not gate the core install path");
+    expect(pricingDoc).toContain("Gate these because they map to business value");
   });
 });

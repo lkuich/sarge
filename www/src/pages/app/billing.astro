@@ -1,0 +1,79 @@
+---
+import { env } from "cloudflare:workers";
+import { CheckCircle2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import AppLayout from "@/layouts/AppLayout.astro";
+import { getViewerAccount } from "@/lib/sarge-demo";
+import { planDefinitions, type PlanId } from "@/lib/pricing";
+
+const { userId } = Astro.locals.auth();
+if (!userId) return Astro.redirect("/sign-in");
+const currentUser = await Astro.locals.currentUser();
+const viewerEmails = currentUser?.emailAddresses.map((email) => email.emailAddress).filter(Boolean) ?? [];
+const account = await getViewerAccount(userId, env.DATABASE_URL, { viewerEmails });
+
+const planHighlights: Record<PlanId, string[]> = {
+  free: ["50k events/month", "7-day retention", "1 project"],
+  starter: ["250k events/month", "30-day retention", "3 projects"],
+  growth: ["2M events/month", "90-day retention", "10 projects"],
+  scale: ["10M events/month", "180-day retention", "25 projects"],
+  enterprise: ["Custom events/month", "1-year+ retention", "Dedicated endpoint"],
+};
+
+const planNames: Record<PlanId, string> = {
+  free: "Free",
+  starter: "Starter",
+  growth: "Growth",
+  scale: "Scale",
+  enterprise: "Enterprise",
+};
+
+const planPrices: Record<PlanId, string> = {
+  free: "$0",
+  starter: "$49",
+  growth: "$149",
+  scale: "$399",
+  enterprise: "Contact us",
+};
+---
+
+<AppLayout
+  account={account}
+  title="Billing | Sarge"
+  heading="Billing"
+  description="Pick the Sarge plan that matches your tracking assurance workflow."
+  active="billing"
+  breadcrumbs={[{ label: "Overview", href: "/app" }, { label: "Billing" }]}
+>
+  <section class="grid gap-4 lg:grid-cols-5">
+    {
+      planDefinitions.map((plan) => (
+        <Card className={plan.id === account.planId ? "border-primary" : ""}>
+          <CardHeader>
+            <div class="flex items-center justify-between gap-2">
+              <CardTitle>{planNames[plan.id]}</CardTitle>
+              {plan.id === account.planId && <Badge>Current</Badge>}
+            </div>
+            <p class="text-3xl font-semibold">{planPrices[plan.id]}</p>
+            {plan.monthlyPriceUsd !== null && <p class="text-xs text-muted-foreground">per month</p>}
+          </CardHeader>
+          <CardContent className="grid gap-3 text-sm">
+            <p class="min-h-12 text-muted-foreground">{plan.description}</p>
+            <div class="grid gap-2">
+              {planHighlights[plan.id].map((highlight) => (
+                <p class="flex items-center gap-2">
+                  <CheckCircle2 className="size-4 shrink-0 text-primary" /> {highlight}
+                </p>
+              ))}
+            </div>
+            <Button variant={plan.id === account.planId ? "outline" : "default"} disabled>
+              {plan.monthlyPriceUsd === null ? "Contact us" : plan.id === account.planId ? "Current plan" : "Choose plan"}
+            </Button>
+          </CardContent>
+        </Card>
+      ))
+    }
+  </section>
+</AppLayout>

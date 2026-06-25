@@ -1,4 +1,5 @@
 import request from "supertest";
+import { UsageLimitExceededError } from "@sarge/core";
 import { describe, expect, it } from "vitest";
 import { createApp } from "./app.js";
 import type { EventRepository } from "./event-repository.js";
@@ -81,6 +82,30 @@ describe("Sarge API v2", () => {
     expect(response.status).toBe(400);
     expect(response.body.success).toBe(false);
     expect(events).toHaveLength(0);
+  });
+
+  it("returns 429 when the workspace event limit is reached", async () => {
+    const { repository } = createMemoryRepository();
+    const limitedRepository: EventRepository = {
+      ...repository,
+      async createEvent() {
+        throw new UsageLimitExceededError();
+      }
+    };
+    const app = createApp({ repository: limitedRepository });
+
+    const response = await request(app)
+      .post("/v2/events")
+      .send({
+        siteId: "site_123",
+        name: "Purchase",
+        occurredAt: "2026-06-19T12:00:00.000Z",
+        sessionId: "sess_123",
+        userId: "user_123"
+      });
+
+    expect(response.status).toBe(429);
+    expect(response.body).toEqual({ success: false, error: "Monthly event limit reached" });
   });
 
   it("accepts compact GET fallback events", async () => {

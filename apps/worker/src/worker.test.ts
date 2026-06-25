@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { TrackedPageHealthResult } from "@sarge/core";
 import { createWorkerHandler } from "./index.js";
 import type { EventStore, StoredDiagnosticRun, StoredEvent, WorkerEnv } from "./types.js";
 
@@ -303,7 +304,7 @@ describe("Cloudflare Worker hosted API", () => {
     const { ctx, promises } = createExecutionContext();
     const { diagnosticEvents, diagnosticRuns, store } = createMemoryStore();
     const aiCalls: unknown[] = [];
-    const handler = createWorkerHandler({ store });
+    const handler = createWorkerHandler({ store, pageHealthChecker: async () => [] });
     diagnosticEvents.push(
       {
         id: "evt_page",
@@ -353,11 +354,84 @@ describe("Cloudflare Worker hosted API", () => {
     });
   });
 
+  it("adds tracked page health failures to scheduled diagnostics", async () => {
+    const { ctx, promises } = createExecutionContext();
+    const { diagnosticEvents, diagnosticRuns, store } = createMemoryStore();
+    const handler = createWorkerHandler({
+      store,
+      pageHealthChecker: async () => [
+        {
+          url: "https://shop.example.com/checkout",
+          status: 500,
+          eventCount: 1,
+          conversionLike: true
+        } satisfies TrackedPageHealthResult
+      ]
+    });
+    diagnosticEvents.push({
+      id: "evt_checkout",
+      siteId: "env_shared_production",
+      name: "checkout.started",
+      occurredAt: "2026-06-19T12:00:00.000Z",
+      sessionId: "sess_checkout",
+      userId: "user_123",
+      properties: { value: 84, currency: "USD" },
+      url: "https://shop.example.com/checkout",
+      title: "Checkout"
+    });
+
+    await handler.scheduled(createScheduledController(), createEnv(), ctx);
+    await Promise.all(promises);
+
+    expect(diagnosticRuns).toHaveLength(1);
+    expect(diagnosticRuns[0].findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          ruleId: "tracked_page_server_error",
+          severity: "critical",
+          evidence: expect.arrayContaining([
+            "https://shop.example.com/checkout returned HTTP 500 during the scheduled page health check."
+          ])
+        })
+      ])
+    );
+  });
+
+  it("continues scheduled diagnostics when tracked page checks throw", async () => {
+    const { ctx, promises } = createExecutionContext();
+    const { diagnosticEvents, diagnosticRuns, store } = createMemoryStore();
+    const handler = createWorkerHandler({
+      store,
+      pageHealthChecker: async () => {
+        throw new Error("fetch platform unavailable");
+      }
+    });
+    diagnosticEvents.push({
+      id: "evt_page",
+      siteId: "env_shared_production",
+      name: "page.view",
+      occurredAt: "2026-06-19T12:00:00.000Z",
+      sessionId: "sess_page",
+      userId: "user_123",
+      properties: {},
+      url: "https://shop.example.com",
+      title: "Shop"
+    });
+
+    await handler.scheduled(createScheduledController(), createEnv(), ctx);
+    await Promise.all(promises);
+
+    expect(diagnosticRuns).toHaveLength(1);
+    expect(diagnosticRuns[0]).toMatchObject({
+      status: "completed"
+    });
+  });
+
   it("stores diagnostics without calling AI when there are no findings", async () => {
     const { ctx, promises } = createExecutionContext();
     const { diagnosticEvents, diagnosticRuns, store } = createMemoryStore();
     const aiCalls: unknown[] = [];
-    const handler = createWorkerHandler({ store });
+    const handler = createWorkerHandler({ store, pageHealthChecker: async () => [] });
     diagnosticEvents.push(
       {
         id: "evt_page",

@@ -1136,7 +1136,7 @@ pnpm test
 pnpm typecheck
 pnpm --dir www build
 git diff --check
-rg -n "<<<<<<<|>>>>>>>|=======" . -g '!node_modules' -g '!www/node_modules' -g '!dist' -g '!www/dist'
+rg -n "<conflict-marker-regex>" . -g '!node_modules' -g '!www/node_modules' -g '!dist' -g '!www/dist'
 ```
 
 Expected:

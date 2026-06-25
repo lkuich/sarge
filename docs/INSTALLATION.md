@@ -4,6 +4,8 @@ Sarge is installed as a small hosted browser script. Each project has persisted 
 
 AI recommendations currently run for Production only. Staging and Development still collect their own events and show their own flows/debug streams, but the AI review panel is disabled there.
 
+Sarge active monitoring uses URLs already captured from Production events. Once pages emit events, scheduled AI review can re-check those same URLs and flag `404`, `5xx`, timeout, DNS/TLS, or redirect regressions without extra setup.
+
 ## Hosted Install
 
 Use the snippet from the project detail screen in the portal:

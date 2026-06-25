@@ -181,6 +181,16 @@ describe("app navigation routes", () => {
     expect(billing).toContain("Unlimited shared users/project");
     expect(billing).toContain("2M events/month");
     expect(billing).toContain("Custom events/month");
+    expect(billing).toContain("Basic affiliate attribution");
+    expect(billing).toContain("Server-side calls");
+    expect(billing).toContain("Partner postbacks");
+    expect(billing).toContain("3 webhooks");
+    expect(billing).toContain("AI review");
+    expect(billing).toContain("Tracked page monitoring");
+    expect(billing).toContain("Exports and alerts");
+    expect(billing).toContain("SSO/SAML");
+    expect(billing).toContain("Audit logs");
+    expect(billing).toContain("Warehouse sync");
   });
 
   it("adds notification preferences with durable email settings and dedupe", () => {

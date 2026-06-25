@@ -130,25 +130,46 @@ export const createCheckoutSession = async (input: {
   if (!workspace) return { success: false, error: "Create your workspace before choosing a plan." };
 
   const stripe = createStripeClient(stripeSecretKey);
+  const checkoutParams = {
+    appUrl: input.appUrl,
+    customerEmail: input.customerEmail,
+    priceId: price.priceId,
+    userId: input.userId,
+    workspaceId: workspace.id,
+    planId: input.planId,
+  };
   let session: Stripe.Checkout.Session;
   try {
     session = await stripe.checkout.sessions.create(
       buildCheckoutSessionParams({
-        appUrl: input.appUrl,
-        customerEmail: input.customerEmail,
         customerId: workspace.stripeCustomerId,
-        priceId: price.priceId,
-        userId: input.userId,
-        workspaceId: workspace.id,
-        planId: input.planId,
+        ...checkoutParams,
       }),
     );
   } catch (error) {
-    console.error("Stripe checkout creation failed", error);
-    return {
-      success: false,
-      error: `Stripe could not start checkout. Check the configured ${getPlanDefinition(input.planId).name} price in Stripe.`,
-    };
+    if (workspace.stripeCustomerId && isMissingStripeCustomerError(error)) {
+      console.warn("Stripe checkout customer was missing; retrying without saved customer", error);
+      try {
+        session = await stripe.checkout.sessions.create(
+          buildCheckoutSessionParams({
+            customerId: null,
+            ...checkoutParams,
+          }),
+        );
+      } catch (retryError) {
+        console.error("Stripe checkout creation failed after customer retry", retryError);
+        return {
+          success: false,
+          error: `Stripe could not start checkout. Check the configured ${getPlanDefinition(input.planId).name} price in Stripe.`,
+        };
+      }
+    } else {
+      console.error("Stripe checkout creation failed", error);
+      return {
+        success: false,
+        error: `Stripe could not start checkout. Check the configured ${getPlanDefinition(input.planId).name} price in Stripe.`,
+      };
+    }
   }
 
   if (!session.url) return { success: false, error: "Stripe did not return a Checkout URL." };
@@ -339,6 +360,17 @@ const getMetadataValue = (metadata: Stripe.Metadata | null | undefined, key: str
 const getStripeId = (value: string | { id?: string } | null | undefined) => {
   if (typeof value === "string") return value;
   return typeof value?.id === "string" ? value.id : null;
+};
+
+const isMissingStripeCustomerError = (error: unknown) => {
+  if (typeof error !== "object" || error === null) return false;
+
+  const stripeError = error as { code?: unknown; message?: unknown; param?: unknown };
+  return (
+    stripeError.code === "resource_missing" && stripeError.param === "customer"
+  ) || (
+    typeof stripeError.message === "string" && stripeError.message.includes("No such customer:")
+  );
 };
 
 const getInvoiceSubscriptionId = (invoice: Stripe.Invoice) => {

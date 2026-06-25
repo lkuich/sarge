@@ -139,6 +139,51 @@ describe("Stripe billing helpers", () => {
     });
   });
 
+  it("retries checkout without a saved customer when Stripe reports the customer belongs to another mode", async () => {
+    neonQuery.mockResolvedValue([
+      {
+        id: "wrk_123",
+        name: "Acme",
+        ownerUserId: "user_123",
+        planId: "free",
+        billingStatus: "active",
+        stripeCustomerId: "cus_test_mode",
+        stripeSubscriptionId: null,
+        stripePriceId: null,
+      },
+    ]);
+    stripeCheckoutSessionsCreate
+      .mockRejectedValueOnce(
+        new Error(
+          "No such customer: 'cus_test_mode'; a similar object exists in test mode, but a live mode key was used to make this request.",
+        ),
+      )
+      .mockResolvedValueOnce({ url: "https://checkout.stripe.com/live-session" });
+
+    await expect(
+      createCheckoutSession({
+        env,
+        databaseUrl: "postgres://example",
+        userId: "user_123",
+        customerEmail: "owner@example.com",
+        appUrl: "https://sargetrack.app/app/billing",
+        planId: "starter",
+      }),
+    ).resolves.toEqual({
+      success: true,
+      url: "https://checkout.stripe.com/live-session",
+    });
+
+    expect(stripeCheckoutSessionsCreate).toHaveBeenCalledTimes(2);
+    expect(stripeCheckoutSessionsCreate.mock.calls[0]?.[0]).toMatchObject({
+      customer: "cus_test_mode",
+    });
+    expect(stripeCheckoutSessionsCreate.mock.calls[1]?.[0]).toMatchObject({
+      customer_email: "owner@example.com",
+    });
+    expect(stripeCheckoutSessionsCreate.mock.calls[1]?.[0]).not.toHaveProperty("customer");
+  });
+
   it("normalizes Stripe subscription statuses to Sarge billing statuses", () => {
     expect(mapStripeSubscriptionStatus("active")).toBe("active");
     expect(mapStripeSubscriptionStatus("trialing")).toBe("active");

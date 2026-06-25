@@ -40,6 +40,13 @@ export interface SargeEvent {
   properties: Record<string, unknown>;
 }
 
+export interface SargeEventMixItem {
+  name: string;
+  value: number;
+  previousValue: number;
+  share: number;
+}
+
 export interface WebhookEndpoint {
   id: string;
   name: string;
@@ -69,9 +76,15 @@ export interface SargeProjectEnvironment {
   serverEventSecretConfigured: boolean;
   postbackTokenConfigured: boolean;
   eventCount24h: number;
+  previousEventCount24h: number;
+  sessionCount24h: number;
+  previousSessionCount24h: number;
+  userCount24h: number;
+  previousUserCount24h: number;
   failedEvents24h: number;
   lastEventAt: string;
   pixelVersion: string;
+  eventMix24h: SargeEventMixItem[];
   recentEvents: SargeEvent[];
   eventHosts: EventHostSummary[];
   diagnostics: ProjectDiagnostic[];
@@ -176,6 +189,10 @@ export type RemoveProjectShareResult =
   | { success: true }
   | { success: false; error: string };
 
+export type CreatePublicVerificationLinkResult =
+  | { success: true; url: string; expiresAt: Date }
+  | { success: false; error: string };
+
 export const hostedEndpointHost = 'track.sargetrack.app';
 const demoAccountName = 'Demo Account';
 type SqlClient = ReturnType<typeof neon>;
@@ -185,6 +202,7 @@ const webhookLimitSqlCase = buildPlanLimitSqlCase('webhooks', 'w."planId"');
 const serverSecretLimitSqlCase = buildPlanLimitSqlCase('serverSecrets', 'w."planId"');
 const postbackTokenLimitSqlCase = buildPlanLimitSqlCase('postbackTokens', 'w."planId"');
 const eventRetentionFilterSql = buildPlanRetentionFilterSql('e."occurredAt"', 'w."planId"');
+const eventMixRetentionFilterSql = buildPlanRetentionFilterSql('e_mix."occurredAt"', 'w."planId"');
 
 const adminIds = new Set(
   (import.meta.env.SARGE_ADMIN_USER_IDS ?? '')
@@ -211,7 +229,7 @@ const members: AccountMember[] = [
 ];
 
 const resolveRole = (userId: string): AccountRole => {
-  if (adminIds.size === 0) return 'admin';
+  if (adminIds.size === 0) return 'user';
   return adminIds.has(userId) ? 'admin' : 'user';
 };
 
@@ -350,6 +368,35 @@ export const getViewerAccount = async (
         se."serverEventSecretHash",
         se."postbackTokenHash",
         COUNT(e.id) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL '24 hours')::int AS "eventCount24h",
+        COUNT(e.id) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL '48 hours' AND e."occurredAt" < NOW() - INTERVAL '24 hours')::int AS "previousEventCount24h",
+        COUNT(DISTINCT NULLIF(e."sessionId", '')) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL '24 hours')::int AS "sessionCount24h",
+        COUNT(DISTINCT NULLIF(e."sessionId", '')) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL '48 hours' AND e."occurredAt" < NOW() - INTERVAL '24 hours')::int AS "previousSessionCount24h",
+        COUNT(DISTINCT NULLIF(e."userId", '')) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL '24 hours')::int AS "userCount24h",
+        COUNT(DISTINCT NULLIF(e."userId", '')) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL '48 hours' AND e."occurredAt" < NOW() - INTERVAL '24 hours')::int AS "previousUserCount24h",
+        COALESCE((
+          SELECT jsonb_agg(
+            jsonb_build_object(
+              'name', event_mix.event_name,
+              'value', event_mix.event_count,
+              'previousValue', event_mix.previous_event_count
+            )
+            ORDER BY event_mix.event_count DESC, event_mix.event_name ASC
+          )
+          FROM (
+            SELECT
+              e_mix.name AS event_name,
+              COUNT(e_mix.id) FILTER (WHERE e_mix."occurredAt" >= NOW() - INTERVAL '24 hours')::int AS event_count,
+              COUNT(e_mix.id) FILTER (WHERE e_mix."occurredAt" >= NOW() - INTERVAL '48 hours' AND e_mix."occurredAt" < NOW() - INTERVAL '24 hours')::int AS previous_event_count
+            FROM "Event" e_mix
+            WHERE e_mix."siteEnvironmentId" = se.id
+              AND e_mix."occurredAt" >= NOW() - INTERVAL '48 hours'
+              AND ${sql.unsafe(eventMixRetentionFilterSql)}
+            GROUP BY e_mix.name
+            HAVING COUNT(e_mix.id) FILTER (WHERE e_mix."occurredAt" >= NOW() - INTERVAL '24 hours') > 0
+            ORDER BY event_count DESC, event_name ASC
+            LIMIT 4
+          ) event_mix
+        ), '[]'::jsonb) AS "eventMix24h",
         MAX(e."occurredAt") AS "lastOccurredAt"
       FROM "SiteEnvironment" se
       JOIN "Site" s ON s.id = se."siteId"
@@ -357,7 +404,7 @@ export const getViewerAccount = async (
       LEFT JOIN "Event" e ON e."siteEnvironmentId" = se.id
         AND ${sql.unsafe(eventRetentionFilterSql)}
       WHERE s.id = ANY(${allSiteIds})
-      GROUP BY se.id
+      GROUP BY se.id, w."planId"
       ORDER BY se."siteId" ASC, se."createdAt" ASC
     `) as SiteEnvironmentSummaryRow[]) : [];
 
@@ -561,18 +608,23 @@ export const getViewerAccount = async (
 
 export const getPublicEventStream = async (
   siteId: string,
+  verificationKey: string | null,
   databaseUrl?: string,
 ): Promise<PublicEventStream | null> => {
-  if (!databaseUrl || !siteId.trim()) return null;
+  if (!databaseUrl || !siteId.trim() || !verificationKey?.trim()) return null;
 
   try {
     const sql = neon(databaseUrl);
+    const verificationKeyHash = await sha256Hex(verificationKey);
     const sites = (await sql`
       SELECT se.id, s.name, se."endpointHost", se."pixelEnabled"
       FROM "SiteEnvironment" se
       JOIN "Site" s ON s.id = se."siteId"
-      WHERE se.id = ${siteId}
-        OR (se."siteId" = ${siteId} AND se.environment = 'production')
+      JOIN "PublicVerificationToken" pvt ON pvt."siteEnvironmentId" = se.id
+      WHERE (se.id = ${siteId}
+        OR (se."siteId" = ${siteId} AND se.environment = 'production'))
+        AND pvt."tokenHash" = ${verificationKeyHash}
+        AND pvt."expiresAt" > NOW()
       LIMIT 1
     `) as PublicSiteEnvironmentRow[];
     const site = sites.at(0);
@@ -616,6 +668,55 @@ export const getPublicEventStream = async (
   } catch (error) {
     console.error('Unable to load public Sarge event stream', error);
     return null;
+  }
+};
+
+export const createPublicVerificationLink = async (
+  userId: string,
+  databaseUrl: string | undefined,
+  siteEnvironmentId: string,
+  appUrl: string,
+): Promise<CreatePublicVerificationLinkResult> => {
+  if (!databaseUrl) return { success: false, error: 'DATABASE_URL is not configured.' };
+
+  try {
+    const sql = neon(databaseUrl);
+    const workspace = await getViewerWorkspace(sql, userId);
+    if (!workspace) return { success: false, error: 'Account workspace was not found.' };
+
+    const siteEnvironments = (await sql`
+      SELECT se.id
+      FROM "SiteEnvironment" se
+      JOIN "Site" s ON s.id = se."siteId"
+      WHERE se.id = ${siteEnvironmentId}
+        AND s."workspaceId" = ${workspace.id}
+      LIMIT 1
+    `) as { id: string }[];
+    const siteEnvironment = siteEnvironments.at(0);
+    if (!siteEnvironment) return { success: false, error: 'Project environment was not found.' };
+
+    const token = createVerificationToken();
+    const tokenHash = await sha256Hex(token);
+    const tokenExpiry = { expiresAt: new Date(Date.now() + 30 * 60 * 1000) };
+    const { expiresAt } = tokenExpiry;
+
+    await sql`
+      INSERT INTO "PublicVerificationToken" (id, "siteEnvironmentId", "tokenHash", "expiresAt", "createdByUserId")
+      VALUES (${`pvt_${crypto.randomUUID()}`}, ${siteEnvironment.id}, ${tokenHash}, ${expiresAt.toISOString()}, ${userId})
+    `;
+
+    const origin = new URL(appUrl).origin;
+    return {
+      success: true,
+      url: `${origin}/verify/${encodeURIComponent(siteEnvironment.id)}?key=${encodeURIComponent(token)}`,
+      expiresAt,
+    };
+  } catch (error) {
+    console.error('Unable to create public verification link', error);
+    return {
+      success: false,
+      error: 'Verification link could not be created. Confirm the database migration has been deployed.',
+    };
   }
 };
 
@@ -773,7 +874,23 @@ export const createProject = async (
             (${stagingEnvironmentId}, 'staging', ${stagingEndpointHost}),
             (${developmentEnvironmentId}, 'development', ${developmentEndpointHost})
         ) AS environment_row(id, environment, "endpointHost")
-        RETURNING id, "siteId", environment, "endpointHost", "attributionTtlDays", "pixelEnabled", "serverEventSecretHash", "postbackTokenHash", 0::int AS "eventCount24h", NULL::timestamp AS "lastOccurredAt"
+        RETURNING
+          id,
+          "siteId",
+          environment,
+          "endpointHost",
+          "attributionTtlDays",
+          "pixelEnabled",
+          "serverEventSecretHash",
+          "postbackTokenHash",
+          0::int AS "eventCount24h",
+          0::int AS "previousEventCount24h",
+          0::int AS "sessionCount24h",
+          0::int AS "previousSessionCount24h",
+          0::int AS "userCount24h",
+          0::int AS "previousUserCount24h",
+          '[]'::jsonb AS "eventMix24h",
+          NULL::timestamp AS "lastOccurredAt"
       )
       SELECT
         inserted_site.id AS "siteId",
@@ -790,6 +907,12 @@ export const createProject = async (
         inserted_environments."serverEventSecretHash",
         inserted_environments."postbackTokenHash",
         inserted_environments."eventCount24h",
+        inserted_environments."previousEventCount24h",
+        inserted_environments."sessionCount24h",
+        inserted_environments."previousSessionCount24h",
+        inserted_environments."userCount24h",
+        inserted_environments."previousUserCount24h",
+        inserted_environments."eventMix24h",
         inserted_environments."lastOccurredAt"
       FROM inserted_site
       JOIN inserted_environments ON inserted_environments."siteId" = inserted_site.id
@@ -809,6 +932,12 @@ export const createProject = async (
           serverEventSecretHash: environment.serverEventSecretHash,
           postbackTokenHash: environment.postbackTokenHash,
           eventCount24h: environment.eventCount24h,
+          previousEventCount24h: environment.previousEventCount24h,
+          sessionCount24h: environment.sessionCount24h,
+          previousSessionCount24h: environment.previousSessionCount24h,
+          userCount24h: environment.userCount24h,
+          previousUserCount24h: environment.previousUserCount24h,
+          eventMix24h: environment.eventMix24h,
           lastOccurredAt: environment.lastOccurredAt,
         },
         {
@@ -1339,6 +1468,38 @@ const getSetupAccount = (role: AccountRole): SargeAccount => ({
   members: [],
 });
 
+const normalizeEventMix = (value: unknown, totalEvents: number): SargeEventMixItem[] => {
+  let parsedValue = value;
+  if (typeof value === 'string') {
+    try {
+      parsedValue = JSON.parse(value);
+    } catch {
+      return [];
+    }
+  }
+
+  if (!Array.isArray(parsedValue)) return [];
+
+  const total = Math.max(1, totalEvents);
+  return parsedValue
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const record = item as Record<string, unknown>;
+      const name = typeof record.name === 'string' ? record.name : '';
+      const count = Number(record.value ?? 0);
+      const previousCount = Number(record.previousValue ?? 0);
+      if (!name || !Number.isFinite(count) || count <= 0) return null;
+
+      return {
+        name,
+        value: count,
+        previousValue: Number.isFinite(previousCount) ? previousCount : 0,
+        share: Math.round((count / total) * 100),
+      } satisfies SargeEventMixItem;
+    })
+    .filter((item): item is SargeEventMixItem => Boolean(item));
+};
+
 const mapEvent = (event: EventRow): SargeEvent => {
   const attribution = readSargeAttributionFromUrl(event.url);
 
@@ -1421,9 +1582,15 @@ const mapProjectEnvironment = (
   serverEventSecretConfigured: Boolean(environment.serverEventSecretHash),
   postbackTokenConfigured: Boolean(environment.postbackTokenHash),
   eventCount24h: environment.eventCount24h ?? 0,
+  previousEventCount24h: environment.previousEventCount24h ?? 0,
+  sessionCount24h: environment.sessionCount24h ?? 0,
+  previousSessionCount24h: environment.previousSessionCount24h ?? 0,
+  userCount24h: environment.userCount24h ?? 0,
+  previousUserCount24h: environment.previousUserCount24h ?? 0,
   failedEvents24h: 0,
   lastEventAt: formatRelativeTime(environment.lastOccurredAt),
   pixelVersion: '0.1.0',
+  eventMix24h: normalizeEventMix(environment.eventMix24h, environment.eventCount24h ?? 0),
   recentEvents: data.recentEvents,
   eventHosts: summarizeEventHosts(data.recentEvents),
   diagnostics: environment.environment === 'production' ? data.persistedDiagnostics ?? analyzeProjectEvents(data.recentEvents) : [],
@@ -1459,9 +1626,15 @@ const buildFallbackProject = (input: {
       serverEventSecretConfigured: false,
       postbackTokenConfigured: false,
       eventCount24h: environment === 'production' ? input.eventCount24h : 0,
+      previousEventCount24h: 0,
+      sessionCount24h: 0,
+      previousSessionCount24h: 0,
+      userCount24h: 0,
+      previousUserCount24h: 0,
       failedEvents24h: environment === 'production' ? input.failedEvents24h : 0,
       lastEventAt: environment === 'production' ? input.lastEventAt : 'No events yet',
       pixelVersion: '0.1.0',
+      eventMix24h: [],
       recentEvents: [],
       eventHosts: [],
       diagnostics: [],
@@ -1598,6 +1771,15 @@ const createCredentialToken = (kind: EnvironmentCredentialKind) => {
   return `${kind === 'server' ? 'sarge_sk' : 'sarge_pb'}_${encoded}`;
 };
 
+const createVerificationToken = () => {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
+};
+
 const sha256Hex = async (value: string) => {
   const bytes = new TextEncoder().encode(value);
   const digest = await crypto.subtle.digest('SHA-256', bytes);
@@ -1636,6 +1818,12 @@ interface SiteEnvironmentSummaryRow {
   serverEventSecretHash: string | null;
   postbackTokenHash: string | null;
   eventCount24h: number;
+  previousEventCount24h: number;
+  sessionCount24h: number;
+  previousSessionCount24h: number;
+  userCount24h: number;
+  previousUserCount24h: number;
+  eventMix24h: unknown;
   lastOccurredAt: Date | null;
 }
 
@@ -1654,6 +1842,12 @@ interface NewProjectEnvironmentRow {
   serverEventSecretHash: string | null;
   postbackTokenHash: string | null;
   eventCount24h: number;
+  previousEventCount24h: number;
+  sessionCount24h: number;
+  previousSessionCount24h: number;
+  userCount24h: number;
+  previousUserCount24h: number;
+  eventMix24h: unknown;
   lastOccurredAt: Date | null;
 }
 

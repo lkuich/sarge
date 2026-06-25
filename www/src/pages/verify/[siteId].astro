@@ -10,7 +10,8 @@ import { getPublicEventStream } from "@/lib/sarge-demo";
 export const prerender = false;
 
 const siteId = Astro.params.siteId ?? "";
-const stream = await getPublicEventStream(siteId, env.DATABASE_URL);
+const verificationKey = Astro.url.searchParams.get("key");
+const stream = await getPublicEventStream(siteId, verificationKey, env.DATABASE_URL);
 Astro.response.headers.set("Cache-Control", "no-store");
 
 const formatEventTime = (value: string) =>
@@ -188,10 +189,10 @@ const isWatchdogEvent = (name: string) =>
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle>Event stream unavailable</CardTitle>
+            <CardTitle>Verification link unavailable</CardTitle>
           </CardHeader>
           <CardContent>
-            <p class="text-sm text-muted-foreground">No public stream was found for this site id.</p>
+            <p class="text-sm text-muted-foreground">This verification link is missing, invalid, expired, or no longer matches this environment.</p>
           </CardContent>
         </Card>
       )

@@ -53,6 +53,27 @@ const createBrowser = (overrides: Partial<BrowserLike> = {}) => {
 };
 
 describe("Sarge pixel", () => {
+  it("defaults direct installs to the hosted Sarge endpoint", () => {
+    const { browser, sendBeacon } = createBrowser({
+      location: {
+        href: "https://example.com/",
+        search: ""
+      },
+      crypto: {
+        randomUUID: vi
+          .fn()
+          .mockReturnValueOnce("sess_default")
+          .mockReturnValueOnce("user_default")
+      }
+    });
+    const client = createSargeClient(browser);
+
+    client.init({ siteId: "env_default" });
+    client.track("page.view");
+
+    expect(sendBeacon.mock.calls[0]?.[0]).toBe("https://track.sargetrack.app/v2/events");
+  });
+
   it("auto-initializes hosted pixels from embedded config before replaying queued calls", async () => {
     vi.resetModules();
     const { browser, sendBeacon } = createBrowser({

@@ -52,7 +52,7 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           const token = process.env.CLOUDFLARE_API_TOKEN;
-          const zoneName = "lkuich.com";
+          const zoneName = "sargetrack.app";
 
           if (!token) {
             console.error("CLOUDFLARE_API_TOKEN is not set.");

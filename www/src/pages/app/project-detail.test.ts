@@ -112,16 +112,30 @@ describe("project detail install panel", () => {
 
   it("adds a compact project pulse panel above operational sections", () => {
     const projectDetail = readSource("./projects/[projectId].astro");
+    const demoData = readSource("../../lib/sarge-demo.ts");
     const pulsePanel = projectDetail.indexOf("data-project-pulse");
     const installPanel = projectDetail.indexOf("data-install-pixel-details");
 
     expect(projectDetail).toContain("const eventPulseBars = buildEventPulseBars(selectedEnvironment.recentEvents, selectedEnvironment.eventCount24h);");
-    expect(projectDetail).toContain("const eventTypeMix = buildEventTypeMix(selectedEnvironment.recentEvents);");
+    expect(projectDetail).toContain("const eventTypeMix = selectedEnvironment.eventMix24h;");
+    expect(projectDetail).toContain("const eventVolumeDelta = buildMetricDelta(selectedEnvironment.eventCount24h, selectedEnvironment.previousEventCount24h);");
+    expect(projectDetail).toContain("const recentSessionDelta = buildMetricDelta(selectedEnvironment.sessionCount24h, selectedEnvironment.previousSessionCount24h);");
+    expect(projectDetail).toContain("const recentUserDelta = buildMetricDelta(selectedEnvironment.userCount24h, selectedEnvironment.previousUserCount24h);");
     expect(projectDetail).toContain("formatCount,");
     expect(projectDetail).toContain("Project pulse");
     expect(projectDetail).toContain("Event mix");
+    expect(projectDetail).toContain("Last 24h vs previous 24h");
+    expect(projectDetail).toContain("Sessions, last 24h");
+    expect(projectDetail).toContain("Users, last 24h");
+    expect(projectDetail).toContain("renderMetricDelta");
+    expect(projectDetail).toContain("formatMetricDeltaTitle");
     expect(projectDetail).toContain("data-project-pulse");
     expect(projectDetail).toContain("data-event-pulse-bars");
+    expect(demoData).toContain('COUNT(e.id) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL \'48 hours\' AND e."occurredAt" < NOW() - INTERVAL \'24 hours\')::int AS "previousEventCount24h"');
+    expect(demoData).toContain('"eventMix24h"');
+    expect(demoData).toContain("previousEventCount24h: environment.previousEventCount24h ?? 0");
+    expect(demoData).toContain("sessionCount24h: environment.sessionCount24h ?? 0");
+    expect(demoData).toContain("userCount24h: environment.userCount24h ?? 0");
     expect(pulsePanel).toBeGreaterThan(-1);
     expect(installPanel).toBeGreaterThan(pulsePanel);
   });
@@ -393,5 +407,28 @@ describe("project detail install panel", () => {
     expect(publicInstallGuide).toContain("environment attribution window");
     expect(publicInstallGuide).toContain("defaults to 28 days");
     expect(publicInstallGuide).toContain("affiliate.conversion");
+  });
+
+  it("requires short-lived verification links instead of permanent public event stream URLs", () => {
+    const projectDetail = readSource("./projects/[projectId].astro");
+    const verifyPage = readSource("../verify/[siteId].astro");
+    const demoData = readSource("../../lib/sarge-demo.ts");
+
+    expect(projectDetail).toContain("createPublicVerificationLink");
+    expect(projectDetail).toContain('intent === "create-public-verification-link"');
+    expect(projectDetail).toContain("createdPublicVerificationUrl");
+    expect(projectDetail).toContain("Create 30-minute verify link");
+    expect(projectDetail).toContain("expires in 30 minutes");
+    expect(projectDetail).not.toContain('href={publicVerifyUrl}');
+
+    expect(verifyPage).toContain('Astro.url.searchParams.get("key")');
+    expect(verifyPage).toContain("getPublicEventStream(siteId, verificationKey, env.DATABASE_URL)");
+    expect(verifyPage).toContain("Verification link unavailable");
+
+    expect(demoData).toContain("export const createPublicVerificationLink");
+    expect(demoData).toContain("verificationKey: string | null");
+    expect(demoData).toContain("sha256Hex(verificationKey)");
+    expect(demoData).toContain('"expiresAt" > NOW()');
+    expect(demoData).toContain("expiresAt: new Date(Date.now() + 30 * 60 * 1000)");
   });
 });

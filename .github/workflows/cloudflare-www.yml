@@ -42,6 +42,10 @@ jobs:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
         run: pnpm build
 
+      - name: Test
+        working-directory: .
+        run: pnpm --dir www test
+
       - name: Deploy WWW Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

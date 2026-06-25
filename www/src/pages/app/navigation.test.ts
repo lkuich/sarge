@@ -149,6 +149,14 @@ describe("app navigation routes", () => {
     expect(newProject).toContain("Upgrade to add more projects");
   });
 
+  it("defaults users to non-admin unless explicitly listed in SARGE_ADMIN_USER_IDS", () => {
+    const demoData = readSource("../../lib/sarge-demo.ts");
+
+    expect(demoData).toContain("if (adminIds.size === 0) return 'user';");
+    expect(demoData).toContain("return adminIds.has(userId) ? 'admin' : 'user';");
+    expect(demoData).not.toContain("if (adminIds.size === 0) return 'admin';");
+  });
+
   it("filters visible event logs by the owning workspace plan retention", () => {
     const demoData = readSource("../../lib/sarge-demo.ts");
 

@@ -17,6 +17,7 @@ import {
   canAdministerAccount,
   canManageProject,
   createEnvironmentCredential,
+  createPublicVerificationLink,
   createWebhookEndpoint,
   environmentLabels,
   formatCount,
@@ -72,6 +73,9 @@ let createdServerCredentialToken = "";
 let createdServerCredentialEndpoint = "";
 let createdPostbackCredentialToken = "";
 let createdPostbackCredentialEndpoint = "";
+let publicVerificationError = "";
+let createdPublicVerificationUrl = "";
+let createdPublicVerificationExpiresAt: Date | null = null;
 let webhookValues = {
   name: "",
   url: "",
@@ -210,14 +214,28 @@ if (Astro.request.method === "POST") {
       }
     }
   }
+
+  if (intent === "create-public-verification-link") {
+    if (!canManageProject(project)) {
+      publicVerificationError = "Edit access is required to create verification links.";
+    } else {
+      const result = await createPublicVerificationLink(userId, env.DATABASE_URL, selectedEnvironment.id, Astro.url.origin);
+      if (result.success) {
+        createdPublicVerificationUrl = result.url;
+        createdPublicVerificationExpiresAt = result.expiresAt;
+      } else {
+        publicVerificationError = result.error;
+      }
+    }
+  }
 }
 
 const snippet = `<script>
   window._sarge = { queue: [["track", "page.view"]] };
 </script>
 <script async src="${selectedEnvironment.pixelUrl}"></script>`;
-const publicVerifyUrl = `/verify/${selectedEnvironment.id}`;
-const publicVerifyAbsoluteUrl = `https://sargetrack.app${publicVerifyUrl}`;
+const publicVerifyUrlTemplate = `/verify/${selectedEnvironment.id}?key={temporaryVerificationKey}`;
+const publicVerifyAbsoluteUrlTemplate = `https://sargetrack.app${publicVerifyUrlTemplate}`;
 const debugStreamEndpoint = `/api/project-events/${selectedEnvironment.id}`;
 const llmInstallPrompt = `Add Sarge tracking for ${project.name} ${selectedEnvironmentLabel}.
 
@@ -230,7 +248,7 @@ Install this pixel snippet as early as possible in the page:
 
 ${snippet}
 
-Then emit window.sarge("track", "event.name", properties) for page, product, cart, checkout, and purchase actions. Keep existing Meta, Google, or analytics pixels in place. After wiring, open ${publicVerifyAbsoluteUrl} and verify the expected events appear in the public Sarge event stream.`;
+Then emit window.sarge("track", "event.name", properties) for page, product, cart, checkout, and purchase actions. Keep existing Meta, Google, or analytics pixels in place. After wiring, create a 30-minute verification link in Sarge and open ${publicVerifyAbsoluteUrlTemplate} to verify the expected events appear in the public Sarge event stream.`;
 const endpointHealthUrl = selectedEnvironment.endpointHealthUrl;
 const pixelUrl = selectedEnvironment.pixelUrl;
 const customDomain = project.customDomain;
@@ -287,9 +305,10 @@ const criticalFindings = diagnostics.filter((finding) => finding.severity === "c
 const warningFindings = diagnostics.filter((finding) => finding.severity === "warning").length;
 const diagnosticRunLabel = selectedEnvironment.diagnosticRunAt ? new Date(selectedEnvironment.diagnosticRunAt).toLocaleString() : "Pending first scheduled run";
 const eventPulseBars = buildEventPulseBars(selectedEnvironment.recentEvents, selectedEnvironment.eventCount24h);
-const eventTypeMix = buildEventTypeMix(selectedEnvironment.recentEvents);
-const recentSessionCount = countUnique(selectedEnvironment.recentEvents.map((event) => event.sessionId));
-const recentUserCount = countUnique(selectedEnvironment.recentEvents.map((event) => event.userId));
+const eventTypeMix = selectedEnvironment.eventMix24h;
+const eventVolumeDelta = buildMetricDelta(selectedEnvironment.eventCount24h, selectedEnvironment.previousEventCount24h);
+const recentSessionDelta = buildMetricDelta(selectedEnvironment.sessionCount24h, selectedEnvironment.previousSessionCount24h);
+const recentUserDelta = buildMetricDelta(selectedEnvironment.userCount24h, selectedEnvironment.previousUserCount24h);
 const projectShareLimit = account.plan.limits.projectShares;
 const projectShareCount = project.shares.length;
 const severityVariant = (severity: string) => {
@@ -349,25 +368,40 @@ function buildEventPulseBars(events: typeof selectedEnvironment.recentEvents, ev
   }));
 }
 
-function buildEventTypeMix(events: typeof selectedEnvironment.recentEvents) {
-  const eventCounts = new Map<string, number>();
-  for (const event of events) {
-    eventCounts.set(event.name, (eventCounts.get(event.name) ?? 0) + 1);
+function buildMetricDelta(currentValue: number, previousValue: number) {
+  if (previousValue === 0) {
+    return {
+      label: currentValue > 0 ? "new" : "0%",
+      tone: currentValue > 0 ? "up" : "neutral",
+      significant: currentValue > 0,
+      currentValue,
+      previousValue,
+    };
   }
 
-  const total = Math.max(1, events.length);
-  return Array.from(eventCounts.entries())
-    .map(([name, value]) => ({
-      name,
-      value,
-      share: Math.round((value / total) * 100),
-    }))
-    .sort((left, right) => right.value - left.value)
-    .slice(0, 4);
+  const percent = Math.round(((currentValue - previousValue) / previousValue) * 100);
+  const significant = Math.abs(percent) >= 15;
+  return {
+    label: `${percent > 0 ? "+" : ""}${percent}%`,
+    tone: !significant ? "neutral" : percent > 0 ? "up" : percent < 0 ? "down" : "neutral",
+    significant,
+    currentValue,
+    previousValue,
+  };
 }
 
-function countUnique(values: string[]) {
-  return new Set(values.filter(Boolean)).size;
+function renderMetricDelta(delta: ReturnType<typeof buildMetricDelta>) {
+  return delta.label;
+}
+
+function metricDeltaClass(delta: ReturnType<typeof buildMetricDelta>) {
+  if (delta.tone === "up") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
+  if (delta.tone === "down") return "border-rose-500/30 bg-rose-500/10 text-rose-300";
+  return "border-border bg-background text-muted-foreground";
+}
+
+function formatMetricDeltaTitle(delta: ReturnType<typeof buildMetricDelta>) {
+  return `${formatCount(delta.currentValue)} in the last 24h vs ${formatCount(delta.previousValue)} in the previous 24h`;
 }
 
 function buildProjectTesterUserId(projectId: string, viewerUserId: string) {
@@ -502,7 +536,18 @@ function resolveTrackedSiteDomain(value: string) {
           </div>
           <div class="text-right">
             <p class="text-2xl font-semibold">{formatCount(selectedEnvironment.eventCount24h)}</p>
-            <p class="text-xs text-muted-foreground">{selectedEnvironment.lastEventAt}</p>
+            <div class="mt-1 flex justify-end">
+              <span
+                class:list={[
+                  "inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-medium",
+                  metricDeltaClass(eventVolumeDelta),
+                ]}
+                title={formatMetricDeltaTitle(eventVolumeDelta)}
+              >
+                {renderMetricDelta(eventVolumeDelta)}
+              </span>
+            </div>
+            <p class="mt-1 text-xs text-muted-foreground">{selectedEnvironment.lastEventAt}</p>
           </div>
         </div>
       </CardHeader>
@@ -526,12 +571,34 @@ function resolveTrackedSiteDomain(value: string) {
           </div>
           <div class="grid gap-3 text-sm">
             <div class="rounded-md border p-3">
-              <p class="text-xs text-muted-foreground">Recent sessions</p>
-              <p class="mt-1 text-2xl font-semibold">{formatCount(recentSessionCount)}</p>
+              <div class="flex items-start justify-between gap-2">
+                <p class="text-xs text-muted-foreground">Sessions, last 24h</p>
+                <span
+                  class:list={[
+                    "inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-medium",
+                    metricDeltaClass(recentSessionDelta),
+                  ]}
+                  title={formatMetricDeltaTitle(recentSessionDelta)}
+                >
+                  {renderMetricDelta(recentSessionDelta)}
+                </span>
+              </div>
+              <p class="mt-1 text-2xl font-semibold">{formatCount(selectedEnvironment.sessionCount24h)}</p>
             </div>
             <div class="rounded-md border p-3">
-              <p class="text-xs text-muted-foreground">Recent users</p>
-              <p class="mt-1 text-2xl font-semibold">{formatCount(recentUserCount)}</p>
+              <div class="flex items-start justify-between gap-2">
+                <p class="text-xs text-muted-foreground">Users, last 24h</p>
+                <span
+                  class:list={[
+                    "inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-medium",
+                    metricDeltaClass(recentUserDelta),
+                  ]}
+                  title={formatMetricDeltaTitle(recentUserDelta)}
+                >
+                  {renderMetricDelta(recentUserDelta)}
+                </span>
+              </div>
+              <p class="mt-1 text-2xl font-semibold">{formatCount(selectedEnvironment.userCount24h)}</p>
             </div>
           </div>
         </div>
@@ -541,27 +608,43 @@ function resolveTrackedSiteDomain(value: string) {
     <Card className="min-w-0">
       <CardHeader>
         <CardTitle>Event mix</CardTitle>
+        <p class="text-xs text-muted-foreground">Last 24h vs previous 24h</p>
       </CardHeader>
       <CardContent className="grid gap-3">
         {
           eventTypeMix.length > 0 ? (
-            eventTypeMix.map((eventType, index) => (
-              <div class="grid gap-2">
-                <div class="flex min-w-0 items-center justify-between gap-3">
-                  <p class="truncate font-mono text-xs">{eventType.name}</p>
-                  <Badge variant="outline">{eventType.value}</Badge>
+            eventTypeMix.map((eventType, index) => {
+              const eventTypeDelta = buildMetricDelta(eventType.value, eventType.previousValue);
+
+              return (
+                <div class="grid gap-2">
+                  <div class="flex min-w-0 items-center justify-between gap-3">
+                    <p class="truncate font-mono text-xs">{eventType.name}</p>
+                    <div class="flex shrink-0 items-center gap-1.5">
+                      <Badge variant="outline">{eventType.value}</Badge>
+                      <span
+                        class:list={[
+                          "inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-medium",
+                          metricDeltaClass(eventTypeDelta),
+                        ]}
+                        title={formatMetricDeltaTitle(eventTypeDelta)}
+                      >
+                        {renderMetricDelta(eventTypeDelta)}
+                      </span>
+                    </div>
+                  </div>
+                  <div class="h-2 rounded-full bg-secondary">
+                    <div
+                      class:list={[
+                        "h-full rounded-full",
+                        index === 0 ? "bg-primary" : index === 1 ? "bg-chart-2" : index === 2 ? "bg-chart-4" : "bg-chart-5",
+                      ]}
+                      style={`width: ${eventType.share}%`}
+                    />
+                  </div>
                 </div>
-                <div class="h-2 rounded-full bg-secondary">
-                  <div
-                    class:list={[
-                      "h-full rounded-full",
-                      index === 0 ? "bg-primary" : index === 1 ? "bg-chart-2" : index === 2 ? "bg-chart-4" : "bg-chart-5",
-                    ]}
-                    style={`width: ${eventType.share}%`}
-                  />
-                </div>
-              </div>
-            ))
+              );
+            })
           ) : (
             <div class="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
               Event mix appears after tracked actions arrive.
@@ -608,15 +691,42 @@ function resolveTrackedSiteDomain(value: string) {
             >
               <ExternalLink className="size-4" /> Open pixel
             </a>
-            <a
-              class="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-sm font-medium whitespace-nowrap transition-all hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-              href={publicVerifyUrl}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <ExternalLink className="size-4" /> Public verify
-            </a>
+            <form method="post">
+              <input type="hidden" name="intent" value="create-public-verification-link" />
+              <Button type="submit" variant="outline">
+                <ExternalLink className="mr-2 size-4" /> Create 30-minute verify link
+              </Button>
+            </form>
           </div>
+          {
+            createdPublicVerificationUrl && (
+              <Alert className="mt-4">
+                <AlertTitle>Verification link created</AlertTitle>
+                <AlertDescription>
+                  <p>This link expires in 30 minutes{createdPublicVerificationExpiresAt ? `, at ${createdPublicVerificationExpiresAt.toLocaleTimeString()}` : ""}.</p>
+                  <div class="mt-2 flex min-w-0 items-center gap-2 rounded-md border bg-muted p-2">
+                    <code class="min-w-0 flex-1 truncate font-mono text-xs">{createdPublicVerificationUrl}</code>
+                    <a
+                      class="inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md border bg-background px-2 text-xs font-medium hover:bg-muted"
+                      href={createdPublicVerificationUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Open
+                    </a>
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )
+          }
+          {
+            publicVerificationError && (
+              <Alert className="mt-4" variant="destructive">
+                <AlertTitle>Verification link was not created</AlertTitle>
+                <AlertDescription>{publicVerificationError}</AlertDescription>
+              </Alert>
+            )
+          }
           <div class="mt-4 rounded-md border bg-card p-4 text-sm">
             <p class="font-medium">Install checklist</p>
             <ol class="mt-2 list-decimal space-y-1 pl-4 text-muted-foreground">

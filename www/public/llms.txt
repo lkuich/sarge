@@ -34,6 +34,6 @@ For test flows, use `impersonate("customer_123")` in the page console to make ev
 
 ## Public Verification Page
 
-Each project exposes a temporary public verification stream at `/verify/{siteId}`. The `siteId` is the `site` query parameter in the project pixel URL. Open that page after triggering events in the target app and confirm the expected event names and payloads appear. The page auto-refreshes while events are coming in.
+Each project can create a temporary public verification stream at `/verify/{siteEnvironmentId}?key={temporaryVerificationKey}`. The `siteEnvironmentId` is the `env` query parameter in the project pixel URL, and the temporary verification key is generated from the Sarge project page. Open that page after triggering events in the target app and confirm the expected event names and payloads appear. The page auto-refreshes while events are coming in.
 
 No public Sarge MCP server or npm skill package is currently published. Do not ask users to run `npx sarge@latest` or install `@sarge/mcp`.

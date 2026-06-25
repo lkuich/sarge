@@ -60,11 +60,26 @@ model SiteEnvironment {
   diagnosticRuns        DiagnosticRun[]
   diagnosticFindings    DiagnosticFinding[]
   webhookEndpoints      WebhookEndpoint[]
+  publicVerificationTokens PublicVerificationToken[]
 
   site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
 
   @@unique([siteId, environment])
   @@index([environment, pixelEnabled])
+}
+
+model PublicVerificationToken {
+  id                String   @id @default(cuid())
+  siteEnvironmentId String
+  tokenHash         String
+  expiresAt         DateTime
+  createdByUserId   String
+  createdAt         DateTime @default(now())
+
+  siteEnvironment   SiteEnvironment @relation(fields: [siteEnvironmentId], references: [id], onDelete: Cascade)
+
+  @@index([siteEnvironmentId, expiresAt])
+  @@index([expiresAt])
 }
 
 model Affiliate {

@@ -36,7 +36,7 @@ const renderShop = (url: URL) => `<!doctype html>
       ]
     };
   </script>
-  <script async src="https://track.sargetrack.app/pixel.js?site=site_demo"></script>
+  <script async src="https://track.sargetrack.app/pixel.js?env=env_demo_production"></script>
   <style>
     :root {
       color-scheme: light;

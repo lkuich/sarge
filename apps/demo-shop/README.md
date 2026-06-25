@@ -11,7 +11,7 @@ https://shop.sargetrack.app
 The page installs the hosted pixel from:
 
 ```html
-<script async src="https://track.sargetrack.app/pixel.js?site=site_demo"></script>
+<script async src="https://track.sargetrack.app/pixel.js?env=env_demo_production"></script>
 ```
 
 It emits:

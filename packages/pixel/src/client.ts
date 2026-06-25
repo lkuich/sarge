@@ -1,6 +1,6 @@
 import type { BrowserLike, EventPayload, EventProperties, InitOptions, SargeClient } from "./types.js";
 
-const DEFAULT_ENDPOINT = "https://white-dawn-6379.fly.dev";
+const DEFAULT_ENDPOINT = "https://track.sargetrack.app";
 const DEFAULT_ATTRIBUTION_TTL_DAYS = 28;
 const sessionStorageKey = "sarge_sess";
 const refStorageKey = "sarge_ref";

@@ -48,7 +48,7 @@ Options:
 | Option | Required | Default |
 | --- | --- | --- |
 | `siteId` | yes | none |
-| `endpoint` | no | `https://white-dawn-6379.fly.dev` |
+| `endpoint` | no | `https://track.sargetrack.app` |
 | `attributionTtlDays` | no | `28` |
 
 The option is still named `siteId` for payload compatibility, but hosted installs should pass the selected `SiteEnvironment.id`. Production, Staging, and Development each have separate IDs and separate event streams.

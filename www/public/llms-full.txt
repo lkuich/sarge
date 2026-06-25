@@ -16,7 +16,7 @@ Sarge is installed as a small hosted browser script. Each Sarge project has a pr
 <script>
   window._sarge = { queue: [["track", "page.view"]] };
 </script>
-<script async src="https://track.sargetrack.app/pixel.js?site={siteId}"></script>
+<script async src="https://track.sargetrack.app/pixel.js?env={siteEnvironmentId}"></script>
 ```
 
 Place the snippet in the document `<head>` or as early as possible in the page body. The queued `page.view` call is replayed after `pixel.js` loads.
@@ -84,7 +84,7 @@ This is debug labeling only. It does not authenticate as the target user or gran
 4. Open the project that owns the pixel.
 5. Confirm events appear in the project event stream.
 
-For agentic verification, open `https://sargetrack.app/verify/{siteId}`. The `siteId` is the `site` query parameter in the pixel URL. The page shows recent events and auto-refreshes while the agent exercises the target app.
+For agentic verification, create a temporary verification key in the Sarge project page and open `https://sargetrack.app/verify/{siteEnvironmentId}?key={temporaryVerificationKey}`. The `siteEnvironmentId` is the `env` query parameter in the pixel URL. The page shows recent events and auto-refreshes while the agent exercises the target app.
 
 No public Sarge MCP server or npm skill package is currently published. Do not run `npx sarge@latest` or install `@sarge/mcp`.
 

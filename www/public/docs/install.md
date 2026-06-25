@@ -185,10 +185,10 @@ Keep server event secrets out of browser code. Postback tokens are easier to pas
 For agentic verification, use the temporary public stream:
 
 ```text
-https://sargetrack.app/verify/{siteEnvironmentId}
+https://sargetrack.app/verify/{siteEnvironmentId}?key={temporaryVerificationKey}
 ```
 
-The `siteEnvironmentId` is the `env` query parameter in the environment pixel URL. The verification page shows the latest events and auto-refreshes every few seconds while an agent exercises the target app.
+The `siteEnvironmentId` is the `env` query parameter in the environment pixel URL. Generate the temporary verification key from the Sarge project page. The verification page shows the latest events and auto-refreshes every few seconds while an agent exercises the target app.
 
 You can also open these project URLs from the portal:
 
@@ -201,7 +201,7 @@ When using a coding agent, give it:
 
 - The exact pixel snippet from the project detail screen.
 - The event names and required properties from `/docs/events.md`.
-- The public verification URL `/verify/{siteEnvironmentId}`.
+- A temporary public verification URL `/verify/{siteEnvironmentId}?key={temporaryVerificationKey}`.
 - Instructions to preserve existing Meta, Google, analytics, and tag-manager pixels.
 - A verification step that confirms events arrive in the Sarge project event stream.
 

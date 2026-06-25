@@ -1,17 +1,61 @@
 ---
 import { env } from "cloudflare:workers";
-import { CheckCircle2 } from "lucide-react";
+import { AlertCircle, CheckCircle2 } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import AppLayout from "@/layouts/AppLayout.astro";
 import { getViewerAccount } from "@/lib/sarge-demo";
 import { planDefinitions, type PlanId } from "@/lib/pricing";
+import { createBillingPortalSession, createCheckoutSession } from "@/lib/stripe-billing";
 
 const { userId } = Astro.locals.auth();
 if (!userId) return Astro.redirect("/sign-in");
 const currentUser = await Astro.locals.currentUser();
 const viewerEmails = currentUser?.emailAddresses.map((email) => email.emailAddress).filter(Boolean) ?? [];
+const customerEmail = currentUser?.primaryEmailAddress?.emailAddress ?? viewerEmails[0] ?? null;
+
+let billingError: string | null = null;
+const checkoutStatus = new URL(Astro.request.url).searchParams.get("checkout");
+
+const normalizePlanId = (value: FormDataEntryValue | null) => {
+  if (typeof value !== "string") return null;
+  return planDefinitions.some((plan) => plan.id === value) ? (value as PlanId) : null;
+};
+
+if (Astro.request.method === "POST") {
+  const formData = await Astro.request.formData();
+  const intent = formData.get("intent");
+
+  if (intent === "checkout-plan") {
+    const planId = normalizePlanId(formData.get("planId"));
+    if (!planId) {
+      billingError = "Choose a valid plan.";
+    } else {
+      const result = await createCheckoutSession({
+        env,
+        databaseUrl: env.DATABASE_URL,
+        userId,
+        customerEmail,
+        appUrl: Astro.request.url,
+        planId,
+      });
+      if (result.success) return Astro.redirect(result.url, 303);
+      billingError = result.error;
+    }
+  } else if (intent === "billing-portal") {
+    const result = await createBillingPortalSession({
+      env,
+      databaseUrl: env.DATABASE_URL,
+      userId,
+      appUrl: Astro.request.url,
+    });
+    if (result.success) return Astro.redirect(result.url, 303);
+    billingError = result.error;
+  }
+}
+
 const account = await getViewerAccount(userId, env.DATABASE_URL, { viewerEmails });
 
 const planHighlights: Record<PlanId, string[]> = {
@@ -47,7 +91,55 @@ const planPrices: Record<PlanId, string> = {
   active="billing"
   breadcrumbs={[{ label: "Overview", href: "/app" }, { label: "Billing" }]}
 >
-  <section class="grid gap-4 lg:grid-cols-5">
+  <section class="grid gap-4">
+    {
+      billingError && (
+        <Alert variant="destructive">
+          <AlertCircle className="size-4" />
+          <AlertTitle>Billing action failed</AlertTitle>
+          <AlertDescription>{billingError}</AlertDescription>
+        </Alert>
+      )
+    }
+    {
+      checkoutStatus === "success" && (
+        <Alert>
+          <CheckCircle2 className="size-4" />
+          <AlertTitle>Checkout complete</AlertTitle>
+          <AlertDescription>Your plan will update after Stripe confirms the subscription.</AlertDescription>
+        </Alert>
+      )
+    }
+    {
+      checkoutStatus === "canceled" && (
+        <Alert>
+          <AlertCircle className="size-4" />
+          <AlertTitle>Checkout canceled</AlertTitle>
+          <AlertDescription>No plan changes were made.</AlertDescription>
+        </Alert>
+      )
+    }
+    <Card>
+      <CardHeader>
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle>Current plan</CardTitle>
+            <p class="text-sm text-muted-foreground">
+              {account.plan.name} / {account.billingStatus.replace("_", " ")}
+            </p>
+          </div>
+          <form method="post">
+            <input type="hidden" name="intent" value="billing-portal" />
+            <Button type="submit" variant="outline" disabled={account.planId === "free" || account.planId === "enterprise"}>
+              Manage billing
+            </Button>
+          </form>
+        </div>
+      </CardHeader>
+    </Card>
+  </section>
+
+  <section class="mt-4 grid gap-4 lg:grid-cols-3 xl:grid-cols-5">
     {
       planDefinitions.map((plan) => (
         <Card className={plan.id === account.planId ? "border-primary" : ""}>
@@ -68,9 +160,30 @@ const planPrices: Record<PlanId, string> = {
                 </p>
               ))}
             </div>
-            <Button variant={plan.id === account.planId ? "outline" : "default"} disabled>
-              {plan.monthlyPriceUsd === null ? "Contact us" : plan.id === account.planId ? "Current plan" : "Choose plan"}
-            </Button>
+            {
+              plan.monthlyPriceUsd === null ? (
+                <a
+                  class="inline-flex h-8 items-center justify-center rounded-lg bg-primary px-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80"
+                  href="mailto:hello@sargetrack.app?subject=Sarge%20Enterprise"
+                >
+                  Contact us
+                </a>
+              ) : plan.id === account.planId ? (
+                <Button variant="outline" disabled>
+                  Current plan
+                </Button>
+              ) : plan.id === "free" ? (
+                <Button variant="outline" disabled>
+                  Included
+                </Button>
+              ) : (
+                <form method="post">
+                  <input type="hidden" name="intent" value="checkout-plan" />
+                  <input type="hidden" name="planId" value={plan.id} />
+                  <Button type="submit">Choose plan</Button>
+                </form>
+              )
+            }
           </CardContent>
         </Card>
       ))

@@ -132,6 +132,11 @@ describe("app navigation routes", () => {
 
     expect(layout).toContain('href="/app/billing"');
     expect(billing).toContain('active="billing"');
+    expect(billing).toContain("createCheckoutSession");
+    expect(billing).toContain("createBillingPortalSession");
+    expect(billing).toContain('name="intent" value="checkout-plan"');
+    expect(billing).toContain('name="intent" value="billing-portal"');
+    expect(billing).toContain('name="planId"');
     expect(billing).toContain("Free");
     expect(billing).toContain("$49");
     expect(billing).toContain("$149");
@@ -140,6 +145,15 @@ describe("app navigation routes", () => {
     expect(billing).toContain("50k events/month");
     expect(billing).toContain("2M events/month");
     expect(billing).toContain("10M events/month");
+  });
+
+  it("receives Stripe webhooks through a signature-verified endpoint", () => {
+    const webhook = readSource("../api/stripe/webhook.ts");
+
+    expect(webhook).toContain("constructEventAsync");
+    expect(webhook).toContain("createSubtleCryptoProvider");
+    expect(webhook).toContain("handleStripeWebhookEvent");
+    expect(webhook).toContain("stripe-signature");
   });
 
   it("documents the public pricing and feature gating strategy", () => {

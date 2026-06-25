@@ -16,6 +16,9 @@ model Workspace {
   billingStatus           String   @default("active")
   currentPeriodStart      DateTime @default(now())
   currentPeriodEventCount Int      @default(0)
+  stripeCustomerId        String?  @unique
+  stripeSubscriptionId    String?  @unique
+  stripePriceId           String?
   createdAt               DateTime @default(now())
   sites                   Site[]
 }

@@ -71,10 +71,11 @@ describe("app navigation routes", () => {
     expect(overview).toContain('href={`/app/projects/${project.siteId}`}');
     expect(newProject).toContain("Astro.redirect(`/app/projects/${result.project.siteId}`, 303)");
     expect(projectDetail).toContain('href: environment === "production" ? `/app/projects/${project.siteId}` : `/app/projects/${project.siteId}?environment=${environment}`,');
-    expect(projectDetail).toContain('if (Astro.params.projectId !== project.siteId) return Astro.redirect(`/app/projects/${project.siteId}${Astro.url.search}`, 301);');
+    expect(projectDetail).not.toContain('if (Astro.params.projectId !== project.siteId) return Astro.redirect(`/app/projects/${project.siteId}${Astro.url.search}`, 301);');
     expect(projectDetail).not.toContain('href: environment === "production" ? `/app/projects/${project.slug}`');
     expect(demoData).toContain("siteId: string;");
-    expect(demoData).toContain("project.siteId === projectId || project.slug === projectId");
+    expect(demoData).toContain("project.siteId === projectId");
+    expect(demoData).not.toContain("project.slug === projectId");
   });
 
   it("lets an owner delete an empty workspace from overview", () => {

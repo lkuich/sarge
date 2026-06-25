@@ -40,7 +40,6 @@ const viewerEmails = currentUser?.emailAddresses.map((email) => email.emailAddre
 const account = await getViewerAccount(userId, env.DATABASE_URL, { viewerEmails });
 const project = getProject(account, Astro.params.projectId ?? "");
 if (!project) return Astro.redirect("/app");
-if (Astro.params.projectId !== project.siteId) return Astro.redirect(`/app/projects/${project.siteId}${Astro.url.search}`, 301);
 
 const requestedEnvironment = Astro.url.searchParams.get("environment");
 const selectedEnvironment =
@@ -91,7 +90,7 @@ if (Astro.request.method === "POST") {
       const result = await shareProject(
         userId,
         env.DATABASE_URL,
-        project.slug,
+        project.siteId,
         {
           email: String(formData.get("email") ?? ""),
           role: String(formData.get("role") ?? "view") as ProjectShareRole,

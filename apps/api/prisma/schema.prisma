@@ -28,7 +28,6 @@ model Workspace {
 model Site {
   id                    String              @id @default(cuid())
   workspaceId           String
-  slug                  String
   name                  String
   customDomain          String              @unique
   endpointHost          String              @unique
@@ -45,8 +44,6 @@ model Site {
   projectShares         ProjectShare[]
 
   workspace Workspace @relation(fields: [workspaceId], references: [id])
-
-  @@unique([workspaceId, slug])
 }
 
 model SiteEnvironment {

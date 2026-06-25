@@ -39,6 +39,17 @@ describe("project detail install panel", () => {
     expect(demoData).toContain("customDomain: string;");
     expect(demoData).toContain("buildSargeTrackingDomain(siteDomain)");
     expect(schema).toContain("customDomain          String              @unique");
+    expect(schema).not.toContain("slug                  String");
+  });
+
+  it("uses site ids for project sharing instead of project slugs", () => {
+    const projectDetail = readSource("./projects/[projectId].astro");
+    const demoData = readSource("../../lib/sarge-demo.ts");
+
+    expect(projectDetail).toContain("project.siteId,");
+    expect(projectDetail).not.toContain("project.slug,");
+    expect(demoData).toContain("getOwnedSiteById");
+    expect(demoData).not.toContain("getOwnedSiteBySlug");
   });
 
   it("keeps slug-derived scoped hosts out of the install details card", () => {

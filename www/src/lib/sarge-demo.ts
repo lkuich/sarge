@@ -79,7 +79,6 @@ export interface SargeProjectEnvironment {
 }
 
 export interface SargeProject extends SargeProjectEnvironment {
-  slug: string;
   name: string;
   customDomain: string;
   workspaceName?: string;
@@ -107,7 +106,7 @@ export interface SargeAccount {
 
 export interface PublicEventStream {
   project: Pick<SargeProjectEnvironment, 'id' | 'endpointHost' | 'pixelUrl' | 'endpointHealthUrl' | 'status'> &
-    Pick<SargeProject, 'slug' | 'name'>;
+    Pick<SargeProject, 'name'>;
   events: SargeEvent[];
 }
 
@@ -118,7 +117,6 @@ export interface CreateWorkspaceInput {
 export interface CreateProjectInput {
   name: string;
   domain: string;
-  slug?: string;
 }
 
 interface GetViewerAccountOptions {
@@ -261,18 +259,17 @@ const getViewerProjectShares = async (
   `) as ProjectShareRow[];
 };
 
-const getOwnedSiteBySlug = async (sql: SqlClient, userId: string, projectSlug: string) => {
+const getOwnedSiteById = async (sql: SqlClient, userId: string, siteId: string) => {
   const rows = (await sql`
     SELECT
       s.id,
-      s.slug,
       s.name
     FROM "Site" s
     JOIN "Workspace" w ON w.id = s."workspaceId"
     WHERE w."ownerUserId" = ${userId}
-      AND s.slug = ${projectSlug}
+      AND s.id = ${siteId}
     LIMIT 1
-  `) as Pick<SiteSummaryRow, 'id' | 'slug' | 'name'>[];
+  `) as Pick<SiteSummaryRow, 'id' | 'name'>[];
 
   return rows.at(0) ?? null;
 };
@@ -317,7 +314,6 @@ export const getViewerAccount = async (
     const sharedSites = sharedSiteIds.length > 0 ? ((await sql`
       SELECT
         s.id,
-        s.slug,
         s.name,
         s."customDomain",
         w.name AS "workspaceName"
@@ -332,7 +328,6 @@ export const getViewerAccount = async (
     const sites = workspace ? ((await sql`
       SELECT
         s.id,
-        s.slug,
         s.name,
         s."customDomain"
       FROM "Site" s
@@ -491,7 +486,6 @@ export const getViewerAccount = async (
 
       return {
         ...productionEnvironment,
-        slug: site.slug,
         name: site.name,
         siteId: site.id,
         customDomain: site.customDomain,
@@ -522,7 +516,6 @@ export const getViewerAccount = async (
 
       return {
         ...productionEnvironment,
-        slug: site.slug,
         name: site.name,
         siteId: site.id,
         customDomain: site.customDomain,
@@ -565,7 +558,7 @@ export const getPublicEventStream = async (
   try {
     const sql = neon(databaseUrl);
     const sites = (await sql`
-      SELECT se.id, s.slug, s.name, se."endpointHost", se."pixelEnabled"
+      SELECT se.id, s.name, se."endpointHost", se."pixelEnabled"
       FROM "SiteEnvironment" se
       JOIN "Site" s ON s.id = se."siteId"
       WHERE se.id = ${siteId}
@@ -597,7 +590,6 @@ export const getPublicEventStream = async (
     return {
       project: {
         id: site.id,
-        slug: site.slug,
         name: site.name,
         endpointHost: site.endpointHost,
         pixelUrl: buildPixelUrl(site.id),
@@ -701,9 +693,7 @@ export const createProject = async (
   const name = input.name.trim();
   const siteDomain = normalizeSiteDomain(input.domain);
   const customDomain = siteDomain ? buildSargeTrackingDomain(siteDomain) : null;
-  const slug = normalizeSlug(input.slug || input.name || siteDomain || '');
   if (!name) return { success: false, error: 'Project name is required.' };
-  if (!slug) return { success: false, error: 'Project slug is required.' };
   if (!customDomain) return { success: false, error: 'Site domain is required.' };
 
   try {
@@ -714,12 +704,12 @@ export const createProject = async (
     }
 
     const id = `site_${crypto.randomUUID()}`;
-    const endpointHost = buildScopedEndpointHost(slug, workspace.id);
+    const endpointHost = buildScopedEndpointHost(id, workspace.id);
     const productionEnvironmentId = `env_${crypto.randomUUID()}`;
     const stagingEnvironmentId = `env_${crypto.randomUUID()}`;
     const developmentEnvironmentId = `env_${crypto.randomUUID()}`;
-    const stagingEndpointHost = buildScopedEnvironmentHost(slug, 'staging', workspace.id);
-    const developmentEndpointHost = buildScopedEnvironmentHost(slug, 'development', workspace.id);
+    const stagingEndpointHost = buildScopedEnvironmentHost(id, 'staging', workspace.id);
+    const developmentEndpointHost = buildScopedEnvironmentHost(id, 'development', workspace.id);
     const [, rows] = (await sql.transaction((tx) => [
       tx`
         SELECT id
@@ -746,10 +736,10 @@ export const createProject = async (
           ) < ${tx.unsafe(projectLimitSqlCase)}
       ),
       inserted_site AS (
-      INSERT INTO "Site" (id, "workspaceId", slug, name, "customDomain", "endpointHost", "attributionTtlDays", "pixelEnabled")
-      SELECT ${id}, lw.id, ${slug}, ${name}, ${customDomain}, ${endpointHost}, 28, true
+      INSERT INTO "Site" (id, "workspaceId", name, "customDomain", "endpointHost", "attributionTtlDays", "pixelEnabled")
+      SELECT ${id}, lw.id, ${name}, ${customDomain}, ${endpointHost}, 28, true
       FROM limited_workspace lw
-      RETURNING id, slug, name, "customDomain", "endpointHost", "pixelEnabled"
+      RETURNING id, name, "customDomain", "endpointHost", "pixelEnabled"
       ),
       inserted_environments AS (
         INSERT INTO "SiteEnvironment" (
@@ -772,7 +762,6 @@ export const createProject = async (
       )
       SELECT
         inserted_site.id AS "siteId",
-        inserted_site.slug,
         inserted_site.name,
         inserted_site."customDomain",
         inserted_site."endpointHost" AS "siteEndpointHost",
@@ -820,7 +809,6 @@ export const createProject = async (
       success: true,
       project: {
         ...productionEnvironment,
-        slug: siteRow.slug,
         name: siteRow.name,
         siteId: siteRow.siteId,
         customDomain: siteRow.customDomain,
@@ -833,13 +821,13 @@ export const createProject = async (
     console.error('Unable to create Sarge project', error);
     return {
       success: false,
-      error: 'Project could not be created. The slug or generated Sarge domain may already be in use for this account.',
+      error: 'Project could not be created. The generated Sarge domain may already be in use for this account.',
     };
   }
 };
 
 export const getProject = (account: SargeAccount, projectId: string) =>
-  account.projects.find((project) => project.siteId === projectId || project.slug === projectId);
+  account.projects.find((project) => project.siteId === projectId);
 
 export const canAdministerAccount = (account: SargeAccount) => account.role === 'admin';
 
@@ -868,7 +856,7 @@ export const isEventUsageOverLimit = (account: SargeAccount) => {
 export const shareProject = async (
   userId: string,
   databaseUrl: string | undefined,
-  projectSlug: string,
+  siteId: string,
   input: ShareProjectInput,
   emailOptions: ProjectInviteEmailOptions,
 ): Promise<ShareProjectResult> => {
@@ -881,7 +869,7 @@ export const shareProject = async (
 
   try {
     const sql = neon(databaseUrl);
-    const site = await getOwnedSiteBySlug(sql, userId, projectSlug);
+    const site = await getOwnedSiteById(sql, userId, siteId);
     if (!site) return { success: false, error: 'Project was not found in your workspace.' };
 
     const rows = (await sql`
@@ -1260,8 +1248,8 @@ const getFallbackAccount = (role: AccountRole): SargeAccount => {
   const ownedProjects = [
     buildFallbackProject({
       id: 'site_demo',
-      slug: 'demo-site',
       name: 'Demo Site',
+      customDomain: 'sarge.demo-site.example.com',
       status: 'active',
       eventCount24h: 184,
       failedEvents24h: 2,
@@ -1269,8 +1257,8 @@ const getFallbackAccount = (role: AccountRole): SargeAccount => {
     }),
     buildFallbackProject({
       id: 'site_checkout',
-      slug: 'checkout-lab',
       name: 'Checkout Lab',
+      customDomain: 'sarge.checkout-lab.example.com',
       status: 'draft',
       eventCount24h: 0,
       failedEvents24h: 0,
@@ -1386,8 +1374,8 @@ const mapProjectEnvironment = (
 
 const buildFallbackProject = (input: {
   id: string;
-  slug: string;
   name: string;
+  customDomain: string;
   status: ProjectStatus;
   eventCount24h: number;
   failedEvents24h: number;
@@ -1402,8 +1390,8 @@ const buildFallbackProject = (input: {
       environment,
       endpointHost:
         environment === 'production'
-          ? `${input.slug}.sargetrack.app`
-          : `${input.slug}-${environment}.sargetrack.app`,
+          ? `${normalizeSlug(input.id)}.sargetrack.app`
+          : `${normalizeSlug(input.id)}-${environment}.sargetrack.app`,
       pixelUrl: buildPixelUrl(id),
       endpointHealthUrl: buildHealthUrl(),
       status: input.status,
@@ -1426,10 +1414,9 @@ const buildFallbackProject = (input: {
 
   return {
     ...productionEnvironment,
-    slug: input.slug,
     name: input.name,
     siteId: input.id,
-    customDomain: `events.${input.slug}.example.com`,
+    customDomain: input.customDomain,
     ownership: "owned",
     shares: [],
     eventCount24h: input.eventCount24h,
@@ -1461,14 +1448,14 @@ const buildHealthUrl = () => `https://${hostedEndpointHost}/healthz`;
 
 const buildViewerWorkspaceSlug = (userId: string) => `demo-${normalizeSlug(userId).slice(0, 56) || 'account'}`;
 
-const buildScopedEndpointHost = (projectSlug: string, workspaceId: string) => {
+const buildScopedEndpointHost = (scopeId: string, workspaceId: string) => {
   const workspaceToken = normalizeSlug(workspaceId).slice(-8) || 'account';
-  return `${projectSlug}-${workspaceToken}.sargetrack.app`;
+  return `${normalizeSlug(scopeId)}-${workspaceToken}.sargetrack.app`;
 };
 
-const buildScopedEnvironmentHost = (projectSlug: string, environment: ProjectEnvironment, workspaceId: string) => {
+const buildScopedEnvironmentHost = (scopeId: string, environment: ProjectEnvironment, workspaceId: string) => {
   const workspaceToken = normalizeSlug(workspaceId).slice(-8) || 'account';
-  return `${projectSlug}-${environment}-${workspaceToken}.sargetrack.app`;
+  return `${normalizeSlug(scopeId)}-${environment}-${workspaceToken}.sargetrack.app`;
 };
 
 const normalizeSlug = (value: string) =>
@@ -1569,7 +1556,6 @@ interface WorkspaceRow {
 
 interface SiteSummaryRow {
   id: string;
-  slug: string;
   name: string;
   customDomain: string;
   endpointHost: string;
@@ -1595,7 +1581,6 @@ interface SiteEnvironmentSummaryRow {
 
 interface NewProjectEnvironmentRow {
   siteId: string;
-  slug: string;
   name: string;
   customDomain: string;
   siteEndpointHost: string;
@@ -1614,7 +1599,6 @@ interface NewProjectEnvironmentRow {
 
 interface PublicSiteEnvironmentRow {
   id: string;
-  slug: string;
   name: string;
   endpointHost: string;
   pixelEnabled: boolean;

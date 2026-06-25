@@ -45,7 +45,7 @@ const loop = [
   },
   {
     title: "Run scheduled reviews",
-    description: "On a schedule, Sarge runs diagnostics across your events and uses AI to summarize only the real issues — so you skip the noise.",
+    description: "On a schedule, Sarge checks your events and re-tests tracked Production URLs for new 404s, 500s, timeouts, and suspicious redirects.",
     icon: Cloud,
   },
   {
@@ -88,7 +88,7 @@ const useCases = [
   },
   {
     title: "Alert on silent failures",
-    description: "Catch no-purchase windows, duplicate order IDs, broken purchase pixels, affiliate spikes, or missing required event fields.",
+    description: "Catch no-purchase windows, duplicate order IDs, broken purchase pixels, tracked pages that start failing, affiliate spikes, or missing required event fields.",
     icon: Bell,
   },
   {
@@ -118,18 +118,18 @@ const plans = [
     cta: "Sign up",
     href: "/sign-up",
     variant: "default" as const,
-    features: ["3 projects", "250k events/month", "30-day retention", "1 server secret", "1 postback token", "3 webhooks"],
+    features: ["3 projects", "250k events/month", "30-day retention", "Server-side calls", "Partner postbacks", "3 webhooks"],
   },
   {
     name: "Growth",
     price: "$149",
     priceSuffix: " /mo",
-    description: "Production diagnostics and configurable attribution for ecommerce teams.",
+    description: "Production AI review, active monitoring, and configurable attribution for ecommerce teams.",
     icon: Bot,
     cta: "Sign up",
     href: "/sign-up",
     variant: "outline" as const,
-    features: ["10 projects", "2M events/month", "90-day retention", "AI review", "exports", "alerts"],
+    features: ["10 projects", "2M events/month", "90-day retention", "AI review", "Tracked page monitoring", "Exports and alerts"],
   },
   {
     name: "Scale",
@@ -140,7 +140,17 @@ const plans = [
     cta: "Sign up",
     href: "/sign-up",
     variant: "outline" as const,
-    features: ["25 projects", "10M events/month", "180-day retention", "client workspaces", "API export"],
+    features: ["25 projects", "10M events/month", "180-day retention", "Scheduled AI audits", "Client workspaces", "API export"],
+  },
+  {
+    name: "Enterprise",
+    price: "Contact us",
+    description: "Custom volume, dedicated infrastructure, security controls, and SLA.",
+    icon: ShieldCheck,
+    cta: "Contact us",
+    href: "mailto:hello@sargetrack.app?subject=Sarge%20Enterprise",
+    variant: "outline" as const,
+    features: ["Custom events/month", "1-year+ retention", "Dedicated endpoint", "SSO/SAML", "Audit logs", "Warehouse sync"],
   },
 ];
 
@@ -276,11 +286,14 @@ const plans = [
   <section id="pricing" class="scroll-mt-20 bg-background px-4 py-14 md:px-6">
     <div class="mx-auto max-w-6xl">
       <div class="max-w-2xl">
-        <Badge variant="secondary">Deploy how you want</Badge>
+        <Badge variant="secondary">Pricing</Badge>
         <h2 class="mt-4 text-3xl font-semibold md:text-5xl">Simple pricing.</h2>
+        <p class="mt-4 text-sm leading-6 text-muted-foreground">
+          Start with the core tracking loop for free, then add server-side calls, AI review, active page monitoring, and team controls as the stakes rise.
+        </p>
       </div>
 
-      <div class="mt-8 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+      <div class="mt-8 grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {
           plans.map(({ name, price, pricePrefix, priceSuffix, description, icon: Icon, cta, href, variant, features }) => (
             <article class="flex flex-col rounded-lg border bg-card p-5">

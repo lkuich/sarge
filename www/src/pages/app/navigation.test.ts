@@ -150,6 +150,10 @@ describe("app navigation routes", () => {
     expect(homepage).toContain("$49");
     expect(homepage).toContain("$149");
     expect(homepage).toContain("$399");
+    expect(homepage).toContain("Enterprise");
+    expect(homepage).toContain("Contact us");
+    expect(homepage).toContain("Tracked page monitoring");
+    expect(homepage).toContain("tracked Production URLs for new 404s, 500s, timeouts");
     expect(pricingDoc).toContain("tracking assurance");
     expect(pricingDoc).toContain("Do not gate the core install path");
     expect(pricingDoc).toContain("Gate these because they map to business value");

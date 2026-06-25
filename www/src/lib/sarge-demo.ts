@@ -117,7 +117,7 @@ export interface CreateWorkspaceInput {
 
 export interface CreateProjectInput {
   name: string;
-  customDomain: string;
+  domain: string;
   slug?: string;
 }
 
@@ -699,11 +699,12 @@ export const createProject = async (
   if (!databaseUrl) return { success: false, error: 'DATABASE_URL is not configured.' };
 
   const name = input.name.trim();
-  const customDomain = normalizeTrackingSubdomain(input.customDomain);
-  const slug = normalizeSlug(input.slug || input.name || customDomain || '');
+  const siteDomain = normalizeSiteDomain(input.domain);
+  const customDomain = siteDomain ? buildSargeTrackingDomain(siteDomain) : null;
+  const slug = normalizeSlug(input.slug || input.name || siteDomain || '');
   if (!name) return { success: false, error: 'Project name is required.' };
   if (!slug) return { success: false, error: 'Project slug is required.' };
-  if (!customDomain) return { success: false, error: 'Tracking subdomain is required.' };
+  if (!customDomain) return { success: false, error: 'Site domain is required.' };
 
   try {
     const sql = neon(databaseUrl);
@@ -832,7 +833,7 @@ export const createProject = async (
     console.error('Unable to create Sarge project', error);
     return {
       success: false,
-      error: 'Project could not be created. The slug or tracking subdomain may already be in use for this account.',
+      error: 'Project could not be created. The slug or generated Sarge domain may already be in use for this account.',
     };
   }
 };
@@ -1478,7 +1479,7 @@ const normalizeSlug = (value: string) =>
     .replace(/^-+|-+$/g, '')
     .slice(0, 48);
 
-export const normalizeTrackingSubdomain = (value: string) => {
+export const normalizeSiteDomain = (value: string) => {
   const rawValue = value.trim().toLowerCase();
   if (!rawValue) return null;
 
@@ -1486,7 +1487,7 @@ export const normalizeTrackingSubdomain = (value: string) => {
   let hostname = '';
 
   try {
-    hostname = new URL(hostValue).hostname.replace(/\.$/, '');
+    hostname = new URL(hostValue).hostname.replace(/\.$/, '').replace(/^www\./, '');
   } catch {
     return null;
   }
@@ -1494,7 +1495,7 @@ export const normalizeTrackingSubdomain = (value: string) => {
   if (!hostname || hostname.endsWith('.sargetrack.app')) return null;
 
   const labels = hostname.split('.');
-  if (labels.length < 3) return null;
+  if (labels.length < 2) return null;
 
   const isValidLabel = (label: string) =>
     label.length > 0 &&
@@ -1506,6 +1507,8 @@ export const normalizeTrackingSubdomain = (value: string) => {
 
   return hostname;
 };
+
+export const buildSargeTrackingDomain = (siteDomain: string) => `sarge.${siteDomain}`;
 
 const parseEventNames = (value: string) =>
   Array.from(

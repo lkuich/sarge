@@ -25,19 +25,19 @@ describe("project detail install panel", () => {
     expect(projectDetail).toContain("const displayedTrackingDomain = customDomain;");
     expect(projectDetail).toContain("const customDomainPixelUrl = customDomain ? `https://${customDomain}/pixel.js?env=${encodeURIComponent(selectedEnvironment.id)}` : \"\";");
     expect(projectDetail).toContain("data-custom-domain-guidance");
-    expect(projectDetail).toContain("Bring your own tracking domain");
+    expect(projectDetail).toContain("Sarge tracking subdomain");
     expect(projectDetail).toContain("CNAME");
     expect(projectDetail).toContain("CORS-sensitive");
     expect(projectDetail).toContain("data-download-custom-domain-pixel-script");
     expect(projectDetail).toContain('download="sarge-custom-domain-pixel.min.js"');
     expect(projectDetail).not.toContain("data-download-pixel-script");
     expect(projectDetail).not.toContain('download="sarge-pixel.min.js"');
-    expect(newProject).toContain('name="customDomain"');
-    expect(newProject).toContain("Tracking subdomain");
+    expect(newProject).toContain('name="domain"');
+    expect(newProject).toContain("Site domain");
     expect(newProject).toContain("required");
     expect(newProject).not.toContain('name="slug"');
     expect(demoData).toContain("customDomain: string;");
-    expect(demoData).toContain("normalizeTrackingSubdomain(input.customDomain)");
+    expect(demoData).toContain("buildSargeTrackingDomain(siteDomain)");
     expect(schema).toContain("customDomain          String              @unique");
   });
 

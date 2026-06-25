@@ -1,17 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { normalizeTrackingSubdomain } from "./sarge-demo";
+import { buildSargeTrackingDomain, normalizeSiteDomain } from "./sarge-demo";
 
-describe("project tracking subdomains", () => {
-  it("normalizes exact tracking subdomains entered during project setup", () => {
-    expect(normalizeTrackingSubdomain(" HTTPS://Events.Example.COM/pixel.js?env=abc ")).toBe("events.example.com");
-    expect(normalizeTrackingSubdomain("events.example.com")).toBe("events.example.com");
+describe("project site domains", () => {
+  it("normalizes the tracked site domain entered during project setup", () => {
+    expect(normalizeSiteDomain(" HTTPS://WWW.Example.COM/products?utm=abc ")).toBe("example.com");
+    expect(normalizeSiteDomain("shop.example.com")).toBe("shop.example.com");
   });
 
-  it("rejects missing or invalid tracking subdomains", () => {
-    expect(normalizeTrackingSubdomain("")).toBeNull();
-    expect(normalizeTrackingSubdomain("example")).toBeNull();
-    expect(normalizeTrackingSubdomain("example.com")).toBeNull();
-    expect(normalizeTrackingSubdomain("https://events_example.com")).toBeNull();
-    expect(normalizeTrackingSubdomain("track.sargetrack.app")).toBeNull();
+  it("rejects missing or invalid site domains", () => {
+    expect(normalizeSiteDomain("")).toBeNull();
+    expect(normalizeSiteDomain("example")).toBeNull();
+    expect(normalizeSiteDomain("https://events_example.com")).toBeNull();
+    expect(normalizeSiteDomain("track.sargetrack.app")).toBeNull();
+  });
+
+  it("builds the Sarge DNS subdomain from the tracked site domain", () => {
+    expect(buildSargeTrackingDomain("example.com")).toBe("sarge.example.com");
+    expect(buildSargeTrackingDomain("shop.example.com")).toBe("sarge.shop.example.com");
   });
 });

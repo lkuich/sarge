@@ -22,14 +22,14 @@ const canCreateMoreProjects = canCreateProjectForPlan(account);
 let error = "";
 let values = {
   name: "",
-  customDomain: "",
+  domain: "",
 };
 
 if (Astro.request.method === "POST") {
   const formData = await Astro.request.formData();
   values = {
     name: String(formData.get("name") ?? ""),
-    customDomain: String(formData.get("customDomain") ?? ""),
+    domain: String(formData.get("domain") ?? ""),
   };
   if (!canCreateMoreProjects) {
     error = "Upgrade to add more projects.";
@@ -83,9 +83,9 @@ if (Astro.request.method === "POST") {
           </div>
 
           <div class="grid gap-2">
-            <Label htmlFor="customDomain">Tracking subdomain</Label>
-            <Input id="customDomain" name="customDomain" value={values.customDomain} placeholder="events.example.com" required />
-            <p class="text-xs text-muted-foreground">Enter the exact subdomain you will CNAME to Sarge for custom-domain installs.</p>
+            <Label htmlFor="domain">Site domain</Label>
+            <Input id="domain" name="domain" value={values.domain} placeholder="example.com" required />
+            <p class="text-xs text-muted-foreground">Enter the domain of the site you are tracking. Sarge will use sarge.yourdomain.com for DNS and install assets.</p>
           </div>
 
           <div class="flex flex-wrap gap-2">
@@ -112,7 +112,7 @@ if (Astro.request.method === "POST") {
             <p class="font-medium text-foreground">Included</p>
             <p>Hosted pixel, live event stream, scheduled reviews, and webhook destinations.</p>
           </div>
-          <p>Sarge will generate DNS guidance and custom-domain install assets from your tracking subdomain.</p>
+          <p>Sarge will generate DNS guidance and custom-domain install assets from your site domain.</p>
         </CardContent>
       </Card>
     </aside>

@@ -5,6 +5,7 @@ import {
   normalizePostbackEvent,
   normalizeServerEvent,
   parseCompactEventQuery,
+  sanitizeEventPayload,
   tokenMatchesHash,
   UsageLimitExceededError
 } from "@sarge/core";
@@ -29,7 +30,13 @@ export const createApp = ({ repository }: AppDependencies): Express => {
   app.post("/v2/events", async (req, res) => {
     try {
       const event = deriveAttributionFromUrl(eventPayloadSchema.parse(req.body));
-      await repository.createEvent(event);
+      const site = await repository.findSiteById(event.siteId);
+      if (!site) {
+        res.status(404).json({ success: false, error: "Unknown site" });
+        return;
+      }
+
+      await repository.createEvent(sanitizeEventPayload(event, site.privacySettings));
       res.status(202).json({ success: true });
     } catch (error) {
       handleIngestError(error, res);
@@ -51,7 +58,7 @@ export const createApp = ({ repository }: AppDependencies): Express => {
         return;
       }
 
-      await repository.createEvent(event);
+      await repository.createEvent(sanitizeEventPayload(event, site.privacySettings));
       res.status(202).json({ success: true });
     } catch (error) {
       handleIngestError(error, res);
@@ -61,7 +68,13 @@ export const createApp = ({ repository }: AppDependencies): Express => {
   app.get("/v2/e", async (req, res) => {
     try {
       const event = parseCompactEventQuery(req.query);
-      await repository.createEvent(event);
+      const site = await repository.findSiteById(event.siteId);
+      if (!site) {
+        res.status(404).json({ success: false, error: "Unknown site" });
+        return;
+      }
+
+      await repository.createEvent(sanitizeEventPayload(event, site.privacySettings));
       res.status(202).json({ success: true });
     } catch (error) {
       handleIngestError(error, res);
@@ -99,7 +112,7 @@ const handlePostback = async (
     }
 
     const event = normalizePostbackEvent(payload, siteId);
-    await repository.createEvent(event);
+    await repository.createEvent(sanitizeEventPayload(event, site.privacySettings));
     res.status(202).json({ success: true });
   } catch (error) {
     handleIngestError(error, res);

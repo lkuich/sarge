@@ -1,4 +1,4 @@
-import type { EventPayload } from "@sarge/core";
+import type { EventPayload, PrivacySettings } from "@sarge/core";
 
 export interface IngestSite {
   id: string;
@@ -6,6 +6,7 @@ export interface IngestSite {
   environment: "production" | "staging" | "development";
   serverEventSecretHash?: string | null;
   postbackTokenHash?: string | null;
+  privacySettings?: PrivacySettings;
 }
 
 export interface EventRepository {

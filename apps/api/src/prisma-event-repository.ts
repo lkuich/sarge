@@ -1,4 +1,4 @@
-import { buildPlanEventLimitSqlCase, UsageLimitExceededError, type EventPayload } from "@sarge/core";
+import { buildPlanEventLimitSqlCase, UsageLimitExceededError, type EventPayload, type PrivacySettings } from "@sarge/core";
 import { Prisma } from "@prisma/client";
 import type { EventRepository, IngestSite } from "./event-repository.js";
 import { prisma } from "./prisma.js";
@@ -22,15 +22,29 @@ export class PrismaEventRepository implements EventRepository {
         siteId: true,
         environment: true,
         serverEventSecretHash: true,
-        postbackTokenHash: true
+        postbackTokenHash: true,
+        site: {
+          select: {
+            privacySettings: true,
+            workspace: {
+              select: {
+                privacySettings: true
+              }
+            }
+          }
+        }
       }
     });
 
     if (!site) return null;
 
     return {
-      ...site,
-      environment: site.environment as IngestSite["environment"]
+      id: site.id,
+      siteId: site.siteId,
+      environment: site.environment as IngestSite["environment"],
+      serverEventSecretHash: site.serverEventSecretHash,
+      postbackTokenHash: site.postbackTokenHash,
+      privacySettings: resolvePrivacySettings(site.site.workspace.privacySettings, site.site.privacySettings)
     };
   }
 
@@ -117,6 +131,33 @@ export class PrismaEventRepository implements EventRepository {
       throw new UsageLimitExceededError();
     }
   }
+}
+
+const resolvePrivacySettings = (
+  workspaceSettings: PrivacySettingsRow | null,
+  siteSettings: Partial<PrivacySettingsRow> | null
+): PrivacySettings => ({
+  piiRedactionEnabled: siteSettings?.piiRedactionEnabled ?? workspaceSettings?.piiRedactionEnabled ?? true,
+  propertyPolicyMode: resolvePropertyPolicyMode(siteSettings?.propertyPolicyMode ?? workspaceSettings?.propertyPolicyMode),
+  blockedPropertyKeys: readStringArray(siteSettings?.blockedPropertyKeys ?? workspaceSettings?.blockedPropertyKeys),
+  allowedPropertyKeys: readStringArray(siteSettings?.allowedPropertyKeys ?? workspaceSettings?.allowedPropertyKeys),
+  customRedactionKeys: readStringArray(siteSettings?.customRedactionKeys ?? workspaceSettings?.customRedactionKeys),
+  customRedactionPatterns: readStringArray(siteSettings?.customRedactionPatterns ?? workspaceSettings?.customRedactionPatterns)
+});
+
+const readStringArray = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+
+const resolvePropertyPolicyMode = (value: string | null | undefined): PrivacySettings["propertyPolicyMode"] =>
+  value === "allowlist" ? "allowlist" : "blocklist";
+
+interface PrivacySettingsRow {
+  piiRedactionEnabled: boolean | null;
+  propertyPolicyMode: string | null;
+  blockedPropertyKeys: unknown;
+  allowedPropertyKeys: unknown;
+  customRedactionKeys: unknown;
+  customRedactionPatterns: unknown;
 }
 
 interface UsageInsertResult {

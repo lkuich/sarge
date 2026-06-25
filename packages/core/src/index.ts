@@ -12,6 +12,15 @@ export {
 } from "./event-schema.js";
 
 export {
+  REDACTED_VALUE,
+  defaultPrivacySettings,
+  normalizePrivacySettings,
+  sanitizeEventPayload,
+  type PrivacySettings,
+  type PropertyPolicyMode
+} from "./privacy-controls.js";
+
+export {
   analyzeEvents,
   ecommerceTrackingPlan,
   type DiagnosticEvent,

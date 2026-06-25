@@ -26,8 +26,24 @@ model Workspace {
   termsAcceptedUserAgent  String?
   createdAt               DateTime @default(now())
   sites                   Site[]
+  privacySettings         WorkspacePrivacySettings?
   notificationPreferences NotificationPreference[]
   notificationDeliveries  NotificationDelivery[]
+}
+
+model WorkspacePrivacySettings {
+  id                      String   @id @default(cuid())
+  workspaceId             String   @unique
+  piiRedactionEnabled     Boolean  @default(true)
+  propertyPolicyMode      String   @default("blocklist")
+  blockedPropertyKeys     Json     @default("[]")
+  allowedPropertyKeys     Json     @default("[]")
+  customRedactionKeys     Json     @default("[]")
+  customRedactionPatterns Json     @default("[]")
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }
 
 model Site {
@@ -47,8 +63,24 @@ model Site {
   webhookEndpoints      WebhookEndpoint[]
   environments          SiteEnvironment[]
   projectShares         ProjectShare[]
+  privacySettings       SitePrivacySettings?
 
   workspace Workspace @relation(fields: [workspaceId], references: [id])
+}
+
+model SitePrivacySettings {
+  id                      String   @id @default(cuid())
+  siteId                  String   @unique
+  piiRedactionEnabled     Boolean?
+  propertyPolicyMode      String?
+  blockedPropertyKeys     Json?
+  allowedPropertyKeys     Json?
+  customRedactionKeys     Json?
+  customRedactionPatterns Json?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
 }
 
 model SiteEnvironment {
@@ -244,4 +276,23 @@ model NotificationDelivery {
   @@index([category, status])
   @@index([siteId])
   @@index([siteEnvironmentId])
+}
+
+model DeletionRequest {
+  id                String    @id @default(cuid())
+  scope             String
+  targetWorkspaceId String?
+  targetSiteId      String?
+  requestedByUserId String
+  status            String    @default("pending")
+  error             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  startedAt         DateTime?
+  completedAt       DateTime?
+
+  @@index([status, createdAt])
+  @@index([targetWorkspaceId])
+  @@index([targetSiteId])
+  @@index([requestedByUserId])
 }

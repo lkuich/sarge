@@ -8,7 +8,6 @@ Use these Markdown documents when helping someone install or debug Sarge. Prefer
 
 - [Install Sarge](/docs/install.md): Hosted pixel install, event calls, SPA route changes, test-traffic impersonation, verification, and troubleshooting.
 - [Event Reference](/docs/events.md): Canonical event names, required properties, example payloads, watchdog events, and naming rules.
-- [Self-Hosting](/docs/self-hosting.md): Minimal self-hosted architecture, environment variables, pixel shape, and test event.
 
 ## Full Context
 
@@ -18,7 +17,6 @@ Use these Markdown documents when helping someone install or debug Sarge. Prefer
 
 - [Human Docs](/docs): Browser-friendly documentation index.
 - [Event Reference Page](/docs/events): Browser-friendly event examples.
-- [Self-Hosting Page](/docs/self-hosting): Browser-friendly self-hosting guide.
 
 ## Agent Guidance
 

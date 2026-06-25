@@ -16,6 +16,7 @@ import { canUseFeature } from "@/lib/pricing";
 import {
   canAdministerAccount,
   canManageProject,
+  createDeletionRequest,
   createEnvironmentCredential,
   createPublicVerificationLink,
   createWebhookEndpoint,
@@ -26,6 +27,7 @@ import {
   hostedEndpointHost,
   projectEnvironmentOptions,
   removeProjectShare,
+  saveSitePrivacySettings,
   shareProject,
   updateProjectShare,
   type ProjectShareRole,
@@ -76,6 +78,10 @@ let createdPostbackCredentialEndpoint = "";
 let publicVerificationError = "";
 let createdPublicVerificationUrl = "";
 let createdPublicVerificationExpiresAt: Date | null = null;
+let sitePrivacySettingsError = "";
+let sitePrivacySettingsSuccess = "";
+let siteDeletionRequestError = "";
+let siteDeletionRequestSuccess = "";
 let webhookValues = {
   name: "",
   url: "",
@@ -228,6 +234,43 @@ if (Astro.request.method === "POST") {
       }
     }
   }
+
+  if (intent === "save-site-privacy-settings") {
+    if (project.ownership !== "owned") {
+      sitePrivacySettingsError = "Only project owners can manage data controls.";
+    } else {
+      const result = await saveSitePrivacySettings(userId, env.DATABASE_URL, project.siteId, {
+        piiRedactionEnabled: formData.get("piiRedactionEnabled") === "on",
+        propertyPolicyMode: String(formData.get("propertyPolicyMode") ?? "blocklist"),
+        blockedPropertyKeys: String(formData.get("blockedPropertyKeys") ?? ""),
+        allowedPropertyKeys: String(formData.get("allowedPropertyKeys") ?? ""),
+        customRedactionKeys: String(formData.get("customRedactionKeys") ?? ""),
+        customRedactionPatterns: String(formData.get("customRedactionPatterns") ?? ""),
+      });
+
+      if (result.success) {
+        project.privacySettings = result.settings;
+        sitePrivacySettingsSuccess = "Project data controls were saved.";
+      } else {
+        sitePrivacySettingsError = result.error;
+      }
+    }
+  }
+
+  if (intent === "request-site-deletion") {
+    if (project.ownership !== "owned") {
+      siteDeletionRequestError = "Only project owners can request deletion.";
+    } else {
+      const result = await createDeletionRequest(userId, env.DATABASE_URL, {
+        scope: "site",
+        targetSiteId: project.siteId,
+        confirmation: String(formData.get("deleteConfirmation") ?? ""),
+      });
+
+      if (result.success) siteDeletionRequestSuccess = "Site deletion request was queued.";
+      else siteDeletionRequestError = result.error;
+    }
+  }
 }
 
 const snippet = `<script>
@@ -311,6 +354,9 @@ const recentSessionDelta = buildMetricDelta(selectedEnvironment.sessionCount24h,
 const recentUserDelta = buildMetricDelta(selectedEnvironment.userCount24h, selectedEnvironment.previousUserCount24h);
 const projectShareLimit = account.plan.limits.projectShares;
 const projectShareCount = project.shares.length;
+const canManageProjectData = project.ownership === "owned";
+const projectPrivacySettings = project.privacySettings;
+const formatSettingsList = (values: string[]) => values.join(", ");
 const severityVariant = (severity: string) => {
   if (severity === "critical") return "destructive";
   if (severity === "warning") return "secondary";
@@ -654,6 +700,97 @@ function resolveTrackedSiteDomain(value: string) {
       </CardContent>
     </Card>
   </section>
+
+  {
+    canManageProjectData && (
+      <section class="mb-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]" data-project-data-controls>
+        <Card>
+          <CardHeader>
+            <CardTitle>Data controls</CardTitle>
+            <p class="text-sm text-muted-foreground">Project-level hosted ingestion controls. These override workspace defaults for this project.</p>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            {sitePrivacySettingsError && (
+              <Alert variant="destructive">
+                <AlertTitle>Data controls were not saved</AlertTitle>
+                <AlertDescription>{sitePrivacySettingsError}</AlertDescription>
+              </Alert>
+            )}
+            {sitePrivacySettingsSuccess && (
+              <Alert>
+                <AlertTitle>Data controls saved</AlertTitle>
+                <AlertDescription>{sitePrivacySettingsSuccess}</AlertDescription>
+              </Alert>
+            )}
+            <form method="post" class="grid gap-4">
+              <input type="hidden" name="intent" value="save-site-privacy-settings" />
+              <label class="flex items-center gap-3 rounded-md border bg-muted/30 p-3 text-sm">
+                <input class="size-4 accent-primary" type="checkbox" name="piiRedactionEnabled" checked={projectPrivacySettings.piiRedactionEnabled} />
+                <span><span class="font-medium">PII redaction</span><span class="block text-xs text-muted-foreground">Redact common emails, phones, secrets, addresses, IPs, and card-like values before storage.</span></span>
+              </label>
+              <div class="grid gap-2">
+                <Label htmlFor="projectPropertyPolicyMode">Property policy</Label>
+                <select id="projectPropertyPolicyMode" name="propertyPolicyMode" class="h-9 rounded-md border bg-background px-3 text-sm">
+                  <option value="blocklist" selected={projectPrivacySettings.propertyPolicyMode === "blocklist"}>Blocklist default</option>
+                  <option value="allowlist" selected={projectPrivacySettings.propertyPolicyMode === "allowlist"}>Allowlist mode</option>
+                </select>
+              </div>
+              <div class="grid gap-2 md:grid-cols-2">
+                <div class="grid gap-2">
+                  <Label htmlFor="projectBlockedPropertyKeys">Blocked property keys</Label>
+                  <Input id="projectBlockedPropertyKeys" name="blockedPropertyKeys" value={formatSettingsList(projectPrivacySettings.blockedPropertyKeys)} placeholder="email, phone, internal_note" />
+                </div>
+                <div class="grid gap-2">
+                  <Label htmlFor="projectAllowedPropertyKeys">Allowed property keys</Label>
+                  <Input id="projectAllowedPropertyKeys" name="allowedPropertyKeys" value={formatSettingsList(projectPrivacySettings.allowedPropertyKeys)} placeholder="order_id, value, currency" />
+                </div>
+                <div class="grid gap-2">
+                  <Label htmlFor="projectCustomRedactionKeys">Custom redaction keys</Label>
+                  <Input id="projectCustomRedactionKeys" name="customRedactionKeys" value={formatSettingsList(projectPrivacySettings.customRedactionKeys)} placeholder="coupon_code, customer_email" />
+                </div>
+                <div class="grid gap-2">
+                  <Label htmlFor="projectCustomRedactionPatterns">Custom redaction patterns</Label>
+                  <Input id="projectCustomRedactionPatterns" name="customRedactionPatterns" value={formatSettingsList(projectPrivacySettings.customRedactionPatterns)} placeholder="vip-[0-9]+" />
+                </div>
+              </div>
+              <div>
+                <Button type="submit">Save project controls</Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Request site deletion</CardTitle>
+            <p class="text-sm text-muted-foreground">Queues deletion of this project's events, environments, diagnostics, webhooks, shares, and settings.</p>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            {siteDeletionRequestError && (
+              <Alert variant="destructive">
+                <AlertTitle>Deletion was not queued</AlertTitle>
+                <AlertDescription>{siteDeletionRequestError}</AlertDescription>
+              </Alert>
+            )}
+            {siteDeletionRequestSuccess && (
+              <Alert>
+                <AlertTitle>Deletion queued</AlertTitle>
+                <AlertDescription>{siteDeletionRequestSuccess}</AlertDescription>
+              </Alert>
+            )}
+            <form method="post" class="grid gap-3">
+              <input type="hidden" name="intent" value="request-site-deletion" />
+              <div class="grid gap-2">
+                <Label htmlFor="siteDeleteConfirmation">Type DELETE to confirm</Label>
+                <Input id="siteDeleteConfirmation" name="deleteConfirmation" autocomplete="off" />
+              </div>
+              <Button type="submit" variant="outline">Request site deletion</Button>
+            </form>
+          </CardContent>
+        </Card>
+      </section>
+    )
+  }
 
   <section class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
       <details

@@ -1,5 +1,5 @@
 import { neon } from "@neondatabase/serverless";
-import { buildPlanEventLimitSqlCase, UsageLimitExceededError, type EventPayload } from "@sarge/core";
+import { buildPlanEventLimitSqlCase, UsageLimitExceededError, type EventPayload, type PrivacySettings } from "@sarge/core";
 import type { EventStore, SiteRecord, StoredDiagnosticRun, StoredEvent } from "./types.js";
 
 const planEventLimitSqlCase = buildPlanEventLimitSqlCase('w."planId"');
@@ -13,9 +13,26 @@ export class NeonEventStore implements EventStore {
 
   async findSiteByHost(host: string): Promise<SiteRecord | null> {
     const rows = (await this.sql`
-      SELECT id, "siteId", environment, "endpointHost", "attributionTtlDays", "pixelEnabled", "serverEventSecretHash", "postbackTokenHash"
-      FROM "SiteEnvironment"
-      WHERE "endpointHost" = ${host}
+      SELECT
+        se.id,
+        se."siteId",
+        se.environment,
+        se."endpointHost",
+        se."attributionTtlDays",
+        se."pixelEnabled",
+        se."serverEventSecretHash",
+        se."postbackTokenHash",
+        COALESCE(sps."piiRedactionEnabled", wps."piiRedactionEnabled", true) AS "piiRedactionEnabled",
+        COALESCE(sps."propertyPolicyMode", wps."propertyPolicyMode", 'blocklist') AS "propertyPolicyMode",
+        COALESCE(sps."blockedPropertyKeys", wps."blockedPropertyKeys", '[]'::jsonb) AS "blockedPropertyKeys",
+        COALESCE(sps."allowedPropertyKeys", wps."allowedPropertyKeys", '[]'::jsonb) AS "allowedPropertyKeys",
+        COALESCE(sps."customRedactionKeys", wps."customRedactionKeys", '[]'::jsonb) AS "customRedactionKeys",
+        COALESCE(sps."customRedactionPatterns", wps."customRedactionPatterns", '[]'::jsonb) AS "customRedactionPatterns"
+      FROM "SiteEnvironment" se
+      JOIN "Site" s ON s.id = se."siteId"
+      LEFT JOIN "WorkspacePrivacySettings" wps ON wps."workspaceId" = s."workspaceId"
+      LEFT JOIN "SitePrivacySettings" sps ON sps."siteId" = s.id
+      WHERE se."endpointHost" = ${host}
       LIMIT 1
     `) as unknown[];
 
@@ -29,18 +46,41 @@ export class NeonEventStore implements EventStore {
           pixelEnabled: boolean;
           serverEventSecretHash: string | null;
           postbackTokenHash: string | null;
+          piiRedactionEnabled: boolean;
+          propertyPolicyMode: string;
+          blockedPropertyKeys: unknown;
+          allowedPropertyKeys: unknown;
+          customRedactionKeys: unknown;
+          customRedactionPatterns: unknown;
         }
       | undefined;
 
-    return row ?? null;
+    return row ? mapSiteRecord(row) : null;
   }
 
   async findSiteById(id: string): Promise<SiteRecord | null> {
     const rows = (await this.sql`
-      SELECT id, "siteId", environment, "endpointHost", "attributionTtlDays", "pixelEnabled", "serverEventSecretHash", "postbackTokenHash"
-      FROM "SiteEnvironment"
-      WHERE id = ${id}
-        OR ("siteId" = ${id} AND environment = 'production')
+      SELECT
+        se.id,
+        se."siteId",
+        se.environment,
+        se."endpointHost",
+        se."attributionTtlDays",
+        se."pixelEnabled",
+        se."serverEventSecretHash",
+        se."postbackTokenHash",
+        COALESCE(sps."piiRedactionEnabled", wps."piiRedactionEnabled", true) AS "piiRedactionEnabled",
+        COALESCE(sps."propertyPolicyMode", wps."propertyPolicyMode", 'blocklist') AS "propertyPolicyMode",
+        COALESCE(sps."blockedPropertyKeys", wps."blockedPropertyKeys", '[]'::jsonb) AS "blockedPropertyKeys",
+        COALESCE(sps."allowedPropertyKeys", wps."allowedPropertyKeys", '[]'::jsonb) AS "allowedPropertyKeys",
+        COALESCE(sps."customRedactionKeys", wps."customRedactionKeys", '[]'::jsonb) AS "customRedactionKeys",
+        COALESCE(sps."customRedactionPatterns", wps."customRedactionPatterns", '[]'::jsonb) AS "customRedactionPatterns"
+      FROM "SiteEnvironment" se
+      JOIN "Site" s ON s.id = se."siteId"
+      LEFT JOIN "WorkspacePrivacySettings" wps ON wps."workspaceId" = s."workspaceId"
+      LEFT JOIN "SitePrivacySettings" sps ON sps."siteId" = s.id
+      WHERE se.id = ${id}
+        OR (se."siteId" = ${id} AND se.environment = 'production')
       LIMIT 1
     `) as unknown[];
 
@@ -54,10 +94,16 @@ export class NeonEventStore implements EventStore {
           pixelEnabled: boolean;
           serverEventSecretHash: string | null;
           postbackTokenHash: string | null;
+          piiRedactionEnabled: boolean;
+          propertyPolicyMode: string;
+          blockedPropertyKeys: unknown;
+          allowedPropertyKeys: unknown;
+          customRedactionKeys: unknown;
+          customRedactionPatterns: unknown;
         }
       | undefined;
 
-    return row ?? null;
+    return row ? mapSiteRecord(row) : null;
   }
 
   async createEvent(event: EventPayload): Promise<void> {
@@ -251,6 +297,47 @@ export class NeonEventStore implements EventStore {
     }
   }
 }
+
+interface SiteRecordRow {
+  id: string;
+  siteId: string;
+  environment: "production" | "staging" | "development";
+  endpointHost: string;
+  attributionTtlDays: number;
+  pixelEnabled: boolean;
+  serverEventSecretHash?: string | null;
+  postbackTokenHash?: string | null;
+  piiRedactionEnabled: boolean;
+  propertyPolicyMode: string;
+  blockedPropertyKeys?: unknown;
+  allowedPropertyKeys?: unknown;
+  customRedactionKeys?: unknown;
+  customRedactionPatterns?: unknown;
+}
+
+const mapSiteRecord = (row: SiteRecordRow): SiteRecord => ({
+  id: row.id,
+  siteId: row.siteId,
+  environment: row.environment,
+  endpointHost: row.endpointHost,
+  attributionTtlDays: row.attributionTtlDays,
+  pixelEnabled: row.pixelEnabled,
+  serverEventSecretHash: row.serverEventSecretHash,
+  postbackTokenHash: row.postbackTokenHash,
+  privacySettings: {
+    piiRedactionEnabled: row.piiRedactionEnabled,
+    propertyPolicyMode: row.propertyPolicyMode === "allowlist" ? "allowlist" : "blocklist",
+    blockedPropertyKeys: readStringArray(row.blockedPropertyKeys),
+    allowedPropertyKeys: readStringArray(row.allowedPropertyKeys),
+    customRedactionKeys: readStringArray(row.customRedactionKeys),
+    customRedactionPatterns: readStringArray(row.customRedactionPatterns)
+  }
+});
+
+const readStringArray = (value: unknown): string[] => {
+  const parsed = typeof value === "string" ? JSON.parse(value) as unknown : value;
+  return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+};
 
 interface EventRow {
   id: string;

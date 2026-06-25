@@ -3,6 +3,7 @@ import {
   normalizePostbackEvent,
   normalizeServerEvent,
   parseCompactEventQuery,
+  sanitizeEventPayload,
   tokenMatchesHash,
   UsageLimitExceededError
 } from "@sarge/core";
@@ -113,13 +114,13 @@ const handleRequest = async (request: Request, _env: WorkerEnv, store: EventStor
 
 const handleJsonEvent = async (request: Request, store: EventStore, site: SiteRecord) => {
   try {
-    const body = await request.json();
+    const body = await readJsonPayload(request);
     const event = eventPayloadSchema.parse(body);
     if (event.siteId !== site.id) {
       return json({ success: false, error: "Site mismatch" }, 403);
     }
 
-    await store.createEvent(event);
+    await store.createEvent(sanitizeEventPayload(event, site.privacySettings));
     return json({ success: true }, 202);
   } catch (error) {
     return handleIngestError(error);
@@ -128,14 +129,14 @@ const handleJsonEvent = async (request: Request, store: EventStore, site: SiteRe
 
 const handleSharedJsonEvent = async (request: Request, store: EventStore) => {
   try {
-    const body = await request.json();
+    const body = await readJsonPayload(request);
     const event = eventPayloadSchema.parse(body);
     const site = await store.findSiteById(event.siteId);
     if (!site) {
       return json({ success: false, error: "Unknown site" }, 404);
     }
 
-    await store.createEvent(event);
+    await store.createEvent(sanitizeEventPayload(event, site.privacySettings));
     return json({ success: true }, 202);
   } catch (error) {
     return handleIngestError(error);
@@ -144,7 +145,7 @@ const handleSharedJsonEvent = async (request: Request, store: EventStore) => {
 
 const handleServerEvent = async (request: Request, store: EventStore, expectedSite?: SiteRecord) => {
   try {
-    const body = await request.json();
+    const body = await readJsonPayload(request);
     const event = normalizeServerEvent(body);
     if (expectedSite && event.siteId !== expectedSite.id) {
       return json({ success: false, error: "Site mismatch" }, 403);
@@ -160,7 +161,7 @@ const handleServerEvent = async (request: Request, store: EventStore, expectedSi
       return json({ success: false, error: "Invalid credentials" }, 401);
     }
 
-    await store.createEvent(event);
+    await store.createEvent(sanitizeEventPayload(event, site.privacySettings));
     return json({ success: true }, 202);
   } catch (error) {
     return handleIngestError(error);
@@ -170,7 +171,7 @@ const handleServerEvent = async (request: Request, store: EventStore, expectedSi
 const handleCompactEvent = async (url: URL, store: EventStore, site: SiteRecord) => {
   try {
     const event = parseCompactEventQuery(Object.fromEntries(url.searchParams.entries()));
-    await store.createEvent({ ...event, siteId: site.id });
+    await store.createEvent(sanitizeEventPayload({ ...event, siteId: site.id }, site.privacySettings));
     return json({ success: true }, 202);
   } catch (error) {
     return handleIngestError(error);
@@ -185,7 +186,7 @@ const handleSharedCompactEvent = async (url: URL, store: EventStore) => {
       return json({ success: false, error: "Unknown site" }, 404);
     }
 
-    await store.createEvent(event);
+    await store.createEvent(sanitizeEventPayload(event, site.privacySettings));
     return json({ success: true }, 202);
   } catch (error) {
     return handleIngestError(error);
@@ -204,7 +205,7 @@ const handlePostbackEvent = async (request: Request, url: URL, store: EventStore
     }
 
     const event = normalizePostbackEvent(await readPostbackPayload(request, url), siteId);
-    await store.createEvent(event);
+    await store.createEvent(sanitizeEventPayload(event, site.privacySettings));
     return json({ success: true }, 202);
   } catch (error) {
     return handleIngestError(error);
@@ -231,6 +232,10 @@ const resolvePixelEndpointHost = (url: URL, fallbackHost: string) => {
 };
 
 const handleIngestError = (error: unknown) => {
+  if (error instanceof PayloadTooLargeError) {
+    return json({ success: false, error: "Event payload too large" }, 413);
+  }
+
   if (error instanceof ZodError || error instanceof SyntaxError) {
     return json({ success: false, error: "Invalid event payload" }, 400);
   }
@@ -241,6 +246,24 @@ const handleIngestError = (error: unknown) => {
 
   console.error(error);
   return json({ success: false, error: "Unable to store event" }, 500);
+};
+
+const maxEventPayloadBytes = 64 * 1024;
+
+class PayloadTooLargeError extends Error {}
+
+const readJsonPayload = async (request: Request) => {
+  const contentLength = Number(request.headers.get("content-length") ?? 0);
+  if (Number.isFinite(contentLength) && contentLength > maxEventPayloadBytes) {
+    throw new PayloadTooLargeError();
+  }
+
+  const body = await request.text();
+  if (new TextEncoder().encode(body).byteLength > maxEventPayloadBytes) {
+    throw new PayloadTooLargeError();
+  }
+
+  return JSON.parse(body) as unknown;
 };
 
 const json = (body: unknown, status = 200) =>

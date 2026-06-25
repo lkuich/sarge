@@ -180,6 +180,88 @@ describe("Cloudflare Worker hosted API", () => {
     });
   });
 
+  it("redacts PII and applies property policy before storing hosted browser events", async () => {
+    const { events, store } = createMemoryStore();
+    const privacyStore: EventStore = {
+      ...store,
+      async findSiteByHost(host) {
+        const site = await store.findSiteByHost(host);
+        return site
+          ? {
+              ...site,
+              privacySettings: {
+                piiRedactionEnabled: true,
+                propertyPolicyMode: "blocklist",
+                blockedPropertyKeys: ["internal_note"],
+                customRedactionKeys: ["coupon_code"]
+              }
+            }
+          : null;
+      }
+    };
+    const handler = createWorkerHandler({ store: privacyStore });
+
+    const response = await handler.fetch(
+      new Request("https://acme.sarge.events/v2/events", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          siteId: "env_123_production",
+          name: "Purchase",
+          occurredAt: "2026-06-19T12:00:00.000Z",
+          sessionId: "sess_123",
+          userId: "user_123",
+          properties: {
+            email: "buyer@example.com",
+            coupon_code: "VIP-123",
+            internal_note: "do not store",
+            value: 129.99,
+            sarge_test: true
+          }
+        })
+      }),
+      createEnv()
+    );
+
+    expect(response.status).toBe(202);
+    expect(events[0]).toMatchObject({
+      properties: {
+        email: "[REDACTED]",
+        coupon_code: "[REDACTED]",
+        value: 129.99,
+        sarge_test: true
+      }
+    });
+    expect((events[0] as { properties: Record<string, unknown> }).properties.internal_note).toBeUndefined();
+  });
+
+  it("rejects hosted JSON payloads over the ingestion body limit before storage", async () => {
+    const { events, store } = createMemoryStore();
+    const handler = createWorkerHandler({ store });
+
+    const response = await handler.fetch(
+      new Request("https://acme.sarge.events/v2/events", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "content-length": String(70 * 1024)
+        },
+        body: JSON.stringify({
+          siteId: "env_123_production",
+          name: "Purchase",
+          occurredAt: "2026-06-19T12:00:00.000Z",
+          sessionId: "sess_123",
+          userId: "user_123"
+        })
+      }),
+      createEnv()
+    );
+
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({ success: false, error: "Event payload too large" });
+    expect(events).toHaveLength(0);
+  });
+
   it("returns 429 when the workspace event limit is reached", async () => {
     const { store } = createMemoryStore();
     const limitedStore: EventStore = {

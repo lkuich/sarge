@@ -25,7 +25,6 @@ describe("shaderBackground", () => {
     const sitePages = [
       "src/pages/docs/index.astro",
       "src/pages/docs/events.astro",
-      "src/pages/docs/self-hosting.astro",
       "src/pages/sign-in.astro",
       "src/pages/sign-up.astro",
       "src/pages/verify/[siteId].astro",

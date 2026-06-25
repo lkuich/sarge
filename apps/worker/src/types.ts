@@ -1,4 +1,4 @@
-import type { DiagnosticFinding, DiagnosticSeverity, EventPayload } from "@sarge/core";
+import type { DiagnosticFinding, DiagnosticSeverity, EventPayload, PrivacySettings } from "@sarge/core";
 
 export interface AiBinding {
   run(model: string, input: unknown): Promise<unknown>;
@@ -26,6 +26,7 @@ export interface SiteRecord {
   pixelEnabled: boolean;
   serverEventSecretHash?: string | null;
   postbackTokenHash?: string | null;
+  privacySettings?: PrivacySettings;
 }
 
 export interface EventStore {

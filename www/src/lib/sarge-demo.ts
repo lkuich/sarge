@@ -1,4 +1,5 @@
 import { neon } from '@neondatabase/serverless';
+import { defaultPrivacySettings, type PropertyPolicyMode } from '@sarge/core';
 import { summarizeEventHosts, type EventHostSummary } from './event-hosts';
 import { sendProjectAccessNotificationEmail, sendProjectInviteEmail, type ProjectInviteEmailInput } from './project-invite-email';
 import { analyzeProjectEvents, type ProjectDiagnostic } from './project-diagnostics';
@@ -101,6 +102,7 @@ export interface SargeProject extends SargeProjectEnvironment {
   shareRole?: ProjectShareRole;
   shares: ProjectShare[];
   environments: SargeProjectEnvironment[];
+  privacySettings: SargePrivacySettings;
 }
 
 export interface SargeAccount {
@@ -116,11 +118,52 @@ export interface SargeAccount {
   termsAcceptedVersion: string | null;
   privacyAcceptedVersion: string | null;
   workspaceLegalAcceptanceRequired: boolean;
+  privacySettings: SargePrivacySettings;
   workspaceSetupComplete: boolean;
   ownedProjects: SargeProject[];
   sharedProjects: SargeProject[];
   projects: SargeProject[];
   members: AccountMember[];
+}
+
+export interface SargePrivacySettings {
+  piiRedactionEnabled: boolean;
+  propertyPolicyMode: PropertyPolicyMode;
+  blockedPropertyKeys: string[];
+  allowedPropertyKeys: string[];
+  customRedactionKeys: string[];
+  customRedactionPatterns: string[];
+}
+
+export interface PrivacySettingsInput {
+  piiRedactionEnabled?: boolean;
+  propertyPolicyMode?: string;
+  blockedPropertyKeys?: string;
+  allowedPropertyKeys?: string;
+  customRedactionKeys?: string;
+  customRedactionPatterns?: string;
+}
+
+export type SavePrivacySettingsResult =
+  | { success: true; settings: SargePrivacySettings }
+  | { success: false; error: string };
+
+export type CreateDeletionRequestResult =
+  | { success: true; request: DeletionRequestSummary }
+  | { success: false; error: string };
+
+export type ProcessDeletionRequestsResult = {
+  processed: number;
+  failed: number;
+};
+
+export interface DeletionRequestSummary {
+  id: string;
+  scope: 'workspace' | 'site';
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  targetWorkspaceId: string | null;
+  targetSiteId: string | null;
+  createdAt: string;
 }
 
 export interface PublicEventStream {
@@ -338,6 +381,73 @@ const normalizeInviteEmail = (email: string) => {
   return normalized;
 };
 
+const defaultSargePrivacySettings: SargePrivacySettings = {
+  piiRedactionEnabled: defaultPrivacySettings.piiRedactionEnabled,
+  propertyPolicyMode: defaultPrivacySettings.propertyPolicyMode,
+  blockedPropertyKeys: [],
+  allowedPropertyKeys: [],
+  customRedactionKeys: [],
+  customRedactionPatterns: [],
+};
+
+const normalizePrivacySettingsInput = (input: PrivacySettingsInput): SargePrivacySettings => ({
+  piiRedactionEnabled: input.piiRedactionEnabled ?? false,
+  propertyPolicyMode: input.propertyPolicyMode === 'allowlist' ? 'allowlist' : 'blocklist',
+  blockedPropertyKeys: parseSettingsList(input.blockedPropertyKeys),
+  allowedPropertyKeys: parseSettingsList(input.allowedPropertyKeys),
+  customRedactionKeys: parseSettingsList(input.customRedactionKeys),
+  customRedactionPatterns: parseSettingsList(input.customRedactionPatterns, { lowercase: false }),
+});
+
+const parseSettingsList = (value: string | undefined, options: { lowercase?: boolean } = {}) => {
+  const lowercase = options.lowercase ?? true;
+  return Array.from(
+    new Set(
+      (value ?? '')
+        .split(/[\n,]/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .map((item) => (lowercase ? item.toLowerCase() : item)),
+    ),
+  );
+};
+
+const readStringArray = (value: unknown): string[] => {
+  const parsed = typeof value === 'string' ? parseJson(value) : value;
+  return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+};
+
+const parseJson = (value: string): unknown => {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return [];
+  }
+};
+
+const mapPrivacySettings = (row: Partial<PrivacySettingsRow> | null | undefined): SargePrivacySettings => ({
+  piiRedactionEnabled: row?.piiRedactionEnabled ?? defaultSargePrivacySettings.piiRedactionEnabled,
+  propertyPolicyMode: row?.propertyPolicyMode === 'allowlist' ? 'allowlist' : 'blocklist',
+  blockedPropertyKeys: readStringArray(row?.blockedPropertyKeys),
+  allowedPropertyKeys: readStringArray(row?.allowedPropertyKeys),
+  customRedactionKeys: readStringArray(row?.customRedactionKeys),
+  customRedactionPatterns: readStringArray(row?.customRedactionPatterns),
+});
+
+const mergePrivacySettings = (
+  workspaceSettings: SargePrivacySettings,
+  siteSettings: Partial<PrivacySettingsRow> | null | undefined,
+): SargePrivacySettings => ({
+  piiRedactionEnabled: siteSettings?.piiRedactionEnabled ?? workspaceSettings.piiRedactionEnabled,
+  propertyPolicyMode: siteSettings?.propertyPolicyMode === 'allowlist' || siteSettings?.propertyPolicyMode === 'blocklist'
+    ? siteSettings.propertyPolicyMode
+    : workspaceSettings.propertyPolicyMode,
+  blockedPropertyKeys: siteSettings?.blockedPropertyKeys == null ? workspaceSettings.blockedPropertyKeys : readStringArray(siteSettings.blockedPropertyKeys),
+  allowedPropertyKeys: siteSettings?.allowedPropertyKeys == null ? workspaceSettings.allowedPropertyKeys : readStringArray(siteSettings.allowedPropertyKeys),
+  customRedactionKeys: siteSettings?.customRedactionKeys == null ? workspaceSettings.customRedactionKeys : readStringArray(siteSettings.customRedactionKeys),
+  customRedactionPatterns: siteSettings?.customRedactionPatterns == null ? workspaceSettings.customRedactionPatterns : readStringArray(siteSettings.customRedactionPatterns),
+});
+
 const workspaceLegalAcceptanceRequired = (workspace: Pick<WorkspaceRow, 'termsAcceptedAt' | 'termsAcceptedVersion' | 'privacyAcceptedVersion'> | null) => {
   if (!workspace) return false;
   return (
@@ -388,6 +498,32 @@ export const getViewerAccount = async (
       ORDER BY s."createdAt" ASC
     `) as SiteSummaryRow[]) : [];
     const allSiteIds = Array.from(new Set([...sites.map((site) => site.id), ...sharedSiteIds]));
+    const workspacePrivacyRows = workspace ? ((await sql`
+      SELECT
+        "piiRedactionEnabled",
+        "propertyPolicyMode",
+        "blockedPropertyKeys",
+        "allowedPropertyKeys",
+        "customRedactionKeys",
+        "customRedactionPatterns"
+      FROM "WorkspacePrivacySettings"
+      WHERE "workspaceId" = ${workspace.id}
+      LIMIT 1
+    `) as PrivacySettingsRow[]) : [];
+    const workspacePrivacySettings = mapPrivacySettings(workspacePrivacyRows.at(0));
+    const sitePrivacyRows = allSiteIds.length > 0 ? ((await sql`
+      SELECT
+        "siteId",
+        "piiRedactionEnabled",
+        "propertyPolicyMode",
+        "blockedPropertyKeys",
+        "allowedPropertyKeys",
+        "customRedactionKeys",
+        "customRedactionPatterns"
+      FROM "SitePrivacySettings"
+      WHERE "siteId" = ANY(${allSiteIds})
+    `) as SitePrivacySettingsRow[]) : [];
+    const privacySettingsBySite = new Map(sitePrivacyRows.map((row) => [row.siteId, row]));
     const siteEnvironments = allSiteIds.length > 0 ? ((await sql`
       SELECT
         se.id,
@@ -582,6 +718,7 @@ export const getViewerAccount = async (
         shares: projectSharesBySite.get(site.id) ?? [],
         eventCount24h,
         environments,
+        privacySettings: mergePrivacySettings(workspacePrivacySettings, privacySettingsBySite.get(site.id)),
       } satisfies SargeProject;
     });
     const sharedProjects = sharedSites.map((site) => {
@@ -614,6 +751,7 @@ export const getViewerAccount = async (
         shares: projectSharesBySite.get(site.id) ?? [],
         eventCount24h,
         environments,
+        privacySettings: mergePrivacySettings(workspacePrivacySettings, privacySettingsBySite.get(site.id)),
       } satisfies SargeProject;
     });
 
@@ -630,6 +768,7 @@ export const getViewerAccount = async (
       termsAcceptedVersion: workspace?.termsAcceptedVersion ?? null,
       privacyAcceptedVersion: workspace?.privacyAcceptedVersion ?? null,
       workspaceLegalAcceptanceRequired: requiresLegalAcceptance,
+      privacySettings: workspacePrivacySettings,
       workspaceSetupComplete: Boolean(workspace && !isPlaceholderWorkspace),
       ownedProjects,
       sharedProjects,
@@ -894,6 +1033,284 @@ export const deleteWorkspace = async (
       error: 'Workspace could not be deleted.',
     };
   }
+};
+
+export const loadWorkspacePrivacySettings = async (
+  userId: string,
+  databaseUrl: string | undefined,
+): Promise<SargePrivacySettings> => {
+  if (!databaseUrl) return defaultSargePrivacySettings;
+
+  try {
+    const sql = neon(databaseUrl);
+    const workspace = await getViewerWorkspace(sql, userId);
+    if (!workspace) return defaultSargePrivacySettings;
+
+    const rows = (await sql`
+      SELECT
+        "piiRedactionEnabled",
+        "propertyPolicyMode",
+        "blockedPropertyKeys",
+        "allowedPropertyKeys",
+        "customRedactionKeys",
+        "customRedactionPatterns"
+      FROM "WorkspacePrivacySettings"
+      WHERE "workspaceId" = ${workspace.id}
+      LIMIT 1
+    `) as PrivacySettingsRow[];
+
+    return mapPrivacySettings(rows.at(0));
+  } catch (error) {
+    console.error('Unable to load workspace privacy settings', error);
+    return defaultSargePrivacySettings;
+  }
+};
+
+export const saveWorkspacePrivacySettings = async (
+  userId: string,
+  databaseUrl: string | undefined,
+  input: PrivacySettingsInput,
+): Promise<SavePrivacySettingsResult> => {
+  if (!databaseUrl) return { success: false, error: 'DATABASE_URL is not configured.' };
+
+  try {
+    const sql = neon(databaseUrl);
+    const workspace = await getViewerWorkspace(sql, userId);
+    if (!workspace) return { success: false, error: 'Workspace was not found.' };
+
+    const settings = normalizePrivacySettingsInput(input);
+    await sql`
+      INSERT INTO "WorkspacePrivacySettings" (
+        id,
+        "workspaceId",
+        "piiRedactionEnabled",
+        "propertyPolicyMode",
+        "blockedPropertyKeys",
+        "allowedPropertyKeys",
+        "customRedactionKeys",
+        "customRedactionPatterns"
+      )
+      VALUES (
+        ${`wps_${crypto.randomUUID()}`},
+        ${workspace.id},
+        ${settings.piiRedactionEnabled},
+        ${settings.propertyPolicyMode},
+        ${JSON.stringify(settings.blockedPropertyKeys)}::jsonb,
+        ${JSON.stringify(settings.allowedPropertyKeys)}::jsonb,
+        ${JSON.stringify(settings.customRedactionKeys)}::jsonb,
+        ${JSON.stringify(settings.customRedactionPatterns)}::jsonb
+      )
+      ON CONFLICT ("workspaceId") DO UPDATE SET
+        "piiRedactionEnabled" = EXCLUDED."piiRedactionEnabled",
+        "propertyPolicyMode" = EXCLUDED."propertyPolicyMode",
+        "blockedPropertyKeys" = EXCLUDED."blockedPropertyKeys",
+        "allowedPropertyKeys" = EXCLUDED."allowedPropertyKeys",
+        "customRedactionKeys" = EXCLUDED."customRedactionKeys",
+        "customRedactionPatterns" = EXCLUDED."customRedactionPatterns",
+        "updatedAt" = NOW()
+    `;
+
+    return { success: true, settings };
+  } catch (error) {
+    console.error('Unable to save workspace privacy settings', error);
+    return { success: false, error: 'Workspace privacy settings could not be saved.' };
+  }
+};
+
+export const saveSitePrivacySettings = async (
+  userId: string,
+  databaseUrl: string | undefined,
+  siteId: string,
+  input: PrivacySettingsInput,
+): Promise<SavePrivacySettingsResult> => {
+  if (!databaseUrl) return { success: false, error: 'DATABASE_URL is not configured.' };
+
+  try {
+    const sql = neon(databaseUrl);
+    const site = await getOwnedSiteById(sql, userId, siteId);
+    if (!site) return { success: false, error: 'Project was not found in your workspace.' };
+
+    const settings = normalizePrivacySettingsInput(input);
+    await sql`
+      INSERT INTO "SitePrivacySettings" (
+        id,
+        "siteId",
+        "piiRedactionEnabled",
+        "propertyPolicyMode",
+        "blockedPropertyKeys",
+        "allowedPropertyKeys",
+        "customRedactionKeys",
+        "customRedactionPatterns"
+      )
+      VALUES (
+        ${`sps_${crypto.randomUUID()}`},
+        ${site.id},
+        ${settings.piiRedactionEnabled},
+        ${settings.propertyPolicyMode},
+        ${JSON.stringify(settings.blockedPropertyKeys)}::jsonb,
+        ${JSON.stringify(settings.allowedPropertyKeys)}::jsonb,
+        ${JSON.stringify(settings.customRedactionKeys)}::jsonb,
+        ${JSON.stringify(settings.customRedactionPatterns)}::jsonb
+      )
+      ON CONFLICT ("siteId") DO UPDATE SET
+        "piiRedactionEnabled" = EXCLUDED."piiRedactionEnabled",
+        "propertyPolicyMode" = EXCLUDED."propertyPolicyMode",
+        "blockedPropertyKeys" = EXCLUDED."blockedPropertyKeys",
+        "allowedPropertyKeys" = EXCLUDED."allowedPropertyKeys",
+        "customRedactionKeys" = EXCLUDED."customRedactionKeys",
+        "customRedactionPatterns" = EXCLUDED."customRedactionPatterns",
+        "updatedAt" = NOW()
+    `;
+
+    return { success: true, settings };
+  } catch (error) {
+    console.error('Unable to save site privacy settings', error);
+    return { success: false, error: 'Project privacy settings could not be saved.' };
+  }
+};
+
+export const createDeletionRequest = async (
+  userId: string,
+  databaseUrl: string | undefined,
+  input: { scope: 'workspace' | 'site'; targetSiteId?: string; confirmation: string },
+): Promise<CreateDeletionRequestResult> => {
+  if (!databaseUrl) return { success: false, error: 'DATABASE_URL is not configured.' };
+  if (input.confirmation !== 'DELETE') return { success: false, error: 'Type DELETE to confirm this deletion request.' };
+
+  try {
+    const sql = neon(databaseUrl);
+    const workspace = await getViewerWorkspace(sql, userId);
+    if (!workspace) return { success: false, error: 'Workspace was not found.' };
+
+    const targetSite = input.scope === 'site'
+      ? await getOwnedSiteById(sql, userId, input.targetSiteId ?? '')
+      : null;
+    if (input.scope === 'site' && !targetSite) {
+      return { success: false, error: 'Project was not found in your workspace.' };
+    }
+
+    const rows = (await sql`
+      INSERT INTO "DeletionRequest" (
+        id,
+        scope,
+        "targetWorkspaceId",
+        "targetSiteId",
+        "requestedByUserId",
+        status
+      )
+      VALUES (
+        ${`del_${crypto.randomUUID()}`},
+        ${input.scope},
+        ${workspace.id},
+        ${targetSite?.id ?? null},
+        ${userId},
+        'pending'
+      )
+      RETURNING id, scope, status, "targetWorkspaceId", "targetSiteId", "createdAt"
+    `) as DeletionRequestRow[];
+
+    return { success: true, request: mapDeletionRequest(rows[0]) };
+  } catch (error) {
+    console.error('Unable to create deletion request', error);
+    return { success: false, error: 'Deletion request could not be created.' };
+  }
+};
+
+export const processPendingDeletionRequests = async (
+  databaseUrl: string | undefined,
+  limit = 10,
+): Promise<ProcessDeletionRequestsResult> => {
+  if (!databaseUrl) return { processed: 0, failed: 0 };
+
+  const sql = neon(databaseUrl);
+  const requests = (await sql`
+    SELECT id, scope, status, "targetWorkspaceId", "targetSiteId", "createdAt"
+    FROM "DeletionRequest"
+    WHERE status = 'pending'
+    ORDER BY "createdAt" ASC
+    LIMIT ${limit}
+  `) as DeletionRequestRow[];
+
+  let processed = 0;
+  let failed = 0;
+
+  for (const request of requests) {
+    try {
+      await sql`UPDATE "DeletionRequest" SET status = 'processing', "startedAt" = NOW(), "updatedAt" = NOW() WHERE id = ${request.id}`;
+      if (request.scope === 'site' && request.targetSiteId) {
+        await deleteSiteData(sql, request.targetSiteId);
+      } else if (request.scope === 'workspace' && request.targetWorkspaceId) {
+        await deleteWorkspaceData(sql, request.targetWorkspaceId);
+      } else {
+        throw new Error('Deletion request target is missing.');
+      }
+      await sql`UPDATE "DeletionRequest" SET status = 'completed', "completedAt" = NOW(), "updatedAt" = NOW() WHERE id = ${request.id}`;
+      processed += 1;
+    } catch (error) {
+      failed += 1;
+      await sql`
+        UPDATE "DeletionRequest"
+        SET status = 'failed', error = ${error instanceof Error ? error.message : 'Deletion failed'}, "updatedAt" = NOW()
+        WHERE id = ${request.id}
+      `;
+    }
+  }
+
+  return { processed, failed };
+};
+
+const deleteSiteData = async (sql: SqlClient, siteId: string) => {
+  const environmentRows = (await sql`
+    SELECT id
+    FROM "SiteEnvironment"
+    WHERE "siteId" = ${siteId}
+  `) as { id: string }[];
+  const environmentIds = environmentRows.map((row) => row.id);
+
+  if (environmentIds.length > 0) {
+    await sql`DELETE FROM "PublicVerificationToken" WHERE "siteEnvironmentId" = ANY(${environmentIds})`;
+    await sql`DELETE FROM "NotificationDelivery" WHERE "siteEnvironmentId" = ANY(${environmentIds})`;
+  }
+
+  await sql`DELETE FROM "NotificationDelivery" WHERE "siteId" = ${siteId}`;
+  await sql`DELETE FROM "DiagnosticFinding" WHERE "siteId" = ${siteId}`;
+  await sql`DELETE FROM "DiagnosticRun" WHERE "siteId" = ${siteId}`;
+  await sql`DELETE FROM "WebhookEndpoint" WHERE "siteId" = ${siteId}`;
+  await sql`DELETE FROM "Event" WHERE "siteId" = ${siteId}`;
+  await sql`DELETE FROM "ProjectShare" WHERE "siteId" = ${siteId}`;
+  await sql`DELETE FROM "SitePrivacySettings" WHERE "siteId" = ${siteId}`;
+  await sql`DELETE FROM "Site" WHERE id = ${siteId}`;
+};
+
+const deleteWorkspaceData = async (sql: SqlClient, workspaceId: string) => {
+  const sites = (await sql`
+    SELECT id
+    FROM "Site"
+    WHERE "workspaceId" = ${workspaceId}
+  `) as { id: string }[];
+
+  for (const site of sites) {
+    await deleteSiteData(sql, site.id);
+  }
+
+  await sql`DELETE FROM "NotificationPreference" WHERE "workspaceId" = ${workspaceId}`;
+  await sql`DELETE FROM "NotificationDelivery" WHERE "workspaceId" = ${workspaceId}`;
+  await sql`DELETE FROM "WorkspacePrivacySettings" WHERE "workspaceId" = ${workspaceId}`;
+  await sql`DELETE FROM "Workspace" WHERE id = ${workspaceId}`;
+};
+
+const mapDeletionRequest = (row: DeletionRequestRow): DeletionRequestSummary => ({
+  id: row.id,
+  scope: row.scope === 'site' ? 'site' : 'workspace',
+  status: normalizeDeletionStatus(row.status),
+  targetWorkspaceId: row.targetWorkspaceId,
+  targetSiteId: row.targetSiteId,
+  createdAt: row.createdAt.toISOString(),
+});
+
+const normalizeDeletionStatus = (status: string): DeletionRequestSummary['status'] => {
+  if (status === 'processing' || status === 'completed' || status === 'failed') return status;
+  return 'pending';
 };
 
 export const createProject = async (
@@ -1547,6 +1964,7 @@ const getFallbackAccount = (role: AccountRole): SargeAccount => {
     termsAcceptedVersion: CURRENT_LEGAL_VERSION,
     privacyAcceptedVersion: CURRENT_PRIVACY_VERSION,
     workspaceLegalAcceptanceRequired: false,
+    privacySettings: defaultSargePrivacySettings,
     workspaceSetupComplete: true,
     ownedProjects,
     sharedProjects: [],
@@ -1568,6 +1986,7 @@ const getSetupAccount = (role: AccountRole): SargeAccount => ({
   termsAcceptedVersion: null,
   privacyAcceptedVersion: null,
   workspaceLegalAcceptanceRequired: false,
+  privacySettings: defaultSargePrivacySettings,
   workspaceSetupComplete: false,
   ownedProjects: [],
   sharedProjects: [],
@@ -1763,6 +2182,7 @@ const buildFallbackProject = (input: {
     failedEvents24h: input.failedEvents24h,
     lastEventAt: input.lastEventAt,
     environments,
+    privacySettings: defaultSargePrivacySettings,
   };
 };
 
@@ -2026,4 +2446,26 @@ interface ProjectShareRow {
   acceptedUserId: string | null;
   createdAt: Date;
   acceptedAt: Date | null;
+}
+
+interface PrivacySettingsRow {
+  piiRedactionEnabled: boolean;
+  propertyPolicyMode: string;
+  blockedPropertyKeys: unknown;
+  allowedPropertyKeys: unknown;
+  customRedactionKeys: unknown;
+  customRedactionPatterns: unknown;
+}
+
+interface SitePrivacySettingsRow extends PrivacySettingsRow {
+  siteId: string;
+}
+
+interface DeletionRequestRow {
+  id: string;
+  scope: string;
+  status: string;
+  targetWorkspaceId: string | null;
+  targetSiteId: string | null;
+  createdAt: Date;
 }

@@ -1,16 +1,10 @@
 ---
-import { ArrowRight, BookOpen, Radio, Server, TerminalSquare } from "lucide-react";
+import { ArrowRight, BookOpen, Radio, TerminalSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import SiteLayout from "@/layouts/SiteLayout.astro";
 
 const docs = [
-  {
-    title: "Self-hosting",
-    description: "Run the event API, database, and pixel delivery in your own cloud or VPS.",
-    href: "/docs/self-hosting",
-    icon: Server,
-  },
   {
     title: "Hosted install",
     description: "Install the hosted Sarge pixel and wire ecommerce events into an existing site.",
@@ -35,9 +29,9 @@ const docs = [
 <SiteLayout title="Docs | Sarge">
   <section class="mx-auto max-w-6xl px-4 py-14 md:px-6">
     <Badge variant="outline">Docs</Badge>
-    <h1 class="mt-4 max-w-3xl text-4xl font-semibold md:text-6xl">Install, host, and operate Sarge.</h1>
+    <h1 class="mt-4 max-w-3xl text-4xl font-semibold md:text-6xl">Install and operate Sarge.</h1>
     <p class="mt-4 max-w-2xl text-sm leading-6 text-muted-foreground">
-      Start with the hosted pixel for speed, or run the API and database yourself when your team needs full control.
+      Start with the hosted pixel, wire your event plan, and use Sarge to verify tracking before ad platforms drift.
     </p>
 
     <div class="mt-8 grid gap-3 md:grid-cols-2">

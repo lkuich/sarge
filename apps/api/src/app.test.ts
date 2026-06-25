@@ -97,6 +97,51 @@ describe("Sarge API v2", () => {
     });
   });
 
+  it("sanitizes browser event properties using site privacy settings before storage", async () => {
+    const { events, repository } = createMemoryRepository();
+    const privacyRepository: EventRepository = {
+      ...repository,
+      async findSiteById(siteId) {
+        const site = await repository.findSiteById(siteId);
+        return site
+          ? {
+              ...site,
+              privacySettings: {
+                piiRedactionEnabled: true,
+                propertyPolicyMode: "blocklist",
+                blockedPropertyKeys: ["internal_note"]
+              }
+            }
+          : null;
+      }
+    };
+    const app = createApp({ repository: privacyRepository });
+
+    const response = await request(app)
+      .post("/v2/events")
+      .send({
+        siteId: "site_123",
+        name: "Purchase",
+        occurredAt: "2026-06-19T12:00:00.000Z",
+        sessionId: "sess_123",
+        userId: "user_123",
+        properties: {
+          email: "buyer@example.com",
+          internal_note: "do not store",
+          value: 129.99
+        }
+      });
+
+    expect(response.status).toBe(202);
+    expect(events[0]).toMatchObject({
+      properties: {
+        email: "[REDACTED]",
+        value: 129.99
+      }
+    });
+    expect((events[0] as { properties: Record<string, unknown> }).properties.internal_note).toBeUndefined();
+  });
+
   it("rejects malformed JSON event payloads", async () => {
     const { events, repository } = createMemoryRepository();
     const app = createApp({ repository });

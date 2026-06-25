@@ -1,17 +1,64 @@
 ---
 import { env } from "cloudflare:workers";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import AppLayout from "@/layouts/AppLayout.astro";
-import { getViewerAccount } from "@/lib/sarge-demo";
+import { createDeletionRequest, getViewerAccount, saveWorkspacePrivacySettings } from "@/lib/sarge-demo";
 
 const { userId } = Astro.locals.auth();
 if (!userId) return Astro.redirect("/sign-in");
 const currentUser = await Astro.locals.currentUser();
 const viewerEmails = currentUser?.emailAddresses.map((email) => email.emailAddress).filter(Boolean) ?? [];
 
-const account = await getViewerAccount(userId, env.DATABASE_URL, { viewerEmails });
+let account = await getViewerAccount(userId, env.DATABASE_URL, { viewerEmails });
+let privacySettingsError = "";
+let privacySettingsSuccess = "";
+let deletionRequestError = "";
+let deletionRequestSuccess = "";
+
+if (Astro.request.method === "POST") {
+  const formData = await Astro.request.formData();
+  const intent = String(formData.get("intent") ?? "");
+
+  if (intent === "save-workspace-privacy-settings") {
+    const result = await saveWorkspacePrivacySettings(userId, env.DATABASE_URL, {
+      piiRedactionEnabled: formData.get("piiRedactionEnabled") === "on",
+      propertyPolicyMode: String(formData.get("propertyPolicyMode") ?? "blocklist"),
+      blockedPropertyKeys: String(formData.get("blockedPropertyKeys") ?? ""),
+      allowedPropertyKeys: String(formData.get("allowedPropertyKeys") ?? ""),
+      customRedactionKeys: String(formData.get("customRedactionKeys") ?? ""),
+      customRedactionPatterns: String(formData.get("customRedactionPatterns") ?? ""),
+    });
+
+    if (result.success) {
+      privacySettingsSuccess = "Workspace data controls were saved.";
+      account.privacySettings = result.settings;
+    } else {
+      privacySettingsError = result.error;
+    }
+  }
+
+  if (intent === "request-workspace-deletion") {
+    const result = await createDeletionRequest(userId, env.DATABASE_URL, {
+      scope: "workspace",
+      confirmation: String(formData.get("deleteConfirmation") ?? ""),
+    });
+
+    if (result.success) deletionRequestSuccess = "Workspace deletion request was queued.";
+    else deletionRequestError = result.error;
+  }
+
+  account = await getViewerAccount(userId, env.DATABASE_URL, { viewerEmails });
+}
+
+const workspaceSettings = account.privacySettings;
+const canManageWorkspaceData = account.workspaceSetupComplete && account.id !== "shared";
+const formatSettingsList = (values: string[]) => values.join(", ");
 ---
 
 <AppLayout
@@ -22,6 +69,97 @@ const account = await getViewerAccount(userId, env.DATABASE_URL, { viewerEmails 
   active="account"
   breadcrumbs={[{ label: "Account" }]}
 >
+  {
+    canManageWorkspaceData && (
+      <section class="mb-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]" data-workspace-data-controls>
+        <Card>
+          <CardHeader>
+            <CardTitle>Data controls</CardTitle>
+            <p class="text-sm text-muted-foreground">Default hosted ingestion controls for every project in this workspace.</p>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            {privacySettingsError && (
+              <Alert variant="destructive">
+                <AlertTitle>Data controls were not saved</AlertTitle>
+                <AlertDescription>{privacySettingsError}</AlertDescription>
+              </Alert>
+            )}
+            {privacySettingsSuccess && (
+              <Alert>
+                <AlertTitle>Data controls saved</AlertTitle>
+                <AlertDescription>{privacySettingsSuccess}</AlertDescription>
+              </Alert>
+            )}
+            <form method="post" class="grid gap-4">
+              <input type="hidden" name="intent" value="save-workspace-privacy-settings" />
+              <label class="flex items-center gap-3 rounded-md border bg-muted/30 p-3 text-sm">
+                <input class="size-4 accent-primary" type="checkbox" name="piiRedactionEnabled" checked={workspaceSettings.piiRedactionEnabled} />
+                <span><span class="font-medium">PII redaction</span><span class="block text-xs text-muted-foreground">Redact common emails, phones, secrets, addresses, IPs, and card-like values before storage.</span></span>
+              </label>
+              <div class="grid gap-2">
+                <Label htmlFor="workspacePropertyPolicyMode">Property policy</Label>
+                <select id="workspacePropertyPolicyMode" name="propertyPolicyMode" class="h-9 rounded-md border bg-background px-3 text-sm">
+                  <option value="blocklist" selected={workspaceSettings.propertyPolicyMode === "blocklist"}>Blocklist default</option>
+                  <option value="allowlist" selected={workspaceSettings.propertyPolicyMode === "allowlist"}>Allowlist mode</option>
+                </select>
+              </div>
+              <div class="grid gap-2 md:grid-cols-2">
+                <div class="grid gap-2">
+                  <Label htmlFor="workspaceBlockedPropertyKeys">Blocked property keys</Label>
+                  <Input id="workspaceBlockedPropertyKeys" name="blockedPropertyKeys" value={formatSettingsList(workspaceSettings.blockedPropertyKeys)} placeholder="email, phone, internal_note" />
+                </div>
+                <div class="grid gap-2">
+                  <Label htmlFor="workspaceAllowedPropertyKeys">Allowed property keys</Label>
+                  <Input id="workspaceAllowedPropertyKeys" name="allowedPropertyKeys" value={formatSettingsList(workspaceSettings.allowedPropertyKeys)} placeholder="order_id, value, currency" />
+                </div>
+                <div class="grid gap-2">
+                  <Label htmlFor="workspaceCustomRedactionKeys">Custom redaction keys</Label>
+                  <Input id="workspaceCustomRedactionKeys" name="customRedactionKeys" value={formatSettingsList(workspaceSettings.customRedactionKeys)} placeholder="coupon_code, customer_email" />
+                </div>
+                <div class="grid gap-2">
+                  <Label htmlFor="workspaceCustomRedactionPatterns">Custom redaction patterns</Label>
+                  <Input id="workspaceCustomRedactionPatterns" name="customRedactionPatterns" value={formatSettingsList(workspaceSettings.customRedactionPatterns)} placeholder="vip-[0-9]+" />
+                </div>
+              </div>
+              <div>
+                <Button type="submit">Save workspace controls</Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Request workspace deletion</CardTitle>
+            <p class="text-sm text-muted-foreground">Queues deletion of workspace projects, events, diagnostics, webhooks, notifications, and settings.</p>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            {deletionRequestError && (
+              <Alert variant="destructive">
+                <AlertTitle>Deletion was not queued</AlertTitle>
+                <AlertDescription>{deletionRequestError}</AlertDescription>
+              </Alert>
+            )}
+            {deletionRequestSuccess && (
+              <Alert>
+                <AlertTitle>Deletion queued</AlertTitle>
+                <AlertDescription>{deletionRequestSuccess}</AlertDescription>
+              </Alert>
+            )}
+            <form method="post" class="grid gap-3">
+              <input type="hidden" name="intent" value="request-workspace-deletion" />
+              <div class="grid gap-2">
+                <Label htmlFor="workspaceDeleteConfirmation">Type DELETE to confirm</Label>
+                <Input id="workspaceDeleteConfirmation" name="deleteConfirmation" autocomplete="off" />
+              </div>
+              <Button type="submit" variant="outline">Request workspace deletion</Button>
+            </form>
+          </CardContent>
+        </Card>
+      </section>
+    )
+  }
+
   <Card>
     <CardHeader>
       <CardTitle>Members</CardTitle>

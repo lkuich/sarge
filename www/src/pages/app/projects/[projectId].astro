@@ -233,9 +233,14 @@ Then emit window.sarge("track", "event.name", properties) for page, product, car
 const endpointHealthUrl = selectedEnvironment.endpointHealthUrl;
 const pixelUrl = selectedEnvironment.pixelUrl;
 const customDomain = project.customDomain;
-const displayedTrackingDomain = customDomain;
-const customDomainPixelUrl = customDomain ? `https://${customDomain}/pixel.js?env=${encodeURIComponent(selectedEnvironment.id)}` : "";
-const customDomainPixelDownloadUrl = customDomainPixelUrl ? buildPixelDownloadUrl(customDomainPixelUrl) : "";
+const trackingDomain = resolveSargeTrackingDomain(customDomain);
+const displayedTrackingDomain = trackingDomain;
+const customDomainHeadingLink = {
+  label: customDomain,
+  href: `https://${displayedTrackingDomain}`,
+};
+const customDomainPixelUrl = `https://${trackingDomain}/pixel.js?env=${encodeURIComponent(selectedEnvironment.id)}`;
+const customDomainPixelDownloadUrl = buildCustomPixelDownloadUrl(pixelUrl, trackingDomain);
 const customDomainSnippet = `<script>
   window._sarge = { queue: [["track", "page.view"]] };
 </script>
@@ -412,10 +417,16 @@ function hashId(value: string) {
   return (hash >>> 0).toString(36).padStart(6, "0");
 }
 
-function buildPixelDownloadUrl(value: string) {
+function buildCustomPixelDownloadUrl(value: string, endpointHost: string) {
   const url = new URL(value);
   url.searchParams.set("download", "1");
+  url.searchParams.set("endpointHost", endpointHost);
   return url.toString();
+}
+
+function resolveSargeTrackingDomain(value: string) {
+  const hostname = value.toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/^www\./, "");
+  return hostname.startsWith("sarge.") ? hostname : `sarge.${hostname}`;
 }
 ---
 
@@ -424,6 +435,7 @@ function buildPixelDownloadUrl(value: string) {
   title={`${project.name} | Sarge`}
   eyebrow="Project"
   heading={project.name}
+  headingLink={customDomainHeadingLink}
   description="Copy install snippets, check project health, and watch for media/debug events."
   active="overview"
   breadcrumbs={[
@@ -621,11 +633,7 @@ function buildPixelDownloadUrl(value: string) {
             <div class="grid gap-3 md:grid-cols-2">
               <div class="rounded-md border bg-background p-3">
                 <p class="text-xs font-medium text-muted-foreground">DNS record</p>
-                <p class="mt-2 break-all font-mono text-xs">CNAME {customDomain} -&gt; {hostedEndpointHost}</p>
-              </div>
-              <div class="rounded-md border bg-background p-3">
-                <p class="text-xs font-medium text-muted-foreground">Mapped environment</p>
-                <p class="mt-2 break-all font-mono text-xs">{selectedEnvironment.id}</p>
+                <p class="mt-2 break-all font-mono text-xs">CNAME {trackingDomain} -&gt; {hostedEndpointHost}</p>
               </div>
             </div>
             <div>

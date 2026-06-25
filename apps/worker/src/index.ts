@@ -54,7 +54,7 @@ const handleRequest = async (request: Request, _env: WorkerEnv, store: EventStor
       return json({ success: false, error: "Pixel disabled" }, 403);
     }
 
-    return createPixelResponse(site, url.host, { download: isPixelDownloadRequest(url) });
+    return createPixelResponse(site, resolvePixelEndpointHost(url, url.host), { download: isPixelDownloadRequest(url) });
   }
 
   if (isSharedHost && url.pathname === "/v2/events" && request.method === "POST") {
@@ -212,6 +212,23 @@ const handlePostbackEvent = async (request: Request, url: URL, store: EventStore
 };
 
 const isPixelDownloadRequest = (url: URL) => url.searchParams.get("download") === "1";
+
+const resolvePixelEndpointHost = (url: URL, fallbackHost: string) => {
+  if (!isPixelDownloadRequest(url)) return fallbackHost;
+
+  const endpointHost = url.searchParams.get("endpointHost")?.trim().toLowerCase();
+  if (!endpointHost) return fallbackHost;
+
+  const hostname = endpointHost.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  const labels = hostname.split(".");
+  const isValidLabel = (label: string) =>
+    label.length > 0 &&
+    label.length <= 63 &&
+    /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label);
+
+  if (labels.length < 2 || hostname.length > 253 || !labels.every(isValidLabel)) return fallbackHost;
+  return hostname;
+};
 
 const handleIngestError = (error: unknown) => {
   if (error instanceof ZodError || error instanceof SyntaxError) {

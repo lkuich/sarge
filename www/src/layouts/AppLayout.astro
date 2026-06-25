@@ -1,6 +1,6 @@
 ---
 import { UserButton } from "@clerk/astro/components";
-import { ChevronRight, Home } from "lucide-react";
+import { ChevronRight, ExternalLink, Home } from "lucide-react";
 import type { SargeAccount } from "@/lib/sarge-demo";
 import ThemeToggle from "@/components/ThemeToggle";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
@@ -11,17 +11,23 @@ interface BreadcrumbItem {
   href?: string;
 }
 
+interface HeadingLink {
+  label: string;
+  href: string;
+}
+
 interface Props {
   account: SargeAccount;
   title?: string;
   eyebrow?: string;
   heading: string;
+  headingLink?: HeadingLink;
   description?: string;
   active: "overview" | "account" | "notifications" | "billing";
   breadcrumbs?: BreadcrumbItem[];
 }
 
-const { account, title = "Sarge", eyebrow = account.name, heading, description, active, breadcrumbs = [] } = Astro.props;
+const { account, title = "Sarge", eyebrow = account.name, heading, headingLink, description, active, breadcrumbs = [] } = Astro.props;
 
 ---
 
@@ -114,7 +120,21 @@ const { account, title = "Sarge", eyebrow = account.name, heading, description, 
             )
           }
           <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">{eyebrow}</p>
-          <h1 class="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">{heading}</h1>
+          <h1 class="mt-2 flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 text-3xl font-semibold tracking-tight md:text-4xl">
+            <span class="min-w-0 break-words">{heading}</span>
+            {headingLink && (
+              <a
+                class="inline-flex max-w-full items-center gap-1 truncate font-mono text-sm font-medium text-muted-foreground underline-offset-4 transition hover:text-foreground hover:underline md:text-base"
+                href={headingLink.href}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={`Open ${headingLink.label}`}
+              >
+                <span class="truncate">{headingLink.label}</span>
+                <ExternalLink className="size-3.5 shrink-0" />
+              </a>
+            )}
+          </h1>
           {description && <p class="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p>}
         </header>
 

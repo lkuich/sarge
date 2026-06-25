@@ -20,13 +20,15 @@ describe("project detail install panel", () => {
     const demoData = readSource("../../lib/sarge-demo.ts");
     const schema = readSource("../../../../apps/api/prisma/schema.prisma");
 
-    expect(projectDetail).toContain("const customDomainPixelDownloadUrl = customDomainPixelUrl ? buildPixelDownloadUrl(customDomainPixelUrl) : \"\";");
+    expect(projectDetail).toContain("const trackingDomain = resolveSargeTrackingDomain(customDomain);");
+    expect(projectDetail).toContain("const customDomainPixelDownloadUrl = buildCustomPixelDownloadUrl(pixelUrl, trackingDomain);");
     expect(projectDetail).toContain("const customDomain = project.customDomain;");
-    expect(projectDetail).toContain("const displayedTrackingDomain = customDomain;");
-    expect(projectDetail).toContain("const customDomainPixelUrl = customDomain ? `https://${customDomain}/pixel.js?env=${encodeURIComponent(selectedEnvironment.id)}` : \"\";");
+    expect(projectDetail).toContain("const displayedTrackingDomain = trackingDomain;");
+    expect(projectDetail).toContain("const customDomainPixelUrl = `https://${trackingDomain}/pixel.js?env=${encodeURIComponent(selectedEnvironment.id)}`;");
     expect(projectDetail).toContain("data-custom-domain-guidance");
     expect(projectDetail).toContain("Sarge tracking subdomain");
     expect(projectDetail).toContain("CNAME");
+    expect(projectDetail).not.toContain("Mapped environment");
     expect(projectDetail).toContain("CORS-sensitive");
     expect(projectDetail).toContain("data-download-custom-domain-pixel-script");
     expect(projectDetail).toContain('download="sarge-custom-domain-pixel.min.js"');
@@ -40,6 +42,20 @@ describe("project detail install panel", () => {
     expect(demoData).toContain("buildSargeTrackingDomain(siteDomain)");
     expect(schema).toContain("customDomain          String              @unique");
     expect(schema).not.toContain("slug                  String");
+  });
+
+  it("links the custom domain from the project title", () => {
+    const projectDetail = readSource("./projects/[projectId].astro");
+    const appLayout = readSource("../../layouts/AppLayout.astro");
+
+    expect(projectDetail).toContain("const customDomainHeadingLink = {");
+    expect(projectDetail).toContain("label: customDomain,");
+    expect(projectDetail).toContain("href: `https://${displayedTrackingDomain}`,");
+    expect(projectDetail).toContain("headingLink={customDomainHeadingLink}");
+    expect(appLayout).toContain("headingLink?: HeadingLink;");
+    expect(appLayout).toContain("{headingLink && (");
+    expect(appLayout).toContain('href={headingLink.href}');
+    expect(appLayout).toContain("{headingLink.label}");
   });
 
   it("uses site ids for project sharing instead of project slugs", () => {

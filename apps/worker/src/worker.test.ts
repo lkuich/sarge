@@ -140,7 +140,7 @@ describe("Cloudflare Worker hosted API", () => {
     const handler = createWorkerHandler({ store });
 
     const response = await handler.fetch(
-      new Request("https://sarge.events/pixel.js?env=env_shared_production&download=1"),
+      new Request("https://sarge.events/pixel.js?env=env_shared_production&download=1&endpointHost=sarge.example.com"),
       createEnv()
     );
     const body = await response.text();
@@ -148,6 +148,7 @@ describe("Cloudflare Worker hosted API", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-disposition")).toBe('attachment; filename="sarge-pixel.min.js"');
     expect(body).toContain('"siteId":"env_shared_production"');
+    expect(body).toContain('"endpoint":"https://sarge.example.com"');
     expect(body).toContain("SargePixel");
   });
 

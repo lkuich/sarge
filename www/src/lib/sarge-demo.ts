@@ -897,30 +897,85 @@ export const getProjectEnvironmentEvents = async (
     const limit = Math.min(Math.max(query.limit, 1), 80);
     const startAt = normalizeEventBoundary(query.startAt);
     const endAt = normalizeEventBoundary(query.endAt);
+    const hasTimeWindow = Boolean(startAt || endAt);
+
+    if (!hasTimeWindow) {
+      const events = (await sql`
+        SELECT
+          e.id,
+          e."siteId",
+          e."siteEnvironmentId",
+          e.name,
+          e."occurredAt",
+          e."receivedAt",
+          e."sessionId",
+          e."userId",
+          e.url,
+          e.referrer,
+          e.ref,
+          e.affiliate,
+          e.title,
+          e.properties
+        FROM "Event" e
+        JOIN "Site" s ON s.id = e."siteId"
+        JOIN "Workspace" w ON w.id = s."workspaceId"
+        WHERE e."siteEnvironmentId" = ${environmentId}
+          AND ${sql.unsafe(eventRetentionFilterSql)}
+        ORDER BY e."occurredAt" DESC
+        LIMIT ${limit}
+      `) as EventRow[];
+
+      return events.map(mapEvent);
+    }
+
     const events = (await sql`
-      SELECT
-        e.id,
-        e."siteId",
-        e."siteEnvironmentId",
-        e.name,
-        e."occurredAt",
-        e."receivedAt",
-        e."sessionId",
-        e."userId",
-        e.url,
-        e.referrer,
-        e.ref,
-        e.affiliate,
-        e.title,
-        e.properties
-      FROM "Event" e
-      JOIN "Site" s ON s.id = e."siteId"
-      JOIN "Workspace" w ON w.id = s."workspaceId"
-      WHERE e."siteEnvironmentId" = ${environmentId}
-        AND ${sql.unsafe(eventRetentionFilterSql)}
-        AND (${startAt}::timestamptz IS NULL OR e."occurredAt" >= ${startAt}::timestamptz)
-        AND (${endAt}::timestamptz IS NULL OR e."occurredAt" <= ${endAt}::timestamptz)
-      ORDER BY e."occurredAt" DESC
+      WITH matching_events AS (
+        SELECT
+          e.id,
+          e."siteId",
+          e."siteEnvironmentId",
+          e.name,
+          e."occurredAt",
+          e."receivedAt",
+          e."sessionId",
+          e."userId",
+          e.url,
+          e.referrer,
+          e.ref,
+          e.affiliate,
+          e.title,
+          e.properties,
+          NTILE(${limit}) OVER (ORDER BY e."occurredAt" ASC) AS sample_bucket
+        FROM "Event" e
+        JOIN "Site" s ON s.id = e."siteId"
+        JOIN "Workspace" w ON w.id = s."workspaceId"
+        WHERE e."siteEnvironmentId" = ${environmentId}
+          AND ${sql.unsafe(eventRetentionFilterSql)}
+          AND (${startAt}::timestamptz IS NULL OR e."occurredAt" >= ${startAt}::timestamptz)
+          AND (${endAt}::timestamptz IS NULL OR e."occurredAt" <= ${endAt}::timestamptz)
+      ),
+      sampled_events AS (
+        SELECT DISTINCT ON (sample_bucket)
+          id,
+          "siteId",
+          "siteEnvironmentId",
+          name,
+          "occurredAt",
+          "receivedAt",
+          "sessionId",
+          "userId",
+          url,
+          referrer,
+          ref,
+          affiliate,
+          title,
+          properties
+        FROM matching_events
+        ORDER BY sample_bucket ASC, "occurredAt" DESC
+      )
+      SELECT *
+      FROM sampled_events
+      ORDER BY "occurredAt" DESC
       LIMIT ${limit}
     `) as EventRow[];
 

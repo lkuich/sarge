@@ -78,7 +78,7 @@ export const planDefinitions: PlanDefinition[] = [
   {
     id: "starter",
     name: "Starter",
-    monthlyPriceUsd: 19,
+    monthlyPriceUsd: 35,
     description: "Small-team tracking validation with basic server and partner callbacks.",
     limits: {
       projects: 3,
@@ -104,7 +104,7 @@ export const planDefinitions: PlanDefinition[] = [
   {
     id: "growth",
     name: "Growth",
-    monthlyPriceUsd: 99,
+    monthlyPriceUsd: 149,
     description: "Production diagnostics, exports, and configurable attribution for ecommerce teams.",
     limits: {
       projects: 10,

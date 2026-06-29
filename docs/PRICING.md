@@ -7,8 +7,8 @@ Sarge is priced as tracking assurance and attribution debugging, not generic pro
 | Plan | Price | Primary limits |
 | --- | ---: | --- |
 | Free | $0/mo | 1 project, 1 shared user/project, 50k events/month, 7-day retention |
-| Starter | $19/mo | 3 projects, 3 shared users/project, 250k events/month, 30-day retention |
-| Growth | $99/mo | 10 projects, 10 shared users/project, 2M events/month, 90-day retention |
+| Starter | $35/mo | 3 projects, 3 shared users/project, 250k events/month, 30-day retention |
+| Growth | $149/mo | 10 projects, 10 shared users/project, 2M events/month, 90-day retention |
 | Scale | Contact us | unlimited shared users/project, custom volume, dedicated infrastructure, SSO, audit logs, SLA |
 
 ## Launch Discount

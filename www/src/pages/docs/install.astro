@@ -1,0 +1,266 @@
+---
+import { ArrowRight, BadgeCheck, Bot, Cable, Eye, Link2, Route, SatelliteDish, ServerCog, ShoppingCart, TerminalSquare } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import SiteLayout from "@/layouts/SiteLayout.astro";
+
+const snippet = `<script>
+  window._sarge = { queue: [["track", "page.view"]] };
+</script>
+<script async src="https://track.sargetrack.app/pixel.js?env={siteEnvironmentId}"></script>`;
+
+const productEvent = `window.sarge("track", "product.viewed", {
+  product_id: "field-flask",
+  product_name: "Field Flask",
+  price: 42,
+  currency: "USD"
+});`;
+
+const cartEvent = `window.sarge("track", "cart.added", {
+  product_id: "field-flask",
+  product_name: "Field Flask",
+  price: 42,
+  currency: "USD",
+  cart_size: 1
+});`;
+
+const purchaseEvent = `window.sarge("track", "purchase.completed", {
+  order_id: "order_123",
+  value: 84,
+  currency: "USD",
+  item_count: 2
+});`;
+
+const routeChange = `window.sarge("track", "page.view", {
+  path: window.location.pathname,
+  title: document.title
+});`;
+
+const attributionUrl = `https://shop.example.com/?sarge_ref=summer-campaign&sarge_aff=partner-42`;
+
+const serverEvent = `curl -X POST "https://track.sargetrack.app/v2/server/events" \\
+  -H "authorization: Bearer {serverEventSecret}" \\
+  -H "content-type: application/json" \\
+  -d '{
+    "siteId": "{siteEnvironmentId}",
+    "name": "purchase.completed",
+    "eventId": "order_123",
+    "userId": "customer_123",
+    "properties": {
+      "order_id": "order_123",
+      "value": 129.99,
+      "currency": "USD"
+    }
+  }'`;
+
+const postbackUrl = `https://track.sargetrack.app/v2/postback/{siteEnvironmentId}/{postbackToken}?event=affiliate.conversion&click_id=click_123&order_id=order_123&value=42.50&currency=USD&aff=partner-42`;
+
+const verifyUrl = `https://sargetrack.app/verify/{siteEnvironmentId}?key={temporaryVerificationKey}`;
+
+const eventRows = [
+  ["page.view", "Page load and SPA route changes.", "path, title"],
+  ["product.viewed", "Product detail, quick view, or product inspection.", "product_id"],
+  ["cart.added", "A product is successfully added to cart.", "product_id, price"],
+  ["checkout.started", "Checkout starts.", "value, currency"],
+  ["purchase.completed", "Payment succeeds and an order is created.", "order_id, value, currency"],
+];
+
+const troubleshooting = [
+  ["No events appear", "Confirm the snippet came from the same environment tab you are testing."],
+  ["Script 404s", "Open the pixel URL from the project page and confirm it loads."],
+  ["SPA page views missing", "Emit page.view when the client-side route changes."],
+  ["Other pixels are missing", "Load Sarge before the fbq, gtag, or dataLayer call you expect to observe."],
+];
+---
+
+<SiteLayout title="Hosted install | Sarge Docs">
+  <section class="mx-auto max-w-6xl px-4 py-14 md:px-6">
+    <a class="inline-flex items-center text-sm text-muted-foreground hover:text-foreground" href="/docs">
+      <ArrowRight className="mr-1 size-3.5 rotate-180" /> Docs
+    </a>
+
+    <div class="mt-8 max-w-3xl">
+      <Badge variant="outline">Hosted install</Badge>
+      <h1 class="mt-4 text-3xl font-semibold leading-tight sm:text-4xl md:text-6xl">Install the Sarge pixel and prove every conversion path.</h1>
+      <p class="mt-4 text-sm leading-6 text-muted-foreground">
+        Add one hosted script, emit stable ecommerce events, keep existing media pixels in place, and verify the event stream from the matching Production, Staging, or Development environment.
+      </p>
+    </div>
+
+    <div class="mt-8 grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div class="grid min-w-0 gap-4">
+        <section class="min-w-0 rounded-lg border bg-card p-4 sm:p-5">
+          <div class="flex items-center gap-2">
+            <TerminalSquare className="size-5 text-primary" />
+            <h2 class="text-xl font-semibold">Hosted pixel snippet</h2>
+          </div>
+          <p class="mt-2 text-sm leading-6 text-muted-foreground">
+            Use the exact snippet from the selected environment tab in the Sarge portal. The browser/API payload field is still called `siteId`, but the value is the selected environment ID.
+          </p>
+          <pre class="mt-4 max-w-full overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{snippet}</code></pre>
+          <p class="mt-3 text-sm leading-6 text-muted-foreground">
+            Place it in the document head or as early as possible in the page body. The queued `page.view` call is replayed after `pixel.js` loads.
+          </p>
+        </section>
+
+        <section class="min-w-0 rounded-lg border bg-card p-4 sm:p-5">
+          <div class="flex items-center gap-2">
+            <ShoppingCart className="size-5 text-primary" />
+            <h2 class="text-xl font-semibold">Track ecommerce events</h2>
+          </div>
+          <p class="mt-2 text-sm leading-6 text-muted-foreground">
+            Call `window.sarge("track", eventName, properties)` near the action that actually changed state. Use stable, lowercase, dot-separated event names and JSON-serializable properties.
+          </p>
+          <div class="mt-5 max-w-full overflow-x-auto rounded-md border">
+            <table class="min-w-[620px] w-full text-left text-sm">
+              <thead class="bg-muted text-xs uppercase text-muted-foreground">
+                <tr>
+                  <th class="px-3 py-2 font-medium">Event</th>
+                  <th class="px-3 py-2 font-medium">When</th>
+                  <th class="px-3 py-2 font-medium">Required</th>
+                </tr>
+              </thead>
+              <tbody>
+                {
+                  eventRows.map(([name, when, required]) => (
+                    <tr class="border-t">
+                      <td class="px-3 py-3 font-mono text-xs">{name}</td>
+                      <td class="px-3 py-3 text-muted-foreground">{when}</td>
+                      <td class="px-3 py-3 text-muted-foreground">{required}</td>
+                    </tr>
+                  ))
+                }
+              </tbody>
+            </table>
+          </div>
+          <div class="mt-4 grid min-w-0 gap-3 xl:grid-cols-3">
+            <pre class="max-w-full overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{productEvent}</code></pre>
+            <pre class="max-w-full overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{cartEvent}</code></pre>
+            <pre class="max-w-full overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{purchaseEvent}</code></pre>
+          </div>
+        </section>
+
+        <section class="min-w-0 rounded-lg border bg-card p-4 sm:p-5">
+          <div class="flex items-center gap-2">
+            <Eye className="size-5 text-primary" />
+            <h2 class="text-xl font-semibold">Watch other pixels</h2>
+          </div>
+          <p class="mt-2 text-sm leading-6 text-muted-foreground">
+            Sarge observes common browser pixel APIs after it loads, preserves the original function, records the call, then forwards the call to the existing provider.
+          </p>
+          <div class="mt-4 grid gap-2 text-sm text-muted-foreground sm:grid-cols-3">
+            <p class="rounded-md border bg-background p-3"><code>fbq(...)</code><br />meta.pixel.fire</p>
+            <p class="rounded-md border bg-background p-3"><code>gtag(...)</code><br />google.tag.fire</p>
+            <p class="rounded-md border bg-background p-3"><code>dataLayer.push(...)</code><br />data_layer.push</p>
+          </div>
+        </section>
+
+        <section class="min-w-0 rounded-lg border bg-card p-4 sm:p-5">
+          <div class="flex items-center gap-2">
+            <Route className="size-5 text-primary" />
+            <h2 class="text-xl font-semibold">SPA route changes</h2>
+          </div>
+          <p class="mt-2 text-sm leading-6 text-muted-foreground">
+            Client-side routed apps should emit another `page.view` whenever the route changes.
+          </p>
+          <pre class="mt-4 max-w-full overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{routeChange}</code></pre>
+        </section>
+
+        <section class="min-w-0 rounded-lg border bg-card p-4 sm:p-5">
+          <div class="flex items-center gap-2">
+            <Link2 className="size-5 text-primary" />
+            <h2 class="text-xl font-semibold">Affiliate tracking and latents</h2>
+          </div>
+          <p class="mt-2 text-sm leading-6 text-muted-foreground">
+            The pixel reads `sarge_ref` and `sarge_aff` URL parameters, stores them in localStorage, and attaches them to later browser events during the environment attribution window.
+          </p>
+          <pre class="mt-4 max-w-full overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{attributionUrl}</code></pre>
+          <p class="mt-3 text-sm leading-6 text-muted-foreground">
+            Use `sarge_ref` for the campaign, placement, click ID, or network click identifier. Use `sarge_aff` for the affiliate, creator, publisher, or partner ID.
+          </p>
+          <h3 class="mt-5 font-semibold">Latent conversions</h3>
+          <p class="mt-2 text-sm leading-6 text-muted-foreground">
+            Sarge defaults to a 28-day attribution window. Later events such as `checkout.started`, `purchase.completed`, or a server-confirmed `affiliate.conversion` can still be tied back to the original affiliate visit until that window expires.
+          </p>
+        </section>
+
+        <section class="min-w-0 rounded-lg border bg-card p-4 sm:p-5">
+          <div class="flex items-center gap-2">
+            <ServerCog className="size-5 text-primary" />
+            <h2 class="text-xl font-semibold">Server-side and postback events</h2>
+          </div>
+          <p class="mt-2 text-sm leading-6 text-muted-foreground">
+            Use browser events for page and interaction tracking. Use server-side events for trusted backend facts such as paid orders, refunds, fulfilled subscriptions, or webhook confirmations.
+          </p>
+          <pre class="mt-4 max-w-full overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{serverEvent}</code></pre>
+          <p class="mt-4 text-sm leading-6 text-muted-foreground">
+            URL-only partner postbacks are useful when an affiliate network can only call a tracking URL. Keep server event secrets out of browser code and rotate postback tokens if a URL is exposed.
+          </p>
+          <pre class="mt-4 max-w-full overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{postbackUrl}</code></pre>
+        </section>
+
+        <section class="min-w-0 rounded-lg border bg-card p-4 sm:p-5">
+          <div class="flex items-center gap-2">
+            <BadgeCheck className="size-5 text-primary" />
+            <h2 class="text-xl font-semibold">Verify installation</h2>
+          </div>
+          <ol class="mt-4 list-decimal space-y-2 pl-5 text-sm leading-6 text-muted-foreground">
+            <li>Open the target site in a browser.</li>
+            <li>Open the Sarge portal and select the matching environment tab.</li>
+            <li>Trigger the page, product, cart, checkout, and purchase actions you wired.</li>
+            <li>Confirm the events appear in the event stream, user/session flow, and debug stream.</li>
+          </ol>
+          <p class="mt-4 text-sm leading-6 text-muted-foreground">For coding-agent verification, create a temporary public stream URL:</p>
+          <pre class="mt-4 max-w-full overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{verifyUrl}</code></pre>
+        </section>
+      </div>
+
+      <aside class="grid min-w-0 content-start gap-4">
+        <section class="min-w-0 rounded-lg border bg-card p-4 sm:p-5">
+          <SatelliteDish className="size-5 text-primary" />
+          <h2 class="mt-5 font-semibold">Environment model</h2>
+          <p class="mt-3 text-sm leading-6 text-muted-foreground">
+            Production, Staging, and Development each have their own pixel URL, event stream, user/session flows, debug stream, event hosts, webhooks, and public verify URL.
+          </p>
+          <p class="mt-3 text-sm leading-6 text-muted-foreground">
+            AI recommendations currently run for Production only. Staging and Development still collect events and show their own debug data.
+          </p>
+        </section>
+
+        <section class="min-w-0 rounded-lg border bg-card p-4 sm:p-5">
+          <Cable className="size-5 text-primary" />
+          <h2 class="mt-5 font-semibold">Install placement</h2>
+          <ul class="mt-3 list-disc space-y-2 pl-5 text-sm leading-6 text-muted-foreground">
+            <li>Shared head or root layout for Astro, Next.js, React, Vite, and server-rendered apps.</li>
+            <li>Theme head or supported customer-events surface for Shopify and hosted commerce.</li>
+            <li>Checkout success or order status surfaces only for `purchase.completed`.</li>
+          </ul>
+        </section>
+
+        <section class="min-w-0 rounded-lg border bg-card p-4 sm:p-5">
+          <Bot className="size-5 text-primary" />
+          <h2 class="mt-5 font-semibold">Agent brief</h2>
+          <ul class="mt-3 list-disc space-y-2 pl-5 text-sm leading-6 text-muted-foreground">
+            <li>Give the agent the exact environment pixel snippet.</li>
+            <li>Point it at `/docs/events.md` for names and payloads.</li>
+            <li>Ask it to preserve existing Meta, Google, analytics, and tag-manager pixels.</li>
+            <li>Give it a temporary `/verify/{"{siteEnvironmentId}"}?key={"{temporaryVerificationKey}"}` URL.</li>
+          </ul>
+        </section>
+
+        <section class="min-w-0 rounded-lg border bg-card p-4 sm:p-5">
+          <h2 class="font-semibold">Troubleshooting</h2>
+          <div class="mt-3 grid gap-3">
+            {
+              troubleshooting.map(([symptom, check]) => (
+                <div class="rounded-md border bg-background p-3">
+                  <h3 class="text-sm font-medium">{symptom}</h3>
+                  <p class="mt-1 text-sm leading-6 text-muted-foreground">{check}</p>
+                </div>
+              ))
+            }
+          </div>
+        </section>
+      </aside>
+    </div>
+  </section>
+</SiteLayout>

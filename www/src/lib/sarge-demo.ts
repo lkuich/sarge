@@ -48,6 +48,12 @@ export interface SargeEventMixItem {
   share: number;
 }
 
+export interface SargeTrafficTrendPoint {
+  date: string;
+  label: string;
+  value: number;
+}
+
 export interface WebhookEndpoint {
   id: string;
   name: string;
@@ -86,6 +92,7 @@ export interface SargeProjectEnvironment {
   lastEventAt: string;
   pixelVersion: string;
   eventMix24h: SargeEventMixItem[];
+  trafficTrend7d: SargeTrafficTrendPoint[];
   recentEvents: SargeEvent[];
   eventHosts: EventHostSummary[];
   diagnostics: ProjectDiagnostic[];
@@ -259,6 +266,7 @@ const serverSecretLimitSqlCase = buildPlanLimitSqlCase('serverSecrets', 'w."plan
 const postbackTokenLimitSqlCase = buildPlanLimitSqlCase('postbackTokens', 'w."planId"');
 const eventRetentionFilterSql = buildPlanRetentionFilterSql('e."occurredAt"', 'w."planId"');
 const eventMixRetentionFilterSql = buildPlanRetentionFilterSql('e_mix."occurredAt"', 'w."planId"');
+const eventTrendRetentionFilterSql = buildPlanRetentionFilterSql('e_trend."occurredAt"', 'w."planId"');
 
 const adminIds = new Set(
   (import.meta.env.SARGE_ADMIN_USER_IDS ?? '')
@@ -564,6 +572,31 @@ export const getViewerAccount = async (
             LIMIT 4
           ) event_mix
         ), '[]'::jsonb) AS "eventMix24h",
+        COALESCE((
+          SELECT jsonb_agg(
+            jsonb_build_object(
+              'date', to_char(day_bucket, 'YYYY-MM-DD'),
+              'label', to_char(day_bucket, 'Dy'),
+              'value', event_count
+            )
+            ORDER BY day_bucket ASC
+          )
+          FROM (
+            SELECT
+              day_bucket,
+              COUNT(e_trend.id)::int AS event_count
+            FROM generate_series(
+              date_trunc('day', NOW()) - INTERVAL '6 days',
+              date_trunc('day', NOW()),
+              INTERVAL '1 day'
+            ) AS trend_days(day_bucket)
+            LEFT JOIN "Event" e_trend ON e_trend."siteEnvironmentId" = se.id
+              AND e_trend."occurredAt" >= day_bucket
+              AND e_trend."occurredAt" < day_bucket + INTERVAL '1 day'
+              AND ${sql.unsafe(eventTrendRetentionFilterSql)}
+            GROUP BY day_bucket
+          ) event_trend
+        ), '[]'::jsonb) AS "trafficTrend7d",
         MAX(e."occurredAt") AS "lastOccurredAt"
       FROM "SiteEnvironment" se
       JOIN "Site" s ON s.id = se."siteId"
@@ -1406,6 +1439,7 @@ export const createProject = async (
           0::int AS "userCount24h",
           0::int AS "previousUserCount24h",
           '[]'::jsonb AS "eventMix24h",
+          '[]'::jsonb AS "trafficTrend7d",
           NULL::timestamp AS "lastOccurredAt"
       )
       SELECT
@@ -1429,6 +1463,7 @@ export const createProject = async (
         inserted_environments."userCount24h",
         inserted_environments."previousUserCount24h",
         inserted_environments."eventMix24h",
+        inserted_environments."trafficTrend7d",
         inserted_environments."lastOccurredAt"
       FROM inserted_site
       JOIN inserted_environments ON inserted_environments."siteId" = inserted_site.id
@@ -1454,6 +1489,7 @@ export const createProject = async (
           userCount24h: environment.userCount24h,
           previousUserCount24h: environment.previousUserCount24h,
           eventMix24h: environment.eventMix24h,
+          trafficTrend7d: environment.trafficTrend7d,
           lastOccurredAt: environment.lastOccurredAt,
         },
         {
@@ -2026,6 +2062,54 @@ const normalizeEventMix = (value: unknown, totalEvents: number): SargeEventMixIt
     .filter((item): item is SargeEventMixItem => Boolean(item));
 };
 
+const normalizeTrafficTrend = (value: unknown, fallbackEventCount24h = 0): SargeTrafficTrendPoint[] => {
+  const fallback = buildFallbackTrafficTrend(fallbackEventCount24h);
+  let parsedValue = value;
+  if (typeof value === 'string') {
+    try {
+      parsedValue = JSON.parse(value);
+    } catch {
+      return fallback;
+    }
+  }
+
+  if (!Array.isArray(parsedValue)) return fallback;
+
+  const normalized = parsedValue
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const record = item as Record<string, unknown>;
+      const date = typeof record.date === 'string' ? record.date : '';
+      const label = typeof record.label === 'string' ? record.label : '';
+      const value = Number(record.value ?? 0);
+      if (!date || !label || !Number.isFinite(value)) return null;
+
+      return {
+        date,
+        label,
+        value: Math.max(0, Math.round(value)),
+      } satisfies SargeTrafficTrendPoint;
+    })
+    .filter((item): item is SargeTrafficTrendPoint => Boolean(item))
+    .slice(-7);
+
+  return normalized.length === 7 ? normalized : fallback;
+};
+
+const buildFallbackTrafficTrend = (eventCount24h: number): SargeTrafficTrendPoint[] => {
+  const today = new Date();
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - (6 - index));
+
+    return {
+      date: date.toISOString().slice(0, 10),
+      label: new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(date),
+      value: index === 6 ? Math.max(0, eventCount24h) : 0,
+    };
+  });
+};
+
 const mapEvent = (event: EventRow): SargeEvent => {
   const attribution = readSargeAttributionFromUrl(event.url);
 
@@ -2117,6 +2201,7 @@ const mapProjectEnvironment = (
   lastEventAt: formatRelativeTime(environment.lastOccurredAt),
   pixelVersion: '0.1.0',
   eventMix24h: normalizeEventMix(environment.eventMix24h, environment.eventCount24h ?? 0),
+  trafficTrend7d: normalizeTrafficTrend(environment.trafficTrend7d, environment.eventCount24h ?? 0),
   recentEvents: data.recentEvents,
   eventHosts: summarizeEventHosts(data.recentEvents),
   diagnostics: environment.environment === 'production' ? data.persistedDiagnostics ?? analyzeProjectEvents(data.recentEvents) : [],
@@ -2161,6 +2246,7 @@ const buildFallbackProject = (input: {
       lastEventAt: environment === 'production' ? input.lastEventAt : 'No events yet',
       pixelVersion: '0.1.0',
       eventMix24h: [],
+      trafficTrend7d: buildFallbackTrafficTrend(environment === 'production' ? input.eventCount24h : 0),
       recentEvents: [],
       eventHosts: [],
       diagnostics: [],
@@ -2354,6 +2440,7 @@ interface SiteEnvironmentSummaryRow {
   userCount24h: number;
   previousUserCount24h: number;
   eventMix24h: unknown;
+  trafficTrend7d: unknown;
   lastOccurredAt: Date | null;
 }
 
@@ -2378,6 +2465,7 @@ interface NewProjectEnvironmentRow {
   userCount24h: number;
   previousUserCount24h: number;
   eventMix24h: unknown;
+  trafficTrend7d: unknown;
   lastOccurredAt: Date | null;
 }
 

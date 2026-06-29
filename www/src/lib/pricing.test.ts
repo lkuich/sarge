@@ -18,7 +18,7 @@ describe("pricing plan definitions", () => {
     expect(getPlanDefinition("starter")).toMatchObject({
       id: "starter",
       name: "Starter",
-      monthlyPriceUsd: 19,
+      monthlyPriceUsd: 35,
       limits: {
         projects: 3,
         projectShares: 3,
@@ -30,7 +30,7 @@ describe("pricing plan definitions", () => {
       },
     });
     expect(getPlanDefinition("growth")).toMatchObject({
-      monthlyPriceUsd: 99,
+      monthlyPriceUsd: 149,
       limits: {
         projects: 10,
         projectShares: 10,

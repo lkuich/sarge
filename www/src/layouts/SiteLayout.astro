@@ -29,23 +29,23 @@ const showFooter = showFooterProp ?? !shader;
   <body class:list={[{ "site-shell": shader }]}>
     <slot name="background" />
 
-    <header class="relative z-10 mx-auto flex min-h-16 w-full max-w-6xl items-center justify-between gap-4 px-4 py-3 md:px-6">
-      <a class="flex items-center gap-2" href="/" aria-label="Sarge home">
-        <img class="h-9 w-auto dark:hidden" src="/sarge-logo-light.svg" alt="Sarge" width="196" height="48" />
-        <img class="hidden h-9 w-auto dark:block" src="/sarge-logo-dark.svg" alt="Sarge" width="196" height="48" />
+    <header class="relative z-10 mx-auto flex min-h-16 w-full max-w-6xl items-center justify-between gap-3 px-4 py-3 md:gap-4 md:px-6">
+      <a class="flex min-w-0 items-center gap-2" href="/" aria-label="Sarge home">
+        <img class="h-8 w-auto sm:h-9 dark:hidden" src="/sarge-logo-light.svg" alt="Sarge" width="196" height="48" />
+        <img class="hidden h-8 w-auto sm:h-9 dark:block" src="/sarge-logo-dark.svg" alt="Sarge" width="196" height="48" />
         <span class="rounded-sm border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-primary">BETA</span>
       </a>
 
-      <nav class="flex items-center justify-end gap-2" aria-label="Site">
+      <nav class="flex shrink-0 items-center justify-end gap-1 sm:gap-2" aria-label="Site">
         <a class="hidden rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground sm:inline-flex" href="/docs">
           Docs
         </a>
         <Show when="signed-out">
           <div class="flex items-center gap-2">
-            <a class="rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground" href="/sign-in">
+            <a class="hidden rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground sm:inline-flex" href="/sign-in">
               Sign in
             </a>
-            <a class="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/80" href="/sign-up">
+            <a class="whitespace-nowrap rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/80" href="/sign-up">
               Sign up
             </a>
           </div>

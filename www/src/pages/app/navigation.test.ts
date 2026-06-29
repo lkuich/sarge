@@ -251,8 +251,8 @@ describe("app navigation routes", () => {
     const pricingDoc = readSource("../../../../docs/PRICING.md");
 
     expect(homepage).toContain("Free");
-    expect(homepage).toContain("$19");
-    expect(homepage).toContain("$99");
+    expect(homepage).toContain("$35");
+    expect(homepage).toContain("$149");
     expect(homepage).not.toContain("Enterprise");
     expect(homepage).toContain("Contact us");
     expect(homepage).toContain("1 shared user/project");

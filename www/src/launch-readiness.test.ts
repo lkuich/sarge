@@ -27,6 +27,47 @@ describe("launch readiness safeguards", () => {
     expect(demoShop).toContain("pixel.js?env=env_demo_production");
   });
 
+  it("publishes a human-facing hosted install reference from the docs index", () => {
+    const docsIndex = readWwwFile("src/pages/docs/index.astro");
+    const hostedInstall = readWwwFile("src/pages/docs/install.astro");
+
+    expect(docsIndex).toContain('href: "/docs/install"');
+    expect(docsIndex).not.toContain('href: "/#setup"');
+
+    for (const expected of [
+      "Hosted pixel snippet",
+      "window._sarge",
+      "pixel.js?env={siteEnvironmentId}",
+      "Track ecommerce events",
+      "Watch other pixels",
+      "sarge_ref",
+      "sarge_aff",
+      "Latent conversions",
+      "affiliate.conversion",
+      "Server-side and postback events",
+      "Verify installation",
+    ]) {
+      expect(hostedInstall).toContain(expected);
+    }
+  });
+
+  it("keeps the hosted install reference constrained on mobile", () => {
+    const hostedInstall = readWwwFile("src/pages/docs/install.astro");
+
+    expect(hostedInstall).toContain("lg:grid-cols-[minmax(0,1fr)_340px]");
+    expect(hostedInstall).toContain('<div class="grid min-w-0 gap-4">');
+    expect(hostedInstall).toContain('<aside class="grid min-w-0 content-start gap-4">');
+    expect(hostedInstall.match(/max-w-full overflow-x-auto/g)?.length ?? 0).toBeGreaterThanOrEqual(8);
+  });
+
+  it("keeps public header auth controls from wrapping on mobile", () => {
+    const siteLayout = readWwwFile("src/layouts/SiteLayout.astro");
+
+    expect(siteLayout).toContain("h-8 w-auto sm:h-9");
+    expect(siteLayout).toContain("hidden rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground sm:inline-flex");
+    expect(siteLayout).toContain("whitespace-nowrap rounded-md bg-primary");
+  });
+
   it("defines baseline security headers for the public site and Worker responses", () => {
     const securityHeaders = readWwwFile("src/lib/security-headers.ts");
     const middleware = readWwwFile("src/middleware.ts");

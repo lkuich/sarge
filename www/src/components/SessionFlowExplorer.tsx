@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
 type FlowMode = "session" | "user";
 type EventFilter = "conversion" | "watchdog" | "page" | "custom";
 type TrafficFilter = "real" | "test" | "all";
-type TimePreset = "all" | "1h" | "24h" | "7d";
+type TimePreset = "all" | "1h" | "24h" | "3d" | "7d";
 
 interface FlowEvent {
   id: string;
@@ -1238,11 +1238,13 @@ const timePresets: { value: TimePreset; label: string }[] = [
   { value: "all", label: "All time" },
   { value: "1h", label: "Last hour" },
   { value: "24h", label: "Last 24h" },
+  { value: "3d", label: "Last 3d" },
   { value: "7d", label: "Last 7d" },
 ];
 
 const timePresetDurations: Record<Exclude<TimePreset, "all">, number> = {
   "1h": 60 * 60 * 1000,
   "24h": 24 * 60 * 60 * 1000,
+  "3d": 3 * 24 * 60 * 60 * 1000,
   "7d": 7 * 24 * 60 * 60 * 1000,
 };

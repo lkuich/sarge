@@ -390,6 +390,28 @@ describe("SessionFlowExplorer event filters", () => {
     expect(container?.querySelector('[data-flow-node="event:current-page"]')).toBeNull();
   });
 
+  it("offers a three-day time window preset", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ events: [event("three-day-page", "page.view", "three-day-session", 10)] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionFlowExplorer events={[event("current-page", "page.view", "current-session", 10)]} refreshEndpoint="/api/project-events/env_123?limit=80" />);
+
+    expect(buttonNamed("Last 3d")).not.toBeUndefined();
+
+    await act(async () => {
+      buttonNamed("Last 3d")?.click();
+    });
+
+    const requestedUrl = new URL(String(fetchMock.mock.calls[0]?.[0]), "https://example.com");
+
+    expect(requestedUrl.searchParams.get("startAt")).toMatch(/^2026-06-17T12:10:00\.000Z$/);
+    expect(buttonNamed("Last 3d")?.getAttribute("aria-pressed")).toBe("true");
+    expect(container?.querySelector('[data-flow-node="event:three-day-page"]')).not.toBeNull();
+  });
+
   it("keeps date controls available when a loaded time window has no events", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

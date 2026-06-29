@@ -94,7 +94,9 @@ const { account, title = "Sarge", eyebrow = account.name, heading, headingLink, 
               <p class="truncate text-sm font-semibold">{account.name}</p>
               <p class="text-xs text-muted-foreground">{account.role} · {account.plan.name}</p>
             </div>
-            <UserButton />
+            <div data-account-profile class="grid size-8 shrink-0 place-items-center" role="group" aria-label="Account profile">
+              <UserButton />
+            </div>
           </div>
         </div>
       </header>

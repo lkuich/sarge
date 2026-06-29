@@ -129,6 +129,12 @@ describe("project detail install panel", () => {
     expect(projectDetail).toContain("Users");
     expect(projectDetail).toContain("Weekly traffic");
     expect(projectDetail).toContain("Events received by day");
+    expect(projectDetail).toContain("Events received");
+    expect(projectDetail).toContain("eventVolumeDelta");
+    expect(projectDetail).toContain("yAxisLabels");
+    expect(projectDetail).toContain("data-project-traffic-point");
+    expect(projectDetail).toContain("group-hover:opacity-100");
+    expect(projectDetail).toContain('tabindex="0"');
     expect(projectDetail).toContain("buildTrafficTrendChart");
     expect(projectDetail).toContain("renderMetricDelta");
     expect(projectDetail).toContain("formatMetricDeltaTitle");

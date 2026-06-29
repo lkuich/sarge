@@ -420,33 +420,50 @@ function formatMetricDeltaTitle(delta: ReturnType<typeof buildMetricDelta>) {
 }
 
 function buildTrafficTrendChart(points: typeof selectedEnvironment.trafficTrend7d) {
-  const width = 420;
+  const width = 460;
   const height = 148;
-  const paddingX = 12;
+  const paddingLeft = 44;
+  const paddingRight = 12;
   const paddingTop = 16;
   const paddingBottom = 28;
   const plotHeight = height - paddingTop - paddingBottom;
   const maxValue = Math.max(1, ...points.map((point) => point.value));
-  const xStep = points.length > 1 ? (width - paddingX * 2) / (points.length - 1) : 0;
+  const xStep = points.length > 1 ? (width - paddingLeft - paddingRight) / (points.length - 1) : 0;
+  const plotEndX = width - paddingRight;
+  const yAxisValues = maxValue > 1 ? [maxValue, Math.round(maxValue / 2), 0] : [maxValue, 0];
+  const yAxisLabels = yAxisValues.map((value) => ({
+    value,
+    y: Number((paddingTop + plotHeight - (value / maxValue) * plotHeight).toFixed(2)),
+  }));
   const coordinates = points.map((point, index) => {
-    const x = paddingX + index * xStep;
+    const x = paddingLeft + index * xStep;
     const y = paddingTop + plotHeight - (point.value / maxValue) * plotHeight;
+    const tooltipY = y < paddingTop + 30 ? y + 46 : y - 10;
     return {
       ...point,
       x: Number(x.toFixed(2)),
       y: Number(y.toFixed(2)),
+      hoverX: Number((x - xStep / 2).toFixed(2)),
+      hoverWidth: Number((points.length > 1 ? xStep : plotEndX - paddingLeft).toFixed(2)),
+      tooltipX: Number(Math.min(plotEndX - 48, Math.max(paddingLeft + 48, x)).toFixed(2)),
+      tooltipY: Number(tooltipY.toFixed(2)),
     };
   });
   const linePoints = coordinates.map((point) => `${point.x},${point.y}`).join(" ");
   const baselineY = height - paddingBottom;
   const areaPoints = coordinates.length > 0
-    ? `${paddingX},${baselineY} ${linePoints} ${width - paddingX},${baselineY}`
+    ? `${paddingLeft},${baselineY} ${linePoints} ${plotEndX},${baselineY}`
     : "";
 
   return {
     width,
     height,
+    paddingLeft,
+    paddingTop,
+    plotHeight,
+    plotEndX,
     baselineY,
+    yAxisLabels,
     maxValue,
     coordinates,
     linePoints,
@@ -586,8 +603,7 @@ function resolveTrackedSiteDomain(value: string) {
             </CardTitle>
           </div>
           <div class="text-right">
-            <p class="text-2xl font-semibold">{formatCount(selectedEnvironment.eventCount24h)}</p>
-            <div class="mt-1 flex justify-end">
+            <div class="flex flex-wrap items-center justify-end gap-2">
               <span
                 class:list={[
                   "inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-medium",
@@ -597,7 +613,9 @@ function resolveTrackedSiteDomain(value: string) {
               >
                 {renderMetricDelta(eventVolumeDelta)}
               </span>
+              <p class="text-2xl font-semibold leading-none">{formatCount(selectedEnvironment.eventCount24h)}</p>
             </div>
+            <p class="mt-1 text-xs text-muted-foreground">Events received</p>
             <p class="mt-1 text-xs text-muted-foreground">{selectedEnvironment.lastEventAt}</p>
           </div>
         </div>
@@ -627,10 +645,29 @@ function resolveTrackedSiteDomain(value: string) {
                     <stop offset="100%" stop-color="currentColor" stop-opacity="0.02" />
                   </linearGradient>
                 </defs>
+                <g class="text-muted-foreground">
+                  {
+                    weeklyTrafficChart.yAxisLabels.map((label) => (
+                      <text x="0" y={label.y + 4} fill="currentColor" font-size="10">
+                        {formatCount(label.value)}
+                      </text>
+                    ))
+                  }
+                </g>
                 <g class="text-border">
-                  <line x1="12" x2="408" y1="16" y2="16" stroke="currentColor" stroke-width="1" stroke-dasharray="3 5" />
-                  <line x1="12" x2="408" y1="68" y2="68" stroke="currentColor" stroke-width="1" stroke-dasharray="3 5" />
-                  <line x1="12" x2="408" y1={weeklyTrafficChart.baselineY} y2={weeklyTrafficChart.baselineY} stroke="currentColor" stroke-width="1" />
+                  {
+                    weeklyTrafficChart.yAxisLabels.map((label, index) => (
+                      <line
+                        x1={weeklyTrafficChart.paddingLeft}
+                        x2={weeklyTrafficChart.plotEndX}
+                        y1={label.y}
+                        y2={label.y}
+                        stroke="currentColor"
+                        stroke-width="1"
+                        stroke-dasharray={index === weeklyTrafficChart.yAxisLabels.length - 1 ? undefined : "3 5"}
+                      />
+                    ))
+                  }
                 </g>
                 <polygon class="text-primary" points={weeklyTrafficChart.areaPoints} fill="url(#weeklyTrafficFill)" />
                 <polyline
@@ -644,7 +681,32 @@ function resolveTrackedSiteDomain(value: string) {
                 />
                 {
                   weeklyTrafficChart.coordinates.map((point) => (
-                    <g>
+                    <g
+                      class="group outline-none"
+                      tabindex="0"
+                      data-project-traffic-point
+                      aria-label={`${point.label}: ${formatCount(point.value)} events`}
+                    >
+                      <rect
+                        x={point.hoverX}
+                        y={weeklyTrafficChart.paddingTop}
+                        width={point.hoverWidth}
+                        height={weeklyTrafficChart.plotHeight}
+                        fill="transparent"
+                        class="cursor-crosshair"
+                      />
+                      <line
+                        class="opacity-0 transition-opacity group-focus:opacity-100 group-hover:opacity-100"
+                        x1={point.x}
+                        x2={point.x}
+                        y1={weeklyTrafficChart.paddingTop}
+                        y2={weeklyTrafficChart.baselineY}
+                        stroke="var(--primary)"
+                        stroke-opacity="0.55"
+                        stroke-width="1"
+                        stroke-dasharray="3 4"
+                        vector-effect="non-scaling-stroke"
+                      />
                       <circle
                         cx={point.x}
                         cy={point.y}
@@ -654,6 +716,15 @@ function resolveTrackedSiteDomain(value: string) {
                         stroke-width="2"
                         vector-effect="non-scaling-stroke"
                       />
+                      <g
+                        class="pointer-events-none opacity-0 transition-opacity group-focus:opacity-100 group-hover:opacity-100"
+                        transform={`translate(${point.tooltipX} ${point.tooltipY})`}
+                      >
+                        <rect x="-48" y="-28" width="96" height="24" rx="5" fill="var(--popover)" stroke="var(--border)" />
+                        <text text-anchor="middle" y="-12" fill="var(--popover-foreground)" font-size="11" font-weight="600">
+                          {formatCount(point.value)} events
+                        </text>
+                      </g>
                       <title>{point.label}: {formatCount(point.value)} events</title>
                     </g>
                   ))

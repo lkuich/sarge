@@ -27,6 +27,15 @@ describe("app navigation routes", () => {
     expect(layout).toContain(">BETA<");
   });
 
+  it("keeps the Clerk profile button in the account summary", () => {
+    const layout = readSource("../../layouts/AppLayout.astro");
+
+    expect(layout).toContain('data-account-profile');
+    expect(layout).toContain('aria-label="Account profile"');
+    expect(layout).toContain("<UserButton />");
+    expect(layout.indexOf("{account.plan.name}")).toBeLessThan(layout.indexOf("<UserButton />"));
+  });
+
   it("does not ship the old admin page", () => {
     expect(existsSync(sourcePath("../admin/index.astro"))).toBe(false);
   });

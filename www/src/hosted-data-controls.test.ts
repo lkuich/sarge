@@ -18,6 +18,7 @@ describe("hosted data controls", () => {
     expect(projectDetail).toContain("Blocked property keys");
     expect(projectDetail).toContain("Allowed property keys");
     expect(projectDetail).toContain("Request site deletion");
+    expect(projectDetail.indexOf("data-project-data-controls")).toBeGreaterThan(projectDetail.indexOf("Event hosts"));
 
     expect(account).toContain("data-workspace-data-controls");
     expect(account).toContain('intent === "save-workspace-privacy-settings"');

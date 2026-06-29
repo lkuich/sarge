@@ -54,7 +54,9 @@ const showFooter = showFooterProp ?? !shader;
           <a class="rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground" href="/app">
             Dashboard
           </a>
-          <UserButton />
+          <div data-site-account-profile class="grid size-8 shrink-0 place-items-center" role="group" aria-label="Account profile">
+            <UserButton />
+          </div>
         </Show>
         {showThemeToggle && <ThemeToggle client:only="react" />}
       </nav>

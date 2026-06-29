@@ -12,7 +12,7 @@
     "DEFAULT_ATTRIBUTION_TTL_DAYS": "28",
     "DIAGNOSTIC_EVENT_LOOKBACK_MINUTES": "60",
     "DIAGNOSTIC_EVENT_LIMIT_PER_SITE": "200",
-    "AI_SUMMARY_MODEL": "@cf/meta/llama-3.1-8b-instruct"
+    "AI_SUMMARY_MODEL": "@cf/meta/llama-3.1-8b-instruct-fp8"
   },
   "ai": {
     "binding": "AI"

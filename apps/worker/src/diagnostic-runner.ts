@@ -20,7 +20,7 @@ import type {
 const DEFAULT_LOOKBACK_MINUTES = 60;
 const DEFAULT_EVENT_LIMIT = 200;
 const DEFAULT_SITE_LIMIT = 50;
-const DEFAULT_AI_MODEL = "@cf/meta/llama-3.1-8b-instruct";
+const DEFAULT_AI_MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8";
 const DEFAULT_PAGE_HEALTH_URL_LIMIT = 25;
 const DEFAULT_PAGE_HEALTH_TIMEOUT_MS = 5_000;
 const DEFAULT_PAGE_HEALTH_RUN_URL_LIMIT = 10;

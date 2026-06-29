@@ -1042,7 +1042,9 @@ function resolveTrackedSiteDomain(value: string) {
               ))
             ) : isAiReviewEnabled ? (
               <div class="rounded-md border border-dashed p-6 text-sm text-muted-foreground">
-                No findings yet. Sarge needs recent events before it can review this project.
+                {selectedEnvironment.diagnosticRunAt
+                  ? "Latest scheduled review completed with no findings."
+                  : "No findings yet. Sarge needs recent events before it can review this project."}
               </div>
             ) : null
           }

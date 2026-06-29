@@ -1,5 +1,5 @@
 ---
-import { ArrowRight, BadgeCheck, Bot, Cable, Eye, Link2, Route, SatelliteDish, ServerCog, ShoppingCart, TerminalSquare } from "lucide-react";
+import { ArrowRight, BadgeCheck, Bot, Cable, Eye, Link2, Route, SatelliteDish, ServerCog, ShoppingCart, TerminalSquare, UserRound } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import SiteLayout from "@/layouts/SiteLayout.astro";
 
@@ -34,6 +34,9 @@ const routeChange = `window.sarge("track", "page.view", {
   path: window.location.pathname,
   title: document.title
 });`;
+
+const impersonationStart = `impersonate('customer_123');`;
+const impersonationClear = `clear_impersonation();`;
 
 const attributionUrl = `https://shop.example.com/?sarge_ref=summer-campaign&sarge_aff=partner-42`;
 
@@ -163,6 +166,26 @@ const troubleshooting = [
             Client-side routed apps should emit another `page.view` whenever the route changes.
           </p>
           <pre class="mt-4 max-w-full overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{routeChange}</code></pre>
+        </section>
+
+        <section id="test-impersonation" class="scroll-mt-24 min-w-0 rounded-lg border bg-card p-4 sm:p-5">
+          <div class="flex items-center gap-2">
+            <UserRound className="size-5 text-primary" />
+            <h2 class="text-xl font-semibold">Test impersonation</h2>
+          </div>
+          <ol class="mt-4 list-decimal space-y-2 pl-5 text-sm leading-6 text-muted-foreground">
+            <li>Copy the user ID you want to test from the Sarge project page.</li>
+            <li>Open the tracked site, then open the browser console on that page.</li>
+            <li>Run <code class="font-mono">impersonate(userId)</code> before starting the checkout or account flow.</li>
+            <li>Run <code class="font-mono">clear_impersonation()</code> when the test is finished.</li>
+          </ol>
+          <div class="mt-4 grid gap-3 md:grid-cols-2">
+            <pre class="max-w-full overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{impersonationStart}</code></pre>
+            <pre class="max-w-full overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{impersonationClear}</code></pre>
+          </div>
+          <p class="mt-3 text-sm leading-6 text-muted-foreground">
+            While impersonation is active, browser events use the impersonated value as `userId` and are marked with Sarge test metadata. This is only debug labeling; it does not authenticate as that user in the tracked site.
+          </p>
         </section>
 
         <section class="min-w-0 rounded-lg border bg-card p-4 sm:p-5">

@@ -203,10 +203,13 @@ describe("project detail install panel", () => {
 
   it("includes a test impersonation helper with copy and live-update hooks", () => {
     const projectDetail = readSource("./projects/[projectId].astro");
+    const installDocs = readSource("../docs/install.astro");
 
     expect(projectDetail).toContain("const projectTesterUserId = buildProjectTesterUserId(selectedEnvironment.id, userId);");
     expect(projectDetail).toContain("const recentUserOptions = buildRecentUserOptions(selectedEnvironment.recentEvents, projectTesterUserId);");
     expect(projectDetail).toContain("data-test-impersonation-card");
+    expect(projectDetail).toContain('href="/docs/install#test-impersonation"');
+    expect(projectDetail).toContain("data-impersonation-docs-link");
     expect(projectDetail).toContain("data-copy-tester-id");
     expect(projectDetail).toContain("data-impersonation-user-input");
     expect(projectDetail).toContain("data-recent-impersonation-user");
@@ -214,6 +217,9 @@ describe("project detail install panel", () => {
     expect(projectDetail).toContain("data-copy-impersonation-code");
     expect(projectDetail).toContain("buildImpersonationConsoleSnippet");
     expect(projectDetail).toContain("updateImpersonationCode");
+    expect(installDocs).toContain('id="test-impersonation"');
+    expect(installDocs).toContain("impersonate(userId)");
+    expect(installDocs).toContain("clear_impersonation()");
   });
 
   it("lets admins manage server-side and postback credentials per environment", () => {

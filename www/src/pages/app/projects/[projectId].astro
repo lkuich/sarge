@@ -1061,7 +1061,16 @@ function resolveTrackedSiteDomain(value: string) {
       <div class="grid gap-4 lg:col-span-2 xl:grid-cols-2">
         <Card data-test-impersonation-card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><UserRound className="size-4" /> Test impersonation</CardTitle>
+            <div class="flex items-center justify-between gap-3">
+              <CardTitle className="flex items-center gap-2"><UserRound className="size-4" /> Test impersonation</CardTitle>
+              <a
+                class="inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md border bg-background px-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+                href="/docs/install#test-impersonation"
+                data-impersonation-docs-link
+              >
+                Docs <ExternalLink className="size-3" />
+              </a>
+            </div>
           </CardHeader>
           <CardContent className="grid gap-4 text-sm">
             <div class="grid gap-2">

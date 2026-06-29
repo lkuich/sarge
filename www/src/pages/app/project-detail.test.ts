@@ -116,7 +116,6 @@ describe("project detail install panel", () => {
     const pulsePanel = projectDetail.indexOf("data-project-pulse");
     const installPanel = projectDetail.indexOf("data-install-pixel-details");
 
-    expect(projectDetail).toContain("const eventPulseBars = buildEventPulseBars(selectedEnvironment.recentEvents, selectedEnvironment.eventCount24h);");
     expect(projectDetail).toContain("const eventTypeMix = selectedEnvironment.eventMix24h;");
     expect(projectDetail).toContain("const eventVolumeDelta = buildMetricDelta(selectedEnvironment.eventCount24h, selectedEnvironment.previousEventCount24h);");
     expect(projectDetail).toContain("const recentSessionDelta = buildMetricDelta(selectedEnvironment.sessionCount24h, selectedEnvironment.previousSessionCount24h);");
@@ -127,10 +126,15 @@ describe("project detail install panel", () => {
     expect(projectDetail).toContain("Last 24h vs previous 24h");
     expect(projectDetail).toContain("Sessions");
     expect(projectDetail).toContain("Users");
+    expect(projectDetail).toContain("Traffic trend");
+    expect(projectDetail).toContain("Current 24h");
+    expect(projectDetail).toContain("Previous 24h");
     expect(projectDetail).toContain("renderMetricDelta");
     expect(projectDetail).toContain("formatMetricDeltaTitle");
     expect(projectDetail).toContain("data-project-pulse");
-    expect(projectDetail).toContain("data-event-pulse-bars");
+    expect(projectDetail).toContain("data-project-pulse-summary");
+    expect(projectDetail).not.toContain("data-event-pulse-bars");
+    expect(projectDetail).not.toContain("function buildEventPulseBars");
     expect(demoData).toContain('COUNT(e.id) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL \'48 hours\' AND e."occurredAt" < NOW() - INTERVAL \'24 hours\')::int AS "previousEventCount24h"');
     expect(demoData).toContain('"eventMix24h"');
     expect(demoData).toContain("previousEventCount24h: environment.previousEventCount24h ?? 0");

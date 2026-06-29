@@ -347,7 +347,6 @@ const isPixelActive = pixelInstallStatus === "active";
 const criticalFindings = diagnostics.filter((finding) => finding.severity === "critical").length;
 const warningFindings = diagnostics.filter((finding) => finding.severity === "warning").length;
 const diagnosticRunLabel = selectedEnvironment.diagnosticRunAt ? new Date(selectedEnvironment.diagnosticRunAt).toLocaleString() : "Pending first scheduled run";
-const eventPulseBars = buildEventPulseBars(selectedEnvironment.recentEvents, selectedEnvironment.eventCount24h);
 const eventTypeMix = selectedEnvironment.eventMix24h;
 const eventVolumeDelta = buildMetricDelta(selectedEnvironment.eventCount24h, selectedEnvironment.previousEventCount24h);
 const recentSessionDelta = buildMetricDelta(selectedEnvironment.sessionCount24h, selectedEnvironment.previousSessionCount24h);
@@ -382,37 +381,6 @@ const formatEventTime = (value: string) =>
   }).format(new Date(value));
 
 const formatEventPayload = (value: Record<string, unknown>) => JSON.stringify(value, null, 2);
-
-function buildEventPulseBars(events: typeof selectedEnvironment.recentEvents, eventCount24h: number) {
-  const bucketCount = 10;
-  const now = Date.now();
-  const bucketMs = (24 * 60 * 60 * 1000) / bucketCount;
-  const buckets = Array.from({ length: bucketCount }, (_, index) => ({
-    label: `${24 - Math.round((index * 24) / bucketCount)}h`,
-    value: 0,
-  }));
-
-  for (const event of events) {
-    const ageMs = now - Date.parse(event.occurredAt);
-    if (ageMs < 0 || ageMs > 24 * 60 * 60 * 1000) continue;
-
-    const bucketIndex = Math.min(bucketCount - 1, Math.floor(ageMs / bucketMs));
-    buckets[bucketCount - 1 - bucketIndex].value += 1;
-  }
-
-  if (!buckets.some((bucket) => bucket.value > 0) && eventCount24h > 0) {
-    const weights = [0.38, 0.55, 0.44, 0.72, 0.66, 0.88, 0.7, 1, 0.82, 0.94];
-    buckets.forEach((bucket, index) => {
-      bucket.value = Math.max(1, Math.round((eventCount24h / 7) * weights[index]));
-    });
-  }
-
-  const maxValue = Math.max(1, ...buckets.map((bucket) => bucket.value));
-  return buckets.map((bucket) => ({
-    ...bucket,
-    height: Math.max(6, Math.round((bucket.value / maxValue) * 100)),
-  }));
-}
 
 function buildMetricDelta(currentValue: number, previousValue: number) {
   if (previousValue === 0) {
@@ -599,21 +567,32 @@ function resolveTrackedSiteDomain(value: string) {
       </CardHeader>
       <CardContent>
         <div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_160px]">
-          <div class="flex h-28 items-end gap-1 rounded-md border bg-muted/30 p-3" data-event-pulse-bars>
-            {eventPulseBars.map((bucket, index) => (
-              <div class="grid h-full flex-1 items-end gap-1">
-                <div class="flex h-full items-end rounded-sm bg-secondary p-px">
-                  <div
-                    class:list={[
-                      "w-full rounded-sm",
-                      index === eventPulseBars.length - 1 ? "bg-primary" : "bg-primary/65",
-                    ]}
-                    style={`height: ${bucket.height}%`}
-                    title={`${bucket.value} events around ${bucket.label}`}
-                  />
-                </div>
+          <div class="rounded-md border bg-muted/20 p-4" data-project-pulse-summary>
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Traffic trend</p>
+                <p class="mt-1 text-sm text-muted-foreground">Compared with the previous 24 hours</p>
               </div>
-            ))}
+              <span
+                class:list={[
+                  "inline-flex items-center rounded-md border px-2 py-1 text-xs font-medium",
+                  metricDeltaClass(eventVolumeDelta),
+                ]}
+                title={formatMetricDeltaTitle(eventVolumeDelta)}
+              >
+                {renderMetricDelta(eventVolumeDelta)}
+              </span>
+            </div>
+            <div class="mt-5 grid gap-3 sm:grid-cols-2">
+              <div>
+                <p class="text-xs text-muted-foreground">Current 24h</p>
+                <p class="mt-1 text-2xl font-semibold">{formatCount(selectedEnvironment.eventCount24h)}</p>
+              </div>
+              <div>
+                <p class="text-xs text-muted-foreground">Previous 24h</p>
+                <p class="mt-1 text-2xl font-semibold">{formatCount(selectedEnvironment.previousEventCount24h)}</p>
+              </div>
+            </div>
           </div>
           <div class="grid gap-3 text-sm">
             <div class="rounded-md border p-3">

@@ -2,7 +2,6 @@
 import { UserButton } from "@clerk/astro/components";
 import { ChevronRight, ExternalLink, Home } from "lucide-react";
 import type { SargeAccount } from "@/lib/sarge-demo";
-import ThemeToggle from "@/components/ThemeToggle";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import "../styles/global.css";
 
@@ -95,7 +94,6 @@ const { account, title = "Sarge", eyebrow = account.name, heading, headingLink, 
               <p class="truncate text-sm font-semibold">{account.name}</p>
               <p class="text-xs text-muted-foreground">{account.role} · {account.plan.name}</p>
             </div>
-            <ThemeToggle client:only="react" />
             <UserButton />
           </div>
         </div>

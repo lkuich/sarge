@@ -20,6 +20,8 @@ describe("app navigation routes", () => {
     expect(layout).toContain("{account.name}");
     expect(layout).toContain("{account.role}");
     expect(layout).toContain("{account.plan.name}");
+    expect(layout).toContain("<UserButton />");
+    expect(layout).not.toContain("ThemeToggle");
     expect(layout).toContain('active === "notifications"');
     expect(layout).toContain('active === "billing"');
     expect(layout).toContain(">BETA<");

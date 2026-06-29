@@ -87,4 +87,10 @@ describe("launch readiness safeguards", () => {
 
     expect(middleware).toContain("applySecurityHeaders");
   });
+
+  it("allows Clerk's production proxy host through the content security policy", () => {
+    const securityHeaders = readWwwFile("src/lib/security-headers.ts");
+
+    expect(securityHeaders).toContain("https://clerk.sargetrack.app");
+  });
 });

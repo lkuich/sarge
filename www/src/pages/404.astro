@@ -1,0 +1,23 @@
+---
+import ErrorPageShell from "@/components/ErrorPageShell.astro";
+
+Astro.response.status = 404;
+
+const statusItems = [
+  { label: "Signal", value: "Route missing", tone: "warning" as const },
+  { label: "Impact", value: "No event stream was opened" },
+  { label: "Next step", value: "Return home or check the docs", tone: "success" as const },
+];
+---
+
+<ErrorPageShell
+  statusCode="404"
+  title="Sarge | Page not found"
+  eyebrow="Route missing"
+  heading="This trail does not lead to a tracked page."
+  description="Sarge could not find that route. The page may have moved, the link may be stale, or the URL may have picked up a little noise in transit."
+  primaryAction={{ href: "/", label: "Go home" }}
+  secondaryAction={{ href: "/docs", label: "Open docs" }}
+  statusPanelId="error-status-panel"
+  statusItems={statusItems}
+/>

@@ -363,6 +363,49 @@ describe("SessionFlowExplorer event filters", () => {
     expect(container?.textContent).toContain("fresh-session");
     expect(container?.textContent).not.toContain("stale-session");
   });
+
+  it("reloads flow data from the endpoint when the time window changes", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ events: [event("window-page", "page.view", "window-session", 20)] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionFlowExplorer events={[event("current-page", "page.view", "current-session", 10)]} refreshEndpoint="/api/project-events/env_123?limit=80" />);
+
+    expect(container?.querySelector('[data-flow-node="event:current-page"]')).not.toBeNull();
+    expect(container?.querySelector('[data-flow-node="event:window-page"]')).toBeNull();
+
+    await act(async () => {
+      buttonNamed("Last 24h")?.click();
+    });
+
+    const requestedUrl = new URL(String(fetchMock.mock.calls[0]?.[0]), "https://example.com");
+
+    expect(requestedUrl.pathname).toBe("/api/project-events/env_123");
+    expect(requestedUrl.searchParams.get("limit")).toBe("80");
+    expect(requestedUrl.searchParams.get("startAt")).toMatch(/^2026-06-19T12:10:00\.000Z$/);
+    expect(requestedUrl.searchParams.has("endAt")).toBe(false);
+    expect(container?.querySelector('[data-flow-node="event:window-page"]')).not.toBeNull();
+    expect(container?.querySelector('[data-flow-node="event:current-page"]')).toBeNull();
+  });
+
+  it("keeps date controls available when a loaded time window has no events", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ events: [] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<SessionFlowExplorer events={[event("current-page", "page.view", "current-session", 10)]} refreshEndpoint="/api/project-events/env_123?limit=80" />);
+
+    await act(async () => {
+      buttonNamed("Last 24h")?.click();
+    });
+
+    expect(container?.textContent).toContain("No matching users in this event sample.");
+    expect(buttonNamed("Clear dates")).not.toBeUndefined();
+  });
 });
 
 function render(ui: React.ReactNode) {

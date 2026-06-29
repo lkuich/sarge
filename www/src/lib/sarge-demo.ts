@@ -133,6 +133,12 @@ export interface SargeAccount {
   members: AccountMember[];
 }
 
+export interface ProjectEnvironmentEventQuery {
+  limit: number;
+  startAt?: string | null;
+  endAt?: string | null;
+}
+
 export interface SargePrivacySettings {
   piiRedactionEnabled: boolean;
   propertyPolicyMode: PropertyPolicyMode;
@@ -875,6 +881,52 @@ export const getPublicEventStream = async (
     };
   } catch (error) {
     console.error('Unable to load public Sarge event stream', error);
+    return null;
+  }
+};
+
+export const getProjectEnvironmentEvents = async (
+  databaseUrl: string | undefined,
+  environmentId: string,
+  query: ProjectEnvironmentEventQuery,
+): Promise<SargeEvent[] | null> => {
+  if (!databaseUrl || !environmentId.trim()) return null;
+
+  try {
+    const sql = neon(databaseUrl);
+    const limit = Math.min(Math.max(query.limit, 1), 80);
+    const startAt = normalizeEventBoundary(query.startAt);
+    const endAt = normalizeEventBoundary(query.endAt);
+    const events = (await sql`
+      SELECT
+        e.id,
+        e."siteId",
+        e."siteEnvironmentId",
+        e.name,
+        e."occurredAt",
+        e."receivedAt",
+        e."sessionId",
+        e."userId",
+        e.url,
+        e.referrer,
+        e.ref,
+        e.affiliate,
+        e.title,
+        e.properties
+      FROM "Event" e
+      JOIN "Site" s ON s.id = e."siteId"
+      JOIN "Workspace" w ON w.id = s."workspaceId"
+      WHERE e."siteEnvironmentId" = ${environmentId}
+        AND ${sql.unsafe(eventRetentionFilterSql)}
+        AND (${startAt}::timestamptz IS NULL OR e."occurredAt" >= ${startAt}::timestamptz)
+        AND (${endAt}::timestamptz IS NULL OR e."occurredAt" <= ${endAt}::timestamptz)
+      ORDER BY e."occurredAt" DESC
+      LIMIT ${limit}
+    `) as EventRow[];
+
+    return events.map(mapEvent);
+  } catch (error) {
+    console.error('Unable to load project environment events', error);
     return null;
   }
 };
@@ -2141,6 +2193,13 @@ const readSargeAttributionFromUrl = (value: string | null) => {
   } catch {
     return {};
   }
+};
+
+const normalizeEventBoundary = (value: string | null | undefined) => {
+  if (!value) return null;
+
+  const time = Date.parse(value);
+  return Number.isNaN(time) ? null : new Date(time).toISOString();
 };
 
 const mapDiagnosticFinding = (finding: DiagnosticFindingRow): ProjectDiagnostic => ({

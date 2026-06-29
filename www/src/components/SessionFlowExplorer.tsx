@@ -131,7 +131,7 @@ export function SessionFlowExplorer({ events, refreshEndpoint, onRefresh }: Sess
       }),
     );
   };
-  const refreshFlowData = async () => {
+  const refreshFlowData = async (timeWindow?: { startAt: string; endAt: string }) => {
     if (!canRefresh || isRefreshing) return;
 
     setIsRefreshing(true);
@@ -141,7 +141,7 @@ export function SessionFlowExplorer({ events, refreshEndpoint, onRefresh }: Sess
         return;
       }
 
-      const response = await fetch(refreshEndpoint ?? "", {
+      const response = await fetch(buildRefreshEndpoint(refreshEndpoint ?? "", timeWindow), {
         cache: "no-store",
         headers: { accept: "application/json" },
       });
@@ -201,7 +201,7 @@ export function SessionFlowExplorer({ events, refreshEndpoint, onRefresh }: Sess
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [selectedEvent]);
 
-  if (liveEvents.length === 0) {
+  if (liveEvents.length === 0 && !hasChosenTimeWindow) {
     return (
       <div className="rounded-md border border-dashed p-6 text-sm text-muted-foreground">
         Session and user flows will appear after this project receives events.
@@ -393,6 +393,7 @@ export function SessionFlowExplorer({ events, refreshEndpoint, onRefresh }: Sess
                   setHasChosenTimeWindow(true);
                   setSelectedGroupId(null);
                   setSelectedEventId(null);
+                  return refreshFlowData(range);
                 }}
               >
                 {preset.label}
@@ -407,10 +408,12 @@ export function SessionFlowExplorer({ events, refreshEndpoint, onRefresh }: Sess
               min={sampleBounds.earliest ? toDateTimeLocal(sampleBounds.earliest) : undefined}
               max={endAt || (sampleBounds.latest ? toDateTimeLocal(sampleBounds.latest) : undefined)}
               onChange={(event) => {
-                setStartAt(event.target.value);
+                const nextStartAt = event.target.value;
+                setStartAt(nextStartAt);
                 setHasChosenTimeWindow(true);
                 setSelectedGroupId(null);
                 setSelectedEventId(null);
+                return refreshFlowData({ startAt: nextStartAt, endAt });
               }}
             />
           </label>
@@ -422,10 +425,12 @@ export function SessionFlowExplorer({ events, refreshEndpoint, onRefresh }: Sess
               min={startAt || (sampleBounds.earliest ? toDateTimeLocal(sampleBounds.earliest) : undefined)}
               max={sampleBounds.latest ? toDateTimeLocal(sampleBounds.latest) : undefined}
               onChange={(event) => {
-                setEndAt(event.target.value);
+                const nextEndAt = event.target.value;
+                setEndAt(nextEndAt);
                 setHasChosenTimeWindow(true);
                 setSelectedGroupId(null);
                 setSelectedEventId(null);
+                return refreshFlowData({ startAt, endAt: nextEndAt });
               }}
             />
           </label>
@@ -441,6 +446,7 @@ export function SessionFlowExplorer({ events, refreshEndpoint, onRefresh }: Sess
                 setHasChosenTimeWindow(true);
                 setSelectedGroupId(null);
                 setSelectedEventId(null);
+                return refreshFlowData({ startAt: "", endAt: "" });
               }}
             >
               <X className="size-3.5" />
@@ -1112,6 +1118,37 @@ const parseDateTimeLocal = (value: string) => {
 
   const time = new Date(value).getTime();
   return Number.isNaN(time) ? null : time;
+};
+
+const buildRefreshEndpoint = (endpoint: string, timeWindow?: { startAt: string; endAt: string }) => {
+  if (!timeWindow) return endpoint;
+
+  const baseUrl =
+    typeof window === "undefined" ? "https://sarge.local" : `${window.location.origin}${window.location.pathname}`;
+  const url = new URL(endpoint, baseUrl);
+  const startAt = toIsoDateTimeLocal(timeWindow.startAt);
+  const endAt = toIsoDateTimeLocal(timeWindow.endAt);
+
+  if (startAt) {
+    url.searchParams.set("startAt", startAt);
+  } else {
+    url.searchParams.delete("startAt");
+  }
+
+  if (endAt) {
+    url.searchParams.set("endAt", endAt);
+  } else {
+    url.searchParams.delete("endAt");
+  }
+
+  return endpoint.startsWith("http://") || endpoint.startsWith("https://")
+    ? url.toString()
+    : `${url.pathname}${url.search}${url.hash}`;
+};
+
+const toIsoDateTimeLocal = (value: string) => {
+  const time = parseDateTimeLocal(value);
+  return time === null ? "" : new Date(time).toISOString();
 };
 
 const toDateTimeLocal = (value: string) => {

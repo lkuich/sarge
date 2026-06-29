@@ -40,7 +40,7 @@ const showFooter = showFooterProp ?? !shader;
         <a class="hidden rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground sm:inline-flex" href="/docs">
           Docs
         </a>
-        <Show when="signed-out">
+        <Show isStatic when="signed-out" class="contents">
           <div class="flex items-center gap-2">
             <a class="hidden rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground sm:inline-flex" href="/sign-in">
               Sign in
@@ -50,12 +50,14 @@ const showFooter = showFooterProp ?? !shader;
             </a>
           </div>
         </Show>
-        <Show when="signed-in">
-          <a class="rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground" href="/app">
-            Dashboard
-          </a>
-          <div data-site-account-profile class="grid size-8 shrink-0 place-items-center" role="group" aria-label="Account profile">
-            <UserButton />
+        <Show isStatic when="signed-in" class="contents">
+          <div data-site-signed-in-nav class="flex items-center gap-1 sm:gap-2">
+            <a class="rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground" href="/app">
+              Dashboard
+            </a>
+            <div data-site-account-profile class="grid size-8 shrink-0 place-items-center" role="group" aria-label="Account profile">
+              <UserButton />
+            </div>
           </div>
         </Show>
         {showThemeToggle && <ThemeToggle client:only="react" />}

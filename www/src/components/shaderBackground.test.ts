@@ -35,6 +35,9 @@ describe("shaderBackground", () => {
     expect(layout).toContain('"site-shell": shader');
     expect(layout).toContain('<slot name="background" />');
     expect(layout).toContain(">BETA<");
+    expect(layout).toContain('<Show isStatic when="signed-out" class="contents">');
+    expect(layout).toContain('<Show isStatic when="signed-in" class="contents">');
+    expect(layout).toContain("data-site-signed-in-nav");
     expect(layout).toContain('data-site-account-profile');
     expect(layout).toContain('aria-label="Account profile"');
     expect(layout).not.toContain("shaderBackground");

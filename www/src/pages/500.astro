@@ -1,0 +1,23 @@
+---
+import ErrorPageShell from "@/components/ErrorPageShell.astro";
+
+Astro.response.status = 500;
+
+const statusItems = [
+  { label: "Signal", value: "Internal signal lost", tone: "danger" as const },
+  { label: "Impact", value: "Request could not complete" },
+  { label: "Next step", value: "Retry from the dashboard or contact Sarge", tone: "warning" as const },
+];
+---
+
+<ErrorPageShell
+  statusCode="500"
+  title="Sarge | Server error"
+  eyebrow="Internal signal lost"
+  heading="The diagnostic loop dropped this request."
+  description="Sarge hit an unexpected fault before the page could finish loading. Try the dashboard again, or send us the URL and we will trace the failure."
+  primaryAction={{ href: "/app", label: "Open dashboard" }}
+  secondaryAction={{ href: "mailto:hello@sargetrack.app?subject=Sarge%20site%20error", label: "Contact support" }}
+  statusPanelId="error-status-panel"
+  statusItems={statusItems}
+/>

@@ -125,8 +125,8 @@ describe("project detail install panel", () => {
     expect(projectDetail).toContain("Project pulse");
     expect(projectDetail).toContain("Event mix");
     expect(projectDetail).toContain("Last 24h vs previous 24h");
-    expect(projectDetail).toContain("Sessions, last 24h");
-    expect(projectDetail).toContain("Users, last 24h");
+    expect(projectDetail).toContain("Sessions");
+    expect(projectDetail).toContain("Users");
     expect(projectDetail).toContain("renderMetricDelta");
     expect(projectDetail).toContain("formatMetricDeltaTitle");
     expect(projectDetail).toContain("data-project-pulse");

@@ -31,13 +31,15 @@ describe("shaderBackground", () => {
     ].map((path) => readProjectFile(path));
 
     expect(layout).toContain("shader?: boolean");
+    expect(layout).toContain("showThemeToggle?: boolean");
     expect(layout).toContain('"site-shell": shader');
     expect(layout).toContain('<slot name="background" />');
     expect(layout).toContain(">BETA<");
     expect(layout).not.toContain("shaderBackground");
     expect(homepage).toContain('import ShaderEffect from "@/components/shaderBackground"');
     expect(homepage).toContain("<SiteLayout");
-    expect(homepage).toContain("shader>");
+    expect(homepage).toContain("shader");
+    expect(homepage).toContain("showThemeToggle={false}");
     expect(homepage).toContain('slot="background"');
     expect(homepage).toContain('<ShaderEffect client:only="react" />');
     expect(sitePages).toEqual(sitePages.map((source) => expect.not.stringContaining("shader>")));

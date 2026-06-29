@@ -8,9 +8,10 @@ interface Props {
   title?: string;
   shader?: boolean;
   showFooter?: boolean;
+  showThemeToggle?: boolean;
 }
 
-const { title = "Sarge", shader = false, showFooter: showFooterProp } = Astro.props;
+const { title = "Sarge", shader = false, showFooter: showFooterProp, showThemeToggle = true } = Astro.props;
 const showFooter = showFooterProp ?? !shader;
 ---
 
@@ -55,7 +56,7 @@ const showFooter = showFooterProp ?? !shader;
           </a>
           <UserButton />
         </Show>
-        <ThemeToggle client:only="react" />
+        {showThemeToggle && <ThemeToggle client:only="react" />}
       </nav>
     </header>
 

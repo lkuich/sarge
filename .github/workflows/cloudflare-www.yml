@@ -37,10 +37,11 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build
+        working-directory: .
         env:
           PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.PUBLIC_CLERK_PUBLISHABLE_KEY || secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-        run: pnpm build
+        run: pnpm --filter @sarge/core build && pnpm --dir www build
 
       - name: Test
         working-directory: .

@@ -114,6 +114,35 @@ curl -X POST "https://events.example.com/v2/server/events" \
   }'
 ```
 
+When the backend also calls upstream marketing APIs directly, such as Meta Conversions API or Google Measurement Protocol, send a second authenticated server event using the matching watchdog event name:
+
+```bash
+curl -X POST "https://events.example.com/v2/server/events" \
+  -H "authorization: Bearer sarge_sk_example" \
+  -H "content-type: application/json" \
+  -d '{
+    "siteId": "env_123_production",
+    "name": "google.tag.fire",
+    "eventId": "order_123_google_purchase",
+    "sessionId": "sess_123",
+    "userId": "customer_123",
+    "properties": {
+      "vendor": "google",
+      "transport": "server",
+      "command": "event",
+      "event_name": "purchase",
+      "payload": { "transaction_id": "order_123", "value": 129.99, "currency": "USD" },
+      "upstream": {
+        "endpoint": "https://www.google-analytics.com/mp/collect",
+        "status": 204,
+        "ok": true
+      }
+    }
+  }'
+```
+
+Keep vendor access tokens, API secrets, raw emails, phone numbers, and other sensitive identifiers out of the Sarge payload.
+
 For affiliate or partner systems that only support URL callbacks, set `SiteEnvironment.postbackTokenHash` and use:
 
 ```text

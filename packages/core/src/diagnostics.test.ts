@@ -137,4 +137,44 @@ describe("event diagnostics", () => {
       ])
     );
   });
+
+  it("excludes Sarge test traffic from diagnostics", () => {
+    const findings = analyzeEvents([
+      event("page.view"),
+      event("checkout.started", {
+        sessionId: "sess_test_checkout",
+        properties: {
+          value: 84,
+          currency: "USD",
+          sarge_test: true,
+          sarge_test_mode: "impersonation"
+        }
+      }),
+      event("purchase.completed", {
+        sessionId: "sess_test_purchase_a",
+        properties: {
+          order_id: "ord_test",
+          value: 42,
+          currency: "USD",
+          sarge_test: true
+        }
+      }),
+      event("purchase.completed", {
+        sessionId: "sess_test_purchase_b",
+        properties: {
+          order_id: "ord_test",
+          value: 42,
+          currency: "USD",
+          sarge_test: true
+        }
+      })
+    ]);
+
+    expect(findings).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "checkout-without-purchase" }),
+        expect.objectContaining({ id: "duplicate-purchase-order" })
+      ])
+    );
+  });
 });

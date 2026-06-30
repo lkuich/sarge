@@ -49,10 +49,44 @@ export const serverEventPayloadSchema = z.object({
 
 export type ServerEventPayload = z.infer<typeof serverEventPayloadSchema>;
 
+export const serverVendorCallPropertiesSchema = z
+  .object({
+    vendor: z.enum(["meta", "google"]),
+    transport: z.literal("server").default("server"),
+    command: z.string().min(1).optional(),
+    event_name: z.string().min(1),
+    payload: jsonObject.optional(),
+    upstream: z.object({
+      endpoint: z.string().min(1).optional(),
+      status: z.number().int().min(100).max(599),
+      ok: z.boolean().optional(),
+      request_id: z.string().min(1).optional(),
+      response_id: z.string().min(1).optional(),
+      error_code: z.string().min(1).optional(),
+      error_message: z.string().min(1).optional()
+    })
+  })
+  .passthrough();
+
+export type ServerVendorCallProperties = z.infer<typeof serverVendorCallPropertiesSchema>;
+
 export interface NormalizeEventOptions {
   now?: () => Date;
   randomId?: () => string;
 }
+
+export const normalizeServerVendorCallProperties = (input: unknown): ServerVendorCallProperties => {
+  const parsed = serverVendorCallPropertiesSchema.parse(input);
+
+  return {
+    ...parsed,
+    transport: "server",
+    upstream: {
+      ...parsed.upstream,
+      ok: parsed.upstream.ok ?? (parsed.upstream.status >= 200 && parsed.upstream.status < 300)
+    }
+  };
+};
 
 export const normalizeServerEvent = (input: unknown, options: NormalizeEventOptions = {}): EventPayload => {
   const parsed = serverEventPayloadSchema.parse(input);

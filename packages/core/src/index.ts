@@ -4,10 +4,13 @@ export {
   eventSourceSchema,
   normalizePostbackEvent,
   normalizeServerEvent,
+  normalizeServerVendorCallProperties,
   parseCompactEventQuery,
+  serverVendorCallPropertiesSchema,
   serverEventPayloadSchema,
   type EventSource,
   type ServerEventPayload,
+  type ServerVendorCallProperties,
   type EventPayload
 } from "./event-schema.js";
 
@@ -23,6 +26,7 @@ export {
 export {
   analyzeEvents,
   ecommerceTrackingPlan,
+  isSargeTestTraffic,
   type DiagnosticEvent,
   type DiagnosticFinding,
   type DiagnosticSeverity,

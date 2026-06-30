@@ -171,4 +171,34 @@ The pixel observes common globals after it loads:
 - `gtag(...)` -> `google.tag.fire`
 - `fbq(...)` -> `meta.pixel.fire`
 
+Backends that call Meta Conversions API, Google Measurement Protocol, or similar vendor APIs directly should report the dispatch through `/v2/server/events` with the matching watchdog event name. Include the upstream HTTP response under `properties.upstream`:
+
+```json
+{
+  "siteId": "env_123_production",
+  "name": "google.tag.fire",
+  "eventId": "order_123_google_purchase",
+  "sessionId": "sess_123",
+  "userId": "customer_123",
+  "properties": {
+    "vendor": "google",
+    "transport": "server",
+    "command": "event",
+    "event_name": "purchase",
+    "payload": {
+      "transaction_id": "order_123",
+      "value": 129.99,
+      "currency": "USD"
+    },
+    "upstream": {
+      "endpoint": "https://www.google-analytics.com/mp/collect",
+      "status": 204,
+      "ok": true
+    }
+  }
+}
+```
+
+Use the same `sessionId` and `userId` as the related browser or order event when available. Do not include access tokens, raw emails, phone numbers, or other secrets in the Sarge payload.
+
 Future versions may add more globals and known network calls, such as `ttq.track`.

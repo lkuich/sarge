@@ -1,7 +1,45 @@
 import { describe, expect, it } from "vitest";
-import { normalizePostbackEvent, normalizeServerEvent } from "./event-schema.js";
+import {
+  normalizePostbackEvent,
+  normalizeServerEvent,
+  normalizeServerVendorCallProperties
+} from "./event-schema.js";
 
 describe("server and postback event normalization", () => {
+  it("normalizes server-reported vendor pixel calls with upstream response metadata", () => {
+    const properties = normalizeServerVendorCallProperties({
+      vendor: "meta",
+      command: "track",
+      event_name: "Purchase",
+      payload: {
+        value: 129.99,
+        currency: "USD"
+      },
+      upstream: {
+        endpoint: "https://graph.facebook.com/v20.0/123/events",
+        status: 200,
+        request_id: "fb_req_123"
+      }
+    });
+
+    expect(properties).toEqual({
+      vendor: "meta",
+      transport: "server",
+      command: "track",
+      event_name: "Purchase",
+      payload: {
+        value: 129.99,
+        currency: "USD"
+      },
+      upstream: {
+        endpoint: "https://graph.facebook.com/v20.0/123/events",
+        status: 200,
+        ok: true,
+        request_id: "fb_req_123"
+      }
+    });
+  });
+
   it("normalizes authenticated server events into stored event payloads", () => {
     const event = normalizeServerEvent(
       {

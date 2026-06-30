@@ -1,4 +1,9 @@
-import type { DiagnosticEvent, DiagnosticFinding, DiagnosticSeverity } from "./diagnostics.js";
+import {
+  isSargeTestTraffic,
+  type DiagnosticEvent,
+  type DiagnosticFinding,
+  type DiagnosticSeverity
+} from "./diagnostics.js";
 
 export type TrackedPageFailureRuleId =
   | "tracked_page_missing"
@@ -54,6 +59,8 @@ export const selectTrackedPageCandidates = (
   const byUrl = new Map<string, TrackedPageCandidate>();
 
   for (const event of events) {
+    if (isSargeTestTraffic(event)) continue;
+
     const url = normalizeTrackedPageUrl(event.url);
     if (!url) continue;
 

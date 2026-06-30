@@ -63,7 +63,7 @@ const ecommerceEvents = [
 const watchdogEvents = [
   {
     name: "meta.pixel.fire",
-    source: "Observed from `fbq(...)`",
+    source: "Observed from `fbq(...)`, or reported by a server Meta API call.",
     example: `{
   vendor: "meta",
   command: "track",
@@ -73,7 +73,7 @@ const watchdogEvents = [
   },
   {
     name: "google.tag.fire",
-    source: "Observed from `gtag(...)`",
+    source: "Observed from `gtag(...)`, or reported by a server Google API call.",
     example: `{
   vendor: "google",
   command: "event",
@@ -142,7 +142,7 @@ const watchdogEvents = [
             <h2 class="text-xl font-semibold">Watchdog events</h2>
           </div>
           <p class="mt-2 text-sm leading-6 text-muted-foreground">
-            These are emitted automatically when Sarge observes common third-party marketing APIs after the pixel loads.
+            These are emitted automatically when Sarge observes common third-party marketing APIs after the pixel loads. Server-side vendor calls can use the same event names with `transport: "server"` and an `upstream` response summary in properties.
           </p>
           <div class="mt-5 grid gap-3">
             {

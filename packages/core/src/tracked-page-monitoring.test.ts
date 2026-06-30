@@ -73,6 +73,27 @@ describe("tracked page monitoring", () => {
     ]);
   });
 
+  it("excludes Sarge test traffic from tracked page candidates", () => {
+    const candidates = selectTrackedPageCandidates([
+      event("page.view", {
+        url: "https://shop.example.com/real"
+      }),
+      event("purchase.completed", {
+        url: "https://shop.example.com/test-checkout",
+        properties: {
+          order_id: "ord_test",
+          value: 42,
+          currency: "USD",
+          sarge_test: true
+        }
+      })
+    ]);
+
+    expect(candidates.map((candidate) => candidate.url)).toEqual([
+      "https://shop.example.com/real"
+    ]);
+  });
+
   it("applies the per-environment candidate cap", () => {
     const candidates = selectTrackedPageCandidates(
       [

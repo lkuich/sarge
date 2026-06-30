@@ -55,6 +55,30 @@ const serverEvent = `curl -X POST "https://track.sargetrack.app/v2/server/events
     }
   }'`;
 
+const serverVendorEvent = `curl -X POST "https://track.sargetrack.app/v2/server/events" \\
+  -H "authorization: Bearer {serverEventSecret}" \\
+  -H "content-type: application/json" \\
+  -d '{
+    "siteId": "{siteEnvironmentId}",
+    "name": "meta.pixel.fire",
+    "eventId": "order_123_meta_purchase",
+    "sessionId": "sess_123",
+    "userId": "customer_123",
+    "properties": {
+      "vendor": "meta",
+      "transport": "server",
+      "command": "track",
+      "event_name": "Purchase",
+      "payload": { "order_id": "order_123", "value": 129.99, "currency": "USD" },
+      "upstream": {
+        "endpoint": "https://graph.facebook.com/v20.0/{pixel_id}/events",
+        "status": 200,
+        "ok": true,
+        "request_id": "fb_req_123"
+      }
+    }
+  }'`;
+
 const postbackUrl = `https://track.sargetrack.app/v2/postback/{siteEnvironmentId}/{postbackToken}?event=affiliate.conversion&click_id=click_123&order_id=order_123&value=42.50&currency=USD&aff=partner-42`;
 
 const verifyUrl = `https://sargetrack.app/verify/{siteEnvironmentId}?key={temporaryVerificationKey}`;
@@ -215,6 +239,10 @@ const troubleshooting = [
             Use browser events for page and interaction tracking. Use server-side events for trusted backend facts such as paid orders, refunds, fulfilled subscriptions, or webhook confirmations.
           </p>
           <pre class="mt-4 max-w-full overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{serverEvent}</code></pre>
+          <p class="mt-4 text-sm leading-6 text-muted-foreground">
+            If the backend also calls Meta, Google, or another vendor API directly, report that upstream dispatch as a watchdog event with `transport: "server"` and the returned HTTP status in `properties.upstream`.
+          </p>
+          <pre class="mt-4 max-w-full overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{serverVendorEvent}</code></pre>
           <p class="mt-4 text-sm leading-6 text-muted-foreground">
             URL-only partner postbacks are useful when an affiliate network can only call a tracking URL. Keep server event secrets out of browser code and rotate postback tokens if a URL is exposed.
           </p>

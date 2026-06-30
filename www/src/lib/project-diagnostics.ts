@@ -20,11 +20,12 @@ const trackingPlan = new Map<string, string[]>([
 ]);
 
 export const analyzeProjectEvents = (events: SargeEvent[]): ProjectDiagnostic[] => {
-  if (events.length === 0) return [];
+  const diagnosticEvents = events.filter((event) => !isSargeTestTraffic(event));
+  if (diagnosticEvents.length === 0) return [];
 
   const findings: ProjectDiagnostic[] = [];
-  const checkouts = events.filter((event) => event.name === "checkout.started");
-  const purchases = events.filter((event) => event.name === "purchase.completed");
+  const checkouts = diagnosticEvents.filter((event) => event.name === "checkout.started");
+  const purchases = diagnosticEvents.filter((event) => event.name === "purchase.completed");
   const purchaseSessions = new Set(purchases.map((event) => event.sessionId));
   const missingPurchaseSessions = unique(
     checkouts
@@ -63,7 +64,7 @@ export const analyzeProjectEvents = (events: SargeEvent[]): ProjectDiagnostic[] 
     });
   }
 
-  const metaPurchases = events.filter(
+  const metaPurchases = diagnosticEvents.filter(
     (event) =>
       event.name === "meta.pixel.fire" &&
       readStringProperty(event.properties, "event_name")?.toLowerCase() === "purchase",
@@ -105,7 +106,7 @@ export const analyzeProjectEvents = (events: SargeEvent[]): ProjectDiagnostic[] 
     });
   }
 
-  const missingProperties = findMissingRequiredProperties(events);
+  const missingProperties = findMissingRequiredProperties(diagnosticEvents);
   if (missingProperties.length > 0) {
     findings.push({
       id: "missing-required-properties",
@@ -119,7 +120,7 @@ export const analyzeProjectEvents = (events: SargeEvent[]): ProjectDiagnostic[] 
     });
   }
 
-  if (!events.some((event) => event.name === "page.view")) {
+  if (!diagnosticEvents.some((event) => event.name === "page.view")) {
     findings.push({
       id: "missing-page-view-events",
       title: "No page views detected",
@@ -134,6 +135,8 @@ export const analyzeProjectEvents = (events: SargeEvent[]): ProjectDiagnostic[] 
 
   return findings;
 };
+
+const isSargeTestTraffic = (event: SargeEvent) => event.properties.sarge_test === true;
 
 const findDuplicateOrderIds = (events: SargeEvent[]) => {
   const counts = new Map<string, number>();

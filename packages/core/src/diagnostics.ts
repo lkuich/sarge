@@ -43,10 +43,13 @@ export const analyzeEvents = (
   events: DiagnosticEvent[],
   plan: TrackingPlan = ecommerceTrackingPlan
 ): DiagnosticFinding[] => {
+  const diagnosticEvents = events.filter((event) => !isSargeTestTraffic(event));
+  if (diagnosticEvents.length === 0) return [];
+
   const findings: DiagnosticFinding[] = [];
   const eventsByName = new Map<string, DiagnosticEvent[]>();
 
-  for (const event of events) {
+  for (const event of diagnosticEvents) {
     const eventList = eventsByName.get(event.name) ?? [];
     eventList.push(event);
     eventsByName.set(event.name, eventList);
@@ -147,7 +150,7 @@ export const analyzeEvents = (
     );
   }
 
-  const missingRequiredProperties = findMissingRequiredProperties(events, plan);
+  const missingRequiredProperties = findMissingRequiredProperties(diagnosticEvents, plan);
   if (missingRequiredProperties.length > 0) {
     findings.push(
       createFinding({
@@ -184,6 +187,9 @@ export const analyzeEvents = (
 
   return findings;
 };
+
+export const isSargeTestTraffic = (event: DiagnosticEvent) =>
+  event.properties?.sarge_test === true;
 
 const createFinding = (finding: DiagnosticFinding): DiagnosticFinding => finding;
 

@@ -105,11 +105,13 @@ window.sarge("track", "purchase.completed", {
 
 ## Watchdog Events
 
-Sarge emits watchdog events automatically when it observes common third-party marketing APIs after the pixel loads.
+Sarge emits watchdog events automatically when it observes common third-party marketing APIs after the pixel loads. Backend calls to Meta Conversions API, Google Measurement Protocol, or similar vendor APIs can use the same event names through `/v2/server/events` with `transport: "server"` and an upstream response summary.
 
 ### `meta.pixel.fire`
 
 Observed from `fbq(...)`.
+
+Server-reported Meta API calls should also use this event name.
 
 Example payload:
 
@@ -125,6 +127,8 @@ Example payload:
 ### `google.tag.fire`
 
 Observed from `gtag(...)`.
+
+Server-reported Google API calls should also use this event name.
 
 Example payload:
 
@@ -152,6 +156,39 @@ Example payload:
   }
 }
 ```
+
+### Server-reported upstream response
+
+Example `/v2/server/events` payload for a backend vendor dispatch:
+
+```json
+{
+  "siteId": "env_123_production",
+  "name": "meta.pixel.fire",
+  "eventId": "order_123_meta_purchase",
+  "sessionId": "sess_123",
+  "userId": "customer_123",
+  "properties": {
+    "vendor": "meta",
+    "transport": "server",
+    "command": "track",
+    "event_name": "Purchase",
+    "payload": {
+      "order_id": "order_123",
+      "value": 129.99,
+      "currency": "USD"
+    },
+    "upstream": {
+      "endpoint": "https://graph.facebook.com/v20.0/{pixel_id}/events",
+      "status": 200,
+      "ok": true,
+      "request_id": "fb_req_123"
+    }
+  }
+}
+```
+
+Do not include access tokens, raw emails, phone numbers, or other secrets in Sarge events.
 
 ## Event Envelope
 

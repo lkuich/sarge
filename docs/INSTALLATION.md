@@ -87,6 +87,36 @@ dataLayer.push(...) -> data_layer.push
 
 Load Sarge before the interactions you need to debug. If a third-party pixel is already installed, Sarge preserves the original function and observes calls before forwarding them.
 
+If your backend calls Meta Conversions API, Google Measurement Protocol, or another vendor API directly, report that upstream call through `/v2/server/events` with the matching watchdog event name. Include the upstream status code in `properties.upstream`:
+
+```bash
+curl -X POST "https://track.sargetrack.app/v2/server/events" \
+  -H "authorization: Bearer sarge_sk_example" \
+  -H "content-type: application/json" \
+  -d '{
+    "siteId": "env_123_production",
+    "name": "meta.pixel.fire",
+    "eventId": "order_123_meta_purchase",
+    "sessionId": "sess_123",
+    "userId": "customer_123",
+    "properties": {
+      "vendor": "meta",
+      "transport": "server",
+      "command": "track",
+      "event_name": "Purchase",
+      "payload": { "order_id": "order_123", "value": 129.99, "currency": "USD" },
+      "upstream": {
+        "endpoint": "https://graph.facebook.com/v20.0/{pixel_id}/events",
+        "status": 200,
+        "ok": true,
+        "request_id": "fb_req_123"
+      }
+    }
+  }'
+```
+
+Do not include access tokens, raw emails, phone numbers, or other secrets in the Sarge payload.
+
 ## SPA Route Changes
 
 For client-side routed apps, emit a page event whenever the route changes:

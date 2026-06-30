@@ -187,6 +187,45 @@ Notes:
 - If `sessionId` is omitted, Sarge stores `server:{eventId}` or a generated fallback.
 - Stored events are marked with `source: "server"`.
 
+### Server-Reported Vendor Pixel Calls
+
+When your backend calls an upstream marketing API directly, such as Meta Conversions API or Google Measurement Protocol, report that dispatch through the same authenticated server endpoint. Use the watchdog event names so diagnostics can compare first-party conversions with vendor dispatches:
+
+- `meta.pixel.fire` for Meta browser Pixel or Conversions API events.
+- `google.tag.fire` for Google tag, Ads, Analytics, or Measurement Protocol events.
+
+Send the vendor request/response summary in `properties`. Keep access tokens, raw emails, phone numbers, and other secrets out of the payload.
+
+```json
+{
+  "siteId": "env_123_production",
+  "name": "meta.pixel.fire",
+  "eventId": "order_123_meta_purchase",
+  "occurredAt": "2026-06-24T12:00:00.000Z",
+  "sessionId": "sess_123",
+  "userId": "customer_123",
+  "properties": {
+    "vendor": "meta",
+    "transport": "server",
+    "command": "track",
+    "event_name": "Purchase",
+    "payload": {
+      "order_id": "order_123",
+      "value": 129.99,
+      "currency": "USD"
+    },
+    "upstream": {
+      "endpoint": "https://graph.facebook.com/v20.0/{pixel_id}/events",
+      "status": 200,
+      "ok": true,
+      "request_id": "fb_req_123"
+    }
+  }
+}
+```
+
+`properties.upstream.status` should be the HTTP status returned by the upstream API. If you build the properties with `normalizeServerVendorCallProperties` from `@sarge/core`, `properties.upstream.ok` is inferred from the status when omitted.
+
 ### Tokenized Postback URLs
 
 Use postback URLs for affiliate networks and partner tools that can only call a URL.

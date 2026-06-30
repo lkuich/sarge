@@ -273,6 +273,9 @@ const postbackTokenLimitSqlCase = buildPlanLimitSqlCase('postbackTokens', 'w."pl
 const eventRetentionFilterSql = buildPlanRetentionFilterSql('e."occurredAt"', 'w."planId"');
 const eventMixRetentionFilterSql = buildPlanRetentionFilterSql('e_mix."occurredAt"', 'w."planId"');
 const eventTrendRetentionFilterSql = buildPlanRetentionFilterSql('e_trend."occurredAt"', 'w."planId"');
+const nonWatchdogEventFilterSql = `e.name NOT IN ('meta.pixel.fire', 'google.tag.fire', 'data_layer.push')`;
+const nonWatchdogEventMixFilterSql = `e_mix.name NOT IN ('meta.pixel.fire', 'google.tag.fire', 'data_layer.push')`;
+const nonWatchdogEventTrendFilterSql = `e_trend.name NOT IN ('meta.pixel.fire', 'google.tag.fire', 'data_layer.push')`;
 
 const adminIds = new Set(
   (import.meta.env.SARGE_ADMIN_USER_IDS ?? '')
@@ -548,12 +551,12 @@ export const getViewerAccount = async (
         se."pixelEnabled",
         se."serverEventSecretHash",
         se."postbackTokenHash",
-        COUNT(e.id) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL '24 hours')::int AS "eventCount24h",
-        COUNT(e.id) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL '48 hours' AND e."occurredAt" < NOW() - INTERVAL '24 hours')::int AS "previousEventCount24h",
-        COUNT(DISTINCT NULLIF(e."sessionId", '')) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL '24 hours')::int AS "sessionCount24h",
-        COUNT(DISTINCT NULLIF(e."sessionId", '')) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL '48 hours' AND e."occurredAt" < NOW() - INTERVAL '24 hours')::int AS "previousSessionCount24h",
-        COUNT(DISTINCT NULLIF(e."userId", '')) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL '24 hours')::int AS "userCount24h",
-        COUNT(DISTINCT NULLIF(e."userId", '')) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL '48 hours' AND e."occurredAt" < NOW() - INTERVAL '24 hours')::int AS "previousUserCount24h",
+        COUNT(e.id) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL '24 hours' AND ${sql.unsafe(nonWatchdogEventFilterSql)})::int AS "eventCount24h",
+        COUNT(e.id) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL '48 hours' AND e."occurredAt" < NOW() - INTERVAL '24 hours' AND ${sql.unsafe(nonWatchdogEventFilterSql)})::int AS "previousEventCount24h",
+        COUNT(DISTINCT NULLIF(e."sessionId", '')) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL '24 hours' AND ${sql.unsafe(nonWatchdogEventFilterSql)})::int AS "sessionCount24h",
+        COUNT(DISTINCT NULLIF(e."sessionId", '')) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL '48 hours' AND e."occurredAt" < NOW() - INTERVAL '24 hours' AND ${sql.unsafe(nonWatchdogEventFilterSql)})::int AS "previousSessionCount24h",
+        COUNT(DISTINCT NULLIF(e."userId", '')) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL '24 hours' AND ${sql.unsafe(nonWatchdogEventFilterSql)})::int AS "userCount24h",
+        COUNT(DISTINCT NULLIF(e."userId", '')) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL '48 hours' AND e."occurredAt" < NOW() - INTERVAL '24 hours' AND ${sql.unsafe(nonWatchdogEventFilterSql)})::int AS "previousUserCount24h",
         COALESCE((
           SELECT jsonb_agg(
             jsonb_build_object(
@@ -571,6 +574,7 @@ export const getViewerAccount = async (
             FROM "Event" e_mix
             WHERE e_mix."siteEnvironmentId" = se.id
               AND e_mix."occurredAt" >= NOW() - INTERVAL '48 hours'
+              AND ${sql.unsafe(nonWatchdogEventMixFilterSql)}
               AND ${sql.unsafe(eventMixRetentionFilterSql)}
             GROUP BY e_mix.name
             HAVING COUNT(e_mix.id) FILTER (WHERE e_mix."occurredAt" >= NOW() - INTERVAL '24 hours') > 0
@@ -599,7 +603,7 @@ export const getViewerAccount = async (
             LEFT JOIN "Event" e_trend ON e_trend."siteEnvironmentId" = se.id
               AND e_trend."occurredAt" >= day_bucket
               AND e_trend."occurredAt" < day_bucket + INTERVAL '1 day'
-              AND e_trend.name NOT IN ('meta.pixel.fire', 'google.tag.fire', 'data_layer.push')
+              AND ${sql.unsafe(nonWatchdogEventTrendFilterSql)}
               AND ${sql.unsafe(eventTrendRetentionFilterSql)}
             GROUP BY day_bucket
           ) event_trend

@@ -1,6 +1,6 @@
 ---
 import { env } from "cloudflare:workers";
-import { Activity, Bot, ChevronDown, Copy, Download, ExternalLink, Globe2, KeyRound, Link2, Plus, Radio, RefreshCw, Search, TerminalSquare, UserRound, Webhook } from "lucide-react";
+import { Activity, Bot, ChevronDown, Copy, Download, ExternalLink, Globe2, KeyRound, Link2, Plus, Radio, RefreshCw, Search, TerminalSquare, UserRound, Webhook, X } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -344,6 +344,7 @@ const hasSelectedEnvironmentEvents =
 const pixelInstallStatus = getPixelInstallStatus(selectedEnvironment.status, hasSelectedEnvironmentEvents);
 const endpointHealth = pixelInstallStatus === "active" ? "healthy" : "pending";
 const isPixelActive = pixelInstallStatus === "active";
+const diagnosticDismissalStorageKey = `sarge:dismissed-diagnostics:${project.siteId}:${selectedEnvironment.id}`;
 const criticalFindings = diagnostics.filter((finding) => finding.severity === "critical").length;
 const warningFindings = diagnostics.filter((finding) => finding.severity === "warning").length;
 const diagnosticRunLabel = selectedEnvironment.diagnosticRunAt ? new Date(selectedEnvironment.diagnosticRunAt).toLocaleString() : "Pending first scheduled run";
@@ -367,6 +368,58 @@ const severityClass = (severity: string) => {
   if (severity === "warning") return "border-amber-500/30 bg-amber-500/5";
   return "border-border bg-card";
 };
+const escapeMarkdownHtml = (value: string) =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+const renderMarkdownInline = (value: string) =>
+  escapeMarkdownHtml(value)
+    .replace(/`([^`]+)`/g, '<code class="rounded bg-background px-1 py-0.5 font-mono text-[0.85em]">$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong class="font-semibold text-foreground">$1</strong>')
+    .replace(/\*([^*]+)\*/g, "<em>$1</em>");
+const renderDiagnosticSummaryMarkdown = (value: string) => {
+  const lines = value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (lines.length === 0) return "";
+
+  const html: string[] = [];
+  let listItems: string[] = [];
+  let listType: "ul" | "ol" | null = null;
+  const flushList = () => {
+    if (!listType || listItems.length === 0) return;
+    html.push(`<${listType} class="mt-2 list-${listType === "ul" ? "disc" : "decimal"} space-y-1 pl-4">${listItems.join("")}</${listType}>`);
+    listItems = [];
+    listType = null;
+  };
+
+  for (const line of lines) {
+    const unordered = line.match(/^[-*]\s+(.+)$/);
+    const ordered = line.match(/^\d+\.\s+(.+)$/);
+    if (unordered || ordered) {
+      const nextType = unordered ? "ul" : "ol";
+      if (listType && listType !== nextType) flushList();
+      listType = nextType;
+      listItems.push(`<li>${renderMarkdownInline((unordered ?? ordered)?.[1] ?? "")}</li>`);
+      continue;
+    }
+
+    flushList();
+    html.push(`<p>${renderMarkdownInline(line)}</p>`);
+  }
+
+  flushList();
+  return html.join("");
+};
+const buildDiagnosticDismissalKey = (environmentId: string, finding: (typeof diagnostics)[number]) =>
+  [
+    environmentId,
+    finding.id,
+    finding.severity,
+    finding.title,
+    ...finding.evidence,
+  ].join("::");
 const isWatchdogEvent = (name: string) =>
   name === "meta.pixel.fire" || name === "google.tag.fire" || name === "data_layer.push";
 
@@ -967,7 +1020,7 @@ function resolveTrackedSiteDomain(value: string) {
         </div>
       </details>
 
-      <Card className="min-w-0 lg:col-span-2" data-ai-review-card>
+      <Card className="min-w-0 lg:col-span-2" data-ai-review-card data-dismiss-storage-key={diagnosticDismissalStorageKey}>
         <CardHeader>
           <div class="flex min-w-0 flex-wrap items-start justify-between gap-3">
             <div class="min-w-0">
@@ -979,8 +1032,8 @@ function resolveTrackedSiteDomain(value: string) {
               </p>
             </div>
             <div class="flex flex-wrap gap-2">
-              <Badge variant={criticalFindings > 0 ? "destructive" : "outline"}>{criticalFindings} critical</Badge>
-              <Badge variant={warningFindings > 0 ? "secondary" : "outline"}>{warningFindings} warnings</Badge>
+              <Badge variant={criticalFindings > 0 ? "destructive" : "outline"}><span data-critical-count>{criticalFindings}</span> critical</Badge>
+              <Badge variant={warningFindings > 0 ? "secondary" : "outline"}><span data-warning-count>{warningFindings}</span> warnings</Badge>
             </div>
           </div>
         </CardHeader>
@@ -989,7 +1042,7 @@ function resolveTrackedSiteDomain(value: string) {
             isAiReviewEnabled && selectedEnvironment.diagnosticSummary && (
               <div class="min-w-0 rounded-md border bg-muted p-4 text-sm">
                 <p class="text-xs font-medium text-muted-foreground">AI summary</p>
-                <p class="mt-1 leading-6">{selectedEnvironment.diagnosticSummary}</p>
+                <div class="mt-2 grid gap-2 leading-6" set:html={renderDiagnosticSummaryMarkdown(selectedEnvironment.diagnosticSummary)} />
               </div>
             )
           }
@@ -1006,40 +1059,59 @@ function resolveTrackedSiteDomain(value: string) {
           }
           {
             isAiReviewEnabled && diagnostics.length > 0 ? (
-              diagnostics.map((finding) => (
-                <div class={`rounded-md border p-4 min-w-0 overflow-hidden ${severityClass(finding.severity)}`}>
-                  <div class="flex min-w-0 flex-wrap items-start justify-between gap-3">
-                    <div class="min-w-0 flex-1">
-                      <div class="flex flex-wrap items-center gap-2">
-                        <p class="font-medium">{finding.title}</p>
-                        <Badge variant={severityVariant(finding.severity)}>{finding.severity}</Badge>
+              <>
+                {diagnostics.map((finding) => (
+                  <div
+                    class={`rounded-md border p-4 min-w-0 overflow-hidden ${severityClass(finding.severity)}`}
+                    data-diagnostic-finding
+                    data-severity={finding.severity}
+                    data-dismiss-key={buildDiagnosticDismissalKey(selectedEnvironment.id, finding)}
+                  >
+                    <div class="flex min-w-0 flex-wrap items-start justify-between gap-3">
+                      <div class="min-w-0 flex-1">
+                        <div class="flex flex-wrap items-center gap-2">
+                          <p class="font-medium">{finding.title}</p>
+                          <Badge variant={severityVariant(finding.severity)}>{finding.severity}</Badge>
+                        </div>
+                        <p class="mt-1 text-sm text-muted-foreground">{finding.summary}</p>
                       </div>
-                      <p class="mt-1 text-sm text-muted-foreground">{finding.summary}</p>
+                      <button
+                        class="inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md border bg-background px-2 text-xs font-medium hover:bg-muted"
+                        type="button"
+                        data-copy-prompt
+                        data-prompt={finding.agentPrompt}
+                      >
+                        <Copy className="size-3" /> <span data-prompt-label>Copy prompt</span>
+                      </button>
+                      <button
+                        class="inline-flex size-7 shrink-0 items-center justify-center rounded-md border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        type="button"
+                        title="Dismiss suggestion"
+                        aria-label="Dismiss suggestion"
+                        data-dismiss-finding
+                      >
+                        <X className="size-3.5" />
+                      </button>
                     </div>
-                    <button
-                      class="inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md border bg-background px-2 text-xs font-medium hover:bg-muted"
-                      type="button"
-                      data-copy-prompt
-                      data-prompt={finding.agentPrompt}
-                    >
-                      <Copy className="size-3" /> <span data-prompt-label>Copy prompt</span>
-                    </button>
+                    <div class="mt-3 grid min-w-0 gap-3 text-sm md:grid-cols-2">
+                      <div class="min-w-0">
+                        <p class="text-xs font-medium text-muted-foreground">Evidence</p>
+                        <ul class="mt-1 list-disc space-y-1 pl-4 text-muted-foreground">
+                          {finding.evidence.map((item) => <li>{item}</li>)}
+                        </ul>
+                      </div>
+                      <div class="min-w-0">
+                        <p class="text-xs font-medium text-muted-foreground">Recommendation</p>
+                        <p class="mt-1 text-muted-foreground">{finding.recommendation}</p>
+                      </div>
+                    </div>
+                    <pre class="mt-3 max-w-full overflow-x-auto rounded-md border bg-background p-3 text-xs leading-5"><code>{finding.agentPrompt}</code></pre>
                   </div>
-                  <div class="mt-3 grid min-w-0 gap-3 text-sm md:grid-cols-2">
-                    <div class="min-w-0">
-                      <p class="text-xs font-medium text-muted-foreground">Evidence</p>
-                      <ul class="mt-1 list-disc space-y-1 pl-4 text-muted-foreground">
-                        {finding.evidence.map((item) => <li>{item}</li>)}
-                      </ul>
-                    </div>
-                    <div class="min-w-0">
-                      <p class="text-xs font-medium text-muted-foreground">Recommendation</p>
-                      <p class="mt-1 text-muted-foreground">{finding.recommendation}</p>
-                    </div>
-                  </div>
-                  <pre class="mt-3 max-w-full overflow-x-auto rounded-md border bg-background p-3 text-xs leading-5"><code>{finding.agentPrompt}</code></pre>
+                ))}
+                <div class="rounded-md border border-dashed p-6 text-sm text-muted-foreground" data-all-suggestions-dismissed hidden>
+                  All current suggestions are dismissed.
                 </div>
-              ))
+              </>
             ) : isAiReviewEnabled ? (
               <div class="rounded-md border border-dashed p-6 text-sm text-muted-foreground">
                 {selectedEnvironment.diagnosticRunAt
@@ -1683,6 +1755,62 @@ function resolveTrackedSiteDomain(value: string) {
         } catch {
           if (label) label.textContent = "Copy failed";
         }
+      });
+    });
+
+    const readDismissedDiagnostics = (storageKey: string) => {
+      try {
+        const parsed = JSON.parse(window.localStorage.getItem(storageKey) ?? "[]");
+        return new Set(Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : []);
+      } catch {
+        return new Set<string>();
+      }
+    };
+
+    const writeDismissedDiagnostics = (storageKey: string, dismissed: Set<string>) => {
+      try {
+        window.localStorage.setItem(storageKey, JSON.stringify(Array.from(dismissed)));
+      } catch {
+        // Dismissals are a convenience preference; private browsing storage failures should not break the panel.
+      }
+    };
+
+    const refreshDiagnosticCounts = (panel: HTMLElement) => {
+      const visibleFindings = Array.from(panel.querySelectorAll<HTMLElement>("[data-diagnostic-finding]")).filter(
+        (finding) => !finding.hidden,
+      );
+      const criticalCount = visibleFindings.filter((finding) => finding.dataset.severity === "critical").length;
+      const warningCount = visibleFindings.filter((finding) => finding.dataset.severity === "warning").length;
+      const criticalLabel = panel.querySelector<HTMLElement>("[data-critical-count]");
+      const warningLabel = panel.querySelector<HTMLElement>("[data-warning-count]");
+      const dismissedEmptyState = panel.querySelector<HTMLElement>("[data-all-suggestions-dismissed]");
+      if (criticalLabel) criticalLabel.textContent = String(criticalCount);
+      if (warningLabel) warningLabel.textContent = String(warningCount);
+      if (dismissedEmptyState) dismissedEmptyState.hidden = visibleFindings.length > 0;
+    };
+
+    document.querySelectorAll<HTMLElement>("[data-ai-review-card]").forEach((panel) => {
+      const storageKey = panel.dataset.dismissStorageKey;
+      if (!storageKey) return;
+
+      const dismissed = readDismissedDiagnostics(storageKey);
+      panel.querySelectorAll<HTMLElement>("[data-diagnostic-finding]").forEach((finding) => {
+        const dismissKey = finding.dataset.dismissKey;
+        if (dismissKey && dismissed.has(dismissKey)) finding.hidden = true;
+      });
+      refreshDiagnosticCounts(panel);
+
+      panel.querySelectorAll<HTMLButtonElement>("[data-dismiss-finding]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const finding = button.closest<HTMLElement>("[data-diagnostic-finding]");
+          const dismissKey = finding?.dataset.dismissKey;
+          if (!finding || !dismissKey) return;
+
+          dismissed.add(dismissKey);
+          finding.hidden = true;
+          writeDismissedDiagnostics(storageKey, dismissed);
+          refreshDiagnosticCounts(panel);
+        });
       });
     });
 

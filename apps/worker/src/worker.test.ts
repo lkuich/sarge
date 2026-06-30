@@ -481,6 +481,8 @@ describe("Cloudflare Worker hosted API", () => {
     await Promise.all(promises);
 
     expect(aiCalls).toHaveLength(1);
+    expect(JSON.stringify(aiCalls[0])).toContain("Return concise Markdown");
+    expect(JSON.stringify(aiCalls[0])).toContain("at most 80 words");
     expect(diagnosticRuns).toHaveLength(1);
     expect(diagnosticRuns[0]).toMatchObject({
       siteId: "env_shared_production",

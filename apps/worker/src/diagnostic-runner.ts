@@ -167,7 +167,7 @@ const summarizeFindings = async (
         {
           role: "system",
           content:
-            "You summarize Sarge tracking diagnostics for a technical marketer or engineer. Be concise, cite only supplied evidence, and end with the most useful agentic coding prompt."
+            "You summarize Sarge tracking diagnostics for a technical marketer or engineer. Return concise Markdown, at most 80 words total. Use 2-4 bullets, cite only supplied evidence, avoid a Summary heading, and end with the most useful agentic coding prompt."
         },
         {
           role: "user",

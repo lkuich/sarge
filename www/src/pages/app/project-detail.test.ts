@@ -143,7 +143,7 @@ describe("project detail install panel", () => {
     expect(projectDetail).not.toContain("data-project-pulse-summary");
     expect(projectDetail).not.toContain("data-event-pulse-bars");
     expect(projectDetail).not.toContain("function buildEventPulseBars");
-    expect(demoData).toContain('COUNT(e.id) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL \'48 hours\' AND e."occurredAt" < NOW() - INTERVAL \'24 hours\')::int AS "previousEventCount24h"');
+    expect(demoData).toContain('COUNT(e.id) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL \'48 hours\' AND e."occurredAt" < NOW() - INTERVAL \'24 hours\' AND ${sql.unsafe(nonWatchdogEventFilterSql)})::int AS "previousEventCount24h"');
     expect(demoData).toContain('"eventMix24h"');
     expect(demoData).toContain('"trafficTrend7d"');
     expect(demoData).toContain("normalizeTrafficTrend");
@@ -154,10 +154,16 @@ describe("project detail install panel", () => {
     expect(installPanel).toBeGreaterThan(pulsePanel);
   });
 
-  it("excludes watchdog events from the weekly traffic chart", () => {
+  it("excludes watchdog events from project pulse metrics", () => {
     const demoData = readSource("../../lib/sarge-demo.ts");
 
-    expect(demoData).toContain('AND e_trend.name NOT IN (\'meta.pixel.fire\', \'google.tag.fire\', \'data_layer.push\')');
+    expect(demoData).toContain("const nonWatchdogEventFilterSql = `e.name NOT IN ('meta.pixel.fire', 'google.tag.fire', 'data_layer.push')`;");
+    expect(demoData).toContain("const nonWatchdogEventMixFilterSql = `e_mix.name NOT IN ('meta.pixel.fire', 'google.tag.fire', 'data_layer.push')`;");
+    expect(demoData).toContain("const nonWatchdogEventTrendFilterSql = `e_trend.name NOT IN ('meta.pixel.fire', 'google.tag.fire', 'data_layer.push')`;");
+    expect(demoData).toContain('FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL \'24 hours\' AND ${sql.unsafe(nonWatchdogEventFilterSql)})::int AS "eventCount24h"');
+    expect(demoData).toContain('COUNT(DISTINCT NULLIF(e."sessionId", \'\')) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL \'24 hours\' AND ${sql.unsafe(nonWatchdogEventFilterSql)})::int AS "sessionCount24h"');
+    expect(demoData).toContain("AND ${sql.unsafe(nonWatchdogEventMixFilterSql)}");
+    expect(demoData).toContain("AND ${sql.unsafe(nonWatchdogEventTrendFilterSql)}");
   });
 
   it("keeps the session flow explorer off the Worker render path", () => {
@@ -200,11 +206,25 @@ describe("project detail install panel", () => {
   it("keeps AI review findings from widening the page", () => {
     const projectDetail = readSource("./projects/[projectId].astro");
 
-    expect(projectDetail).toContain('<Card className="min-w-0 lg:col-span-2" data-ai-review-card>');
+    expect(projectDetail).toContain('<Card className="min-w-0 lg:col-span-2" data-ai-review-card data-dismiss-storage-key={diagnosticDismissalStorageKey}>');
     expect(projectDetail).toContain('<CardContent className="grid min-w-0 gap-3">');
     expect(projectDetail).toContain("rounded-md border p-4 min-w-0 overflow-hidden");
     expect(projectDetail).toContain("mt-3 grid min-w-0 gap-3 text-sm md:grid-cols-2");
     expect(projectDetail).toContain("mt-3 max-w-full overflow-x-auto rounded-md border bg-background p-3 text-xs leading-5");
+  });
+
+  it("renders AI review markdown and lets viewers dismiss diagnostic suggestions", () => {
+    const projectDetail = readSource("./projects/[projectId].astro");
+
+    expect(projectDetail).toContain("renderDiagnosticSummaryMarkdown");
+    expect(projectDetail).toContain("set:html={renderDiagnosticSummaryMarkdown(selectedEnvironment.diagnosticSummary)}");
+    expect(projectDetail).toContain("data-diagnostic-finding");
+    expect(projectDetail).toContain("data-dismiss-key={buildDiagnosticDismissalKey(selectedEnvironment.id, finding)}");
+    expect(projectDetail).toContain("data-dismiss-finding");
+    expect(projectDetail).toContain("Dismiss suggestion");
+    expect(projectDetail).toContain("sarge:dismissed-diagnostics:");
+    expect(projectDetail).toContain("refreshDiagnosticCounts");
+    expect(projectDetail).toContain("data-all-suggestions-dismissed");
   });
 
   it("includes a test impersonation helper with copy and live-update hooks", () => {

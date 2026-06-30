@@ -39,6 +39,7 @@ interface FlowEvent {
 interface SessionFlowExplorerProps {
   events: FlowEvent[];
   refreshEndpoint?: string;
+  markTestEndpoint?: string;
   onRefresh?: () => void | Promise<void>;
 }
 
@@ -64,7 +65,7 @@ const nodeGap = 250;
 const pageRowGap = 154;
 const groupGap = 96;
 
-export function SessionFlowExplorer({ events, refreshEndpoint, onRefresh }: SessionFlowExplorerProps) {
+export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint, onRefresh }: SessionFlowExplorerProps) {
   const [liveEvents, setLiveEvents] = useState(events);
   const [mode, setMode] = useState<FlowMode>("user");
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
@@ -73,6 +74,9 @@ export function SessionFlowExplorer({ events, refreshEndpoint, onRefresh }: Sess
   const [sargeRefFilter, setSargeRefFilter] = useState("");
   const [sargeAffFilter, setSargeAffFilter] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isMarkingTestTraffic, setIsMarkingTestTraffic] = useState(false);
+  const [markTestMessage, setMarkTestMessage] = useState("");
+  const [markTestError, setMarkTestError] = useState("");
   const [selectedEventFilters, setSelectedEventFilters] = useState<EventFilter[]>(() =>
     eventFilters.map((filter) => filter.value).filter((filter) => filter !== "watchdog"),
   );
@@ -98,6 +102,10 @@ export function SessionFlowExplorer({ events, refreshEndpoint, onRefresh }: Sess
     if (selectedGroupId) return filteredGroups.filter((group) => group.id === selectedGroupId);
     return filteredGroups;
   }, [filteredGroups, selectedGroupId]);
+  const selectedGroup = useMemo(
+    () => filteredGroups.find((group) => group.id === selectedGroupId) ?? null,
+    [filteredGroups, selectedGroupId],
+  );
   const { nodes, edges } = useMemo(() => buildFlowElements(visibleGroups, mode), [mode, visibleGroups]);
   const selectedEvent = useMemo(
     () => timeFilteredEvents.find((event) => event.id === selectedEventId) ?? null,
@@ -153,6 +161,35 @@ export function SessionFlowExplorer({ events, refreshEndpoint, onRefresh }: Sess
       setSelectedEventId(null);
     } finally {
       setIsRefreshing(false);
+    }
+  };
+  const markSelectedGroupAsTest = async () => {
+    if (!markTestEndpoint || !selectedGroup || isMarkingTestTraffic) return;
+
+    setIsMarkingTestTraffic(true);
+    setMarkTestMessage("");
+    setMarkTestError("");
+    try {
+      const response = await fetch(markTestEndpoint, {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ kind: mode, subjectId: selectedGroup.id, limit: 80 }),
+      });
+      const payload = (await response.json()) as { events?: FlowEvent[]; updatedCount?: number; error?: string };
+      if (!response.ok) throw new Error(payload.error ?? `Mark test traffic failed: ${response.status}`);
+
+      setLiveEvents(Array.isArray(payload.events) ? payload.events : []);
+      setTrafficFilter("all");
+      setSelectedEventId(null);
+      setMarkTestMessage(`Marked ${payload.updatedCount ?? 0} events as test.`);
+    } catch (error) {
+      setMarkTestError(error instanceof Error ? error.message : "Traffic could not be marked as test.");
+    } finally {
+      setIsMarkingTestTraffic(false);
     }
   };
 
@@ -255,7 +292,7 @@ export function SessionFlowExplorer({ events, refreshEndpoint, onRefresh }: Sess
             variant="outline"
             type="button"
             disabled={!canRefresh || isRefreshing}
-            onClick={refreshFlowData}
+            onClick={() => refreshFlowData()}
           >
             <RefreshCw className={cn("size-3.5", isRefreshing && "animate-spin")} />
             Refresh
@@ -530,6 +567,26 @@ export function SessionFlowExplorer({ events, refreshEndpoint, onRefresh }: Sess
             <span className="font-medium">Matching {mode === "session" ? "sessions" : "users"}</span>
             <span className="text-xs text-muted-foreground">{filteredGroups.length} groups in the current filter</span>
           </button>
+          {selectedGroup && markTestEndpoint && (
+            <div className="grid gap-2 rounded-md border bg-card p-3 text-sm">
+              <div className="min-w-0">
+                <p className="font-medium">Selected {mode === "session" ? "session" : "user"}</p>
+                <p className="truncate font-mono text-xs text-muted-foreground">{selectedGroup.id}</p>
+              </div>
+              <Button
+                className="h-8"
+                size="sm"
+                variant="outline"
+                type="button"
+                disabled={isMarkingTestTraffic}
+                onClick={markSelectedGroupAsTest}
+              >
+                {isMarkingTestTraffic ? "Marking..." : "Mark as test"}
+              </Button>
+            </div>
+          )}
+          {markTestMessage && <p className="rounded-md border bg-card p-2 text-xs text-muted-foreground">{markTestMessage}</p>}
+          {markTestError && <p className="rounded-md border border-destructive/30 bg-card p-2 text-xs text-destructive">{markTestError}</p>}
           <div className="max-h-[292px] overflow-auto pr-1">
             <div className="grid gap-2">
               {filteredGroups.map((group) => (

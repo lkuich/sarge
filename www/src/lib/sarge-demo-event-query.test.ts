@@ -27,4 +27,22 @@ describe("project environment event queries", () => {
     expect(demoData).toContain('WHERE e."siteEnvironmentId" = ${siteEnvironment.id}');
     expect(demoData).toContain("configuredHostEventSql('e', 's')");
   });
+
+  it("supports one-time manual test marking for a user or session", () => {
+    const demoData = readSource("./sarge-demo.ts");
+    const markTestApi = readSource("../pages/api/project-events/[environmentId]/mark-test.ts");
+
+    expect(markTestApi).toContain("export const POST");
+    expect(markTestApi).toContain("markProjectTrafficAsTest");
+    expect(markTestApi).toContain('kind === "user" || kind === "session"');
+    expect(markTestApi).toContain("canManageProject(project)");
+
+    expect(demoData).toContain("export type TestTrafficSubjectKind = 'user' | 'session';");
+    expect(demoData).toContain("export const markProjectTrafficAsTest");
+    expect(demoData).toContain("jsonb_set");
+    expect(demoData).toContain("sarge_test_mode");
+    expect(demoData).toContain("manual");
+    expect(demoData).toContain('e."userId" = ${subjectId}');
+    expect(demoData).toContain('e."sessionId" = ${subjectId}');
+  });
 });

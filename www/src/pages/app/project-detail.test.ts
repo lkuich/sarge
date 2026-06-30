@@ -179,7 +179,8 @@ describe("project detail install panel", () => {
 
     expect(projectDetail).toContain("const flowEvents = selectedEnvironment.recentEvents.slice(0, 80);");
     expect(projectDetail).toContain("const flowEventsEndpoint = `${debugStreamEndpoint}?limit=80`;");
-    expect(projectDetail).toContain("<SessionFlowExplorer events={flowEvents} refreshEndpoint={flowEventsEndpoint} client:only=\"react\" />");
+    expect(projectDetail).toContain("const flowMarkTestEndpoint = `${debugStreamEndpoint}/mark-test`;");
+    expect(projectDetail).toContain("<SessionFlowExplorer events={flowEvents} refreshEndpoint={flowEventsEndpoint} markTestEndpoint={flowMarkTestEndpoint} client:only=\"react\" />");
     expect(projectDetail).not.toContain("<SessionFlowExplorer events={flowEvents} client:visible />");
   });
 

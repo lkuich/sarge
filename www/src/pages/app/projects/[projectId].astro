@@ -408,6 +408,7 @@ const createdServerCredentialCurl = createdServerCredentialToken
 const recentEvents = selectedEnvironment.recentEvents.slice(0, 12);
 const flowEvents = selectedEnvironment.recentEvents.slice(0, 80);
 const flowEventsEndpoint = `${debugStreamEndpoint}?limit=80`;
+const flowMarkTestEndpoint = `${debugStreamEndpoint}/mark-test`;
 const webhookEndpoints = selectedEnvironment.webhookEndpoints;
 const projectTesterUserId = buildProjectTesterUserId(selectedEnvironment.id, userId);
 const recentUserOptions = buildRecentUserOptions(selectedEnvironment.recentEvents, projectTesterUserId);
@@ -1232,7 +1233,7 @@ function resolveTrackedSiteDomain(value: string) {
           <CardTitle>User and session flows</CardTitle>
         </CardHeader>
         <CardContent>
-          <SessionFlowExplorer events={flowEvents} refreshEndpoint={flowEventsEndpoint} client:only="react" />
+          <SessionFlowExplorer events={flowEvents} refreshEndpoint={flowEventsEndpoint} markTestEndpoint={flowMarkTestEndpoint} client:only="react" />
         </CardContent>
       </Card>
 

@@ -148,6 +148,17 @@ export interface ProjectEnvironmentEventQuery {
   endAt?: string | null;
 }
 
+export type TestTrafficSubjectKind = 'user' | 'session';
+
+export interface MarkProjectTrafficAsTestInput extends ProjectEnvironmentEventQuery {
+  kind: TestTrafficSubjectKind;
+  subjectId: string;
+}
+
+export type MarkProjectTrafficAsTestResult =
+  | { success: true; updatedCount: number; events: SargeEvent[] }
+  | { success: false; error: string };
+
 export interface SargePrivacySettings {
   piiRedactionEnabled: boolean;
   propertyPolicyMode: PropertyPolicyMode;
@@ -1034,6 +1045,88 @@ export const getProjectEnvironmentEvents = async (
   } catch (error) {
     console.error('Unable to load project environment events', error);
     return null;
+  }
+};
+
+export const markProjectTrafficAsTest = async (
+  databaseUrl: string | undefined,
+  environmentId: string,
+  input: MarkProjectTrafficAsTestInput,
+): Promise<MarkProjectTrafficAsTestResult> => {
+  if (!databaseUrl) return { success: false, error: 'DATABASE_URL is not configured.' };
+  const subjectId = input.subjectId.trim();
+  if (!environmentId.trim() || !subjectId) return { success: false, error: 'Choose a user or session to mark as test.' };
+
+  try {
+    const sql = neon(databaseUrl);
+    const subjectKindJson = JSON.stringify(input.kind);
+    const subjectIdJson = JSON.stringify(subjectId);
+    const modeJson = JSON.stringify('manual');
+    const updated =
+      input.kind === 'user'
+        ? ((await sql`
+            WITH updated_events AS (
+              UPDATE "Event" e
+              SET properties = jsonb_set(
+                jsonb_set(
+                  jsonb_set(
+                    jsonb_set(COALESCE(e.properties, '{}'::jsonb), '{sarge_test}', 'true'::jsonb, true),
+                    '{sarge_test_mode}',
+                    ${modeJson}::jsonb,
+                    true
+                  ),
+                  '{sarge_test_subject_kind}',
+                  ${subjectKindJson}::jsonb,
+                  true
+                ),
+                '{sarge_test_subject_id}',
+                ${subjectIdJson}::jsonb,
+                true
+              )
+              WHERE e."siteEnvironmentId" = ${environmentId}
+                AND e."userId" = ${subjectId}
+              RETURNING e.id
+            )
+            SELECT COUNT(*)::int AS "updatedCount"
+            FROM updated_events
+          `) as MarkProjectTrafficRow[])
+        : ((await sql`
+            WITH updated_events AS (
+              UPDATE "Event" e
+              SET properties = jsonb_set(
+                jsonb_set(
+                  jsonb_set(
+                    jsonb_set(COALESCE(e.properties, '{}'::jsonb), '{sarge_test}', 'true'::jsonb, true),
+                    '{sarge_test_mode}',
+                    ${modeJson}::jsonb,
+                    true
+                  ),
+                  '{sarge_test_subject_kind}',
+                  ${subjectKindJson}::jsonb,
+                  true
+                ),
+                '{sarge_test_subject_id}',
+                ${subjectIdJson}::jsonb,
+                true
+              )
+              WHERE e."siteEnvironmentId" = ${environmentId}
+                AND e."sessionId" = ${subjectId}
+              RETURNING e.id
+            )
+            SELECT COUNT(*)::int AS "updatedCount"
+            FROM updated_events
+          `) as MarkProjectTrafficRow[]);
+    const updatedCount = updated.at(0)?.updatedCount ?? 0;
+    const events = await getProjectEnvironmentEvents(databaseUrl, environmentId, input);
+
+    return {
+      success: true,
+      updatedCount,
+      events: events ?? [],
+    };
+  } catch (error) {
+    console.error('Unable to mark project traffic as test', error);
+    return { success: false, error: 'Traffic could not be marked as test.' };
   }
 };
 
@@ -2957,6 +3050,10 @@ interface EventRow {
   affiliate: string | null;
   title: string | null;
   properties: unknown;
+}
+
+interface MarkProjectTrafficRow {
+  updatedCount: number;
 }
 
 interface DiagnosticRunRow {

@@ -450,6 +450,53 @@ describe("SessionFlowExplorer event filters", () => {
     expect(container?.textContent).toContain("No matching users in this event sample.");
     expect(buttonNamed("Clear dates")).not.toBeUndefined();
   });
+
+  it("marks the selected user as test traffic and replaces the flow data", async () => {
+    const markedEvent = {
+      ...event("manual-test-page", "page.view", "manual-test-session", 11),
+      properties: {
+        sarge_test: true,
+        sarge_test_mode: "manual",
+        sarge_test_subject_kind: "user",
+        sarge_test_subject_id: "user-real-flow",
+      },
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ events: [markedEvent], updatedCount: 2 }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <SessionFlowExplorer
+        events={trafficEvents("real-flow")}
+        refreshEndpoint="/api/project-events/env_123?limit=80"
+        markTestEndpoint="/api/project-events/env_123/mark-test"
+      />,
+    );
+
+    act(() => {
+      container?.querySelector<HTMLElement>('[data-flow-node="group:user-real-flow"]')?.click();
+    });
+
+    await act(async () => {
+      buttonNamed("Mark as test")?.click();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/project-events/env_123/mark-test", {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ kind: "user", subjectId: "user-real-flow", limit: 80 }),
+    });
+    expect(container?.textContent).toContain("Marked 2 events as test.");
+    expect(container?.querySelector('[data-flow-node="group:user-manual-test-session"]')).not.toBeNull();
+    expect(container?.textContent).toContain("1 of 1 events");
+    expect(buttonNamed("All traffic")?.getAttribute("aria-pressed")).toBe("true");
+  });
 });
 
 function render(ui: React.ReactNode) {

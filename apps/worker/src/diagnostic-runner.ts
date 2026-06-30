@@ -113,6 +113,7 @@ const runSiteDiagnostics = async (
     completedAt: completedAt.toISOString()
   };
 
+  await store.deleteDiagnosticRunsForSite(site.id);
   await store.saveDiagnosticRun(run);
   return pageHealthResult.checkedUrlCount;
 };

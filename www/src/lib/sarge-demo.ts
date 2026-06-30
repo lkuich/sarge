@@ -1,5 +1,15 @@
 import { neon } from '@neondatabase/serverless';
-import { defaultPrivacySettings, type PropertyPolicyMode } from '@sarge/core';
+import {
+  analyzeEvents,
+  buildTrackedPageFinding,
+  defaultPrivacySettings,
+  selectTrackedPageCandidates,
+  type DiagnosticEvent,
+  type DiagnosticFinding,
+  type PropertyPolicyMode,
+  type TrackedPageCandidate,
+  type TrackedPageHealthResult,
+} from '@sarge/core';
 import { summarizeEventHosts, type EventHostSummary } from './event-hosts';
 import { sendProjectAccessNotificationEmail, sendProjectInviteEmail, type ProjectInviteEmailInput } from './project-invite-email';
 import { analyzeProjectEvents, type ProjectDiagnostic } from './project-diagnostics';
@@ -260,9 +270,28 @@ export type CreatePublicVerificationLinkResult =
   | { success: true; url: string; expiresAt: Date }
   | { success: false; error: string };
 
+export interface AiReviewBinding {
+  run(model: string, input: unknown): Promise<unknown>;
+}
+
+export interface RefreshProjectAiReviewOptions {
+  ai?: AiReviewBinding;
+  aiSummaryModel?: string;
+}
+
+export type RefreshProjectAiReviewResult =
+  | { success: true; findingCount: number }
+  | { success: false; error: string };
+
 export const hostedEndpointHost = 'track.sargetrack.app';
 export const CURRENT_LEGAL_VERSION = "2026-06-25";
 export const CURRENT_PRIVACY_VERSION = "2026-06-25";
+const DEFAULT_AI_SUMMARY_MODEL = '@cf/meta/llama-3.1-8b-instruct-fp8';
+const DEFAULT_DIAGNOSTIC_EVENT_LIMIT = 200;
+const DEFAULT_DIAGNOSTIC_LOOKBACK_MINUTES = 60;
+const DEFAULT_PAGE_HEALTH_URL_LIMIT = 10;
+const DEFAULT_PAGE_HEALTH_TIMEOUT_MS = 5_000;
+const PAGE_HEALTH_USER_AGENT = 'Sarge Page Monitoring/1.0';
 const demoAccountName = 'Demo Account';
 type SqlClient = ReturnType<typeof neon>;
 const projectLimitSqlCase = buildPlanLimitSqlCase('projects', 'w."planId"');
@@ -988,6 +1017,138 @@ export const getProjectEnvironmentEvents = async (
   } catch (error) {
     console.error('Unable to load project environment events', error);
     return null;
+  }
+};
+
+export const refreshProjectAiReview = async (
+  userId: string,
+  databaseUrl: string | undefined,
+  siteEnvironmentId: string,
+  options: RefreshProjectAiReviewOptions = {},
+): Promise<RefreshProjectAiReviewResult> => {
+  if (!databaseUrl) return { success: false, error: 'DATABASE_URL is not configured.' };
+
+  try {
+    const sql = neon(databaseUrl);
+    const siteEnvironments = (await sql`
+      SELECT
+        se.id,
+        se."siteId",
+        se.environment,
+        se."endpointHost"
+      FROM "SiteEnvironment" se
+      JOIN "Site" s ON s.id = se."siteId"
+      JOIN "Workspace" w ON w.id = s."workspaceId"
+      LEFT JOIN "ProjectShare" ps ON ps."siteId" = s.id
+        AND ps."acceptedUserId" = ${userId}
+        AND ps.role = 'edit'
+      WHERE se.id = ${siteEnvironmentId}
+        AND se.environment = 'production'
+        AND (w."ownerUserId" = ${userId} OR ps.id IS NOT NULL)
+      LIMIT 1
+    `) as Pick<SiteEnvironmentSummaryRow, 'id' | 'siteId' | 'environment' | 'endpointHost'>[];
+    const siteEnvironment = siteEnvironments.at(0);
+    if (!siteEnvironment) return { success: false, error: 'Production AI review could not be refreshed for this project.' };
+
+    const events = (await sql`
+      SELECT
+        e.id,
+        e."siteId",
+        e."siteEnvironmentId",
+        e.name,
+        e."occurredAt",
+        e."receivedAt",
+        e."sessionId",
+        e."userId",
+        e.url,
+        e.referrer,
+        e.ref,
+        e.affiliate,
+        e.title,
+        e.properties
+      FROM "Event" e
+      WHERE e."siteEnvironmentId" = ${siteEnvironment.id}
+        AND e."occurredAt" >= NOW() - INTERVAL '60 minutes'
+      ORDER BY e."occurredAt" DESC
+      LIMIT ${DEFAULT_DIAGNOSTIC_EVENT_LIMIT}
+    `) as EventRow[];
+
+    const eventWindowEnd = new Date();
+    const eventWindowStart = new Date(eventWindowEnd.getTime() - DEFAULT_DIAGNOSTIC_LOOKBACK_MINUTES * 60_000);
+    const diagnosticEvents = events.map(toDiagnosticEvent);
+    const eventFindings = diagnosticEvents.length > 0 ? analyzeEvents(diagnosticEvents).map(toStoredProjectDiagnostic) : [];
+    const pageFindings = diagnosticEvents.length > 0 ? await buildManualTrackedPageFindings(diagnosticEvents) : [];
+    const findings = [...eventFindings, ...pageFindings];
+    const aiSummary = findings.length > 0
+      ? await summarizeProjectAiReview(options.ai, options.aiSummaryModel, siteEnvironment, findings)
+      : null;
+    const runId = crypto.randomUUID();
+    const completedAt = new Date();
+
+    await sql`DELETE FROM "DiagnosticFinding" WHERE "siteEnvironmentId" = ${siteEnvironmentId}`;
+    await sql`DELETE FROM "DiagnosticRun" WHERE "siteEnvironmentId" = ${siteEnvironmentId}`;
+    await sql`
+      INSERT INTO "DiagnosticRun" (
+        id,
+        "siteId",
+        "siteEnvironmentId",
+        status,
+        "eventWindowStart",
+        "eventWindowEnd",
+        "findingCount",
+        "aiSummary",
+        "startedAt",
+        "completedAt"
+      )
+      VALUES (
+        ${runId},
+        ${siteEnvironment.siteId},
+        ${siteEnvironment.id},
+        'completed',
+        ${eventWindowStart.toISOString()},
+        ${eventWindowEnd.toISOString()},
+        ${findings.length},
+        ${aiSummary},
+        ${eventWindowEnd.toISOString()},
+        ${completedAt.toISOString()}
+      )
+    `;
+
+    for (const finding of findings) {
+      await sql`
+        INSERT INTO "DiagnosticFinding" (
+          id,
+          "runId",
+          "siteId",
+          "siteEnvironmentId",
+          "ruleId",
+          severity,
+          title,
+          summary,
+          evidence,
+          recommendation,
+          "agentPrompt"
+        )
+        VALUES (
+          ${crypto.randomUUID()},
+          ${runId},
+          ${siteEnvironment.siteId},
+          ${siteEnvironment.id},
+          ${finding.id},
+          ${finding.severity},
+          ${finding.title},
+          ${finding.summary},
+          ${JSON.stringify(finding.evidence)},
+          ${finding.recommendation},
+          ${finding.agentPrompt}
+        )
+      `;
+    }
+
+    return { success: true, findingCount: findings.length };
+  } catch (error) {
+    console.error('Unable to refresh project AI review', error);
+    return { success: false, error: 'AI review could not be refreshed. Try again in a moment.' };
   }
 };
 
@@ -2239,6 +2400,174 @@ const mapEvent = (event: EventRow): SargeEvent => {
     title: event.title ?? undefined,
     properties: (event.properties ?? {}) as Record<string, unknown>,
   };
+};
+
+const toDiagnosticEvent = (event: EventRow): DiagnosticEvent => ({
+  name: event.name,
+  occurredAt: event.occurredAt.toISOString(),
+  sessionId: event.sessionId,
+  userId: event.userId,
+  properties: (event.properties ?? {}) as Record<string, unknown>,
+  url: event.url,
+  title: event.title,
+});
+
+const toStoredProjectDiagnostic = (finding: DiagnosticFinding & { ruleId?: string }): ProjectDiagnostic => ({
+  id: finding.ruleId ?? finding.id,
+  title: finding.title,
+  severity: finding.severity,
+  summary: finding.summary,
+  evidence: finding.evidence,
+  recommendation: finding.recommendation,
+  agentPrompt: finding.agentPrompt,
+});
+
+const buildManualTrackedPageFindings = async (events: DiagnosticEvent[]): Promise<ProjectDiagnostic[]> => {
+  const candidates = selectTrackedPageCandidates(events, { limit: DEFAULT_PAGE_HEALTH_URL_LIMIT });
+  if (candidates.length === 0) return [];
+
+  const results = await checkManualTrackedPageCandidates(candidates, { timeoutMs: DEFAULT_PAGE_HEALTH_TIMEOUT_MS });
+  return results
+    .map(buildTrackedPageFinding)
+    .filter((finding): finding is NonNullable<typeof finding> => Boolean(finding))
+    .map(toStoredProjectDiagnostic);
+};
+
+const checkManualTrackedPageCandidates = async (
+  candidates: TrackedPageCandidate[],
+  options: { timeoutMs: number },
+) => Promise.all(
+  candidates.map((candidate) =>
+    checkManualTrackedPageHealth({
+      url: candidate.url,
+      eventCount: candidate.eventCount,
+      conversionLike: candidate.conversionLike,
+      timeoutMs: options.timeoutMs,
+    }),
+  ),
+);
+
+const checkManualTrackedPageHealth = async (
+  options: Pick<TrackedPageHealthResult, 'url' | 'eventCount' | 'conversionLike'> & { timeoutMs: number },
+): Promise<TrackedPageHealthResult> => {
+  const headResult = await requestManualPageHealth(options.url, 'HEAD', options.timeoutMs);
+  const metadata = {
+    eventCount: options.eventCount,
+    conversionLike: options.conversionLike,
+  };
+
+  if (headResult.status === 403 || headResult.status === 405 || headResult.status === 501) {
+    return requestManualPageHealth(options.url, 'GET', options.timeoutMs, metadata);
+  }
+
+  return { ...headResult, ...metadata };
+};
+
+const requestManualPageHealth = async (
+  url: string,
+  method: 'HEAD' | 'GET',
+  timeoutMs: number,
+  metadata: Pick<TrackedPageHealthResult, 'eventCount' | 'conversionLike'> = {},
+): Promise<TrackedPageHealthResult> => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort('timeout'), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      method,
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: {
+        'user-agent': PAGE_HEALTH_USER_AGENT,
+        accept: 'text/html,application/xhtml+xml',
+      },
+    });
+
+    return {
+      url,
+      status: response.status,
+      finalUrl: response.url || url,
+      ...metadata,
+    };
+  } catch (error) {
+    return {
+      url,
+      error: isManualPageHealthTimeout(error) ? 'timeout' : 'network',
+      ...metadata,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const isManualPageHealthTimeout = (error: unknown) => {
+  if (error === 'timeout') return true;
+  if (error instanceof DOMException && error.name === 'AbortError') return true;
+  if (error && typeof error === 'object' && 'name' in error) {
+    return (error as { name?: string }).name === 'AbortError';
+  }
+  return false;
+};
+
+const summarizeProjectAiReview = async (
+  ai: AiReviewBinding | undefined,
+  model: string | undefined,
+  site: Pick<SiteEnvironmentSummaryRow, 'id' | 'endpointHost'>,
+  findings: ProjectDiagnostic[],
+) => {
+  if (!ai) return null;
+
+  try {
+    const response = await ai.run(model || DEFAULT_AI_SUMMARY_MODEL, {
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You summarize Sarge tracking diagnostics for a technical marketer or engineer. Return concise Markdown, at most 80 words total. Use 2-4 bullets, cite only supplied evidence, avoid a Summary heading, and end with the most useful agentic coding prompt.',
+        },
+        {
+          role: 'user',
+          content: JSON.stringify({
+            site: {
+              id: site.id,
+              endpointHost: site.endpointHost,
+            },
+            findings: findings.map((finding) => ({
+              ruleId: finding.id,
+              severity: finding.severity,
+              title: finding.title,
+              summary: finding.summary,
+              evidence: finding.evidence,
+              recommendation: finding.recommendation,
+              agentPrompt: finding.agentPrompt,
+            })),
+          }),
+        },
+      ],
+    });
+
+    return readAiReviewText(response);
+  } catch (error) {
+    console.error('Unable to summarize refreshed project AI review', error);
+    return null;
+  }
+};
+
+const readAiReviewText = (response: unknown) => {
+  if (typeof response === 'string') return response;
+  if (!response || typeof response !== 'object') return null;
+
+  const responseRecord = response as Record<string, unknown>;
+  if (typeof responseRecord.response === 'string') return responseRecord.response;
+  if (typeof responseRecord.result === 'string') return responseRecord.result;
+
+  const result = responseRecord.result;
+  if (result && typeof result === 'object') {
+    const resultRecord = result as Record<string, unknown>;
+    if (typeof resultRecord.response === 'string') return resultRecord.response;
+  }
+
+  return null;
 };
 
 const readSargeAttributionFromUrl = (value: string | null) => {

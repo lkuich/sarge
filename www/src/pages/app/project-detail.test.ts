@@ -218,13 +218,35 @@ describe("project detail install panel", () => {
 
     expect(projectDetail).toContain("renderDiagnosticSummaryMarkdown");
     expect(projectDetail).toContain("set:html={renderDiagnosticSummaryMarkdown(selectedEnvironment.diagnosticSummary)}");
+    expect(projectDetail).toContain("data-ai-summary-markdown");
     expect(projectDetail).toContain("data-diagnostic-finding");
     expect(projectDetail).toContain("data-dismiss-key={buildDiagnosticDismissalKey(selectedEnvironment.id, finding)}");
+    expect(projectDetail).toContain("data-summary-terms");
     expect(projectDetail).toContain("data-dismiss-finding");
     expect(projectDetail).toContain("Dismiss suggestion");
     expect(projectDetail).toContain("sarge:dismissed-diagnostics:");
     expect(projectDetail).toContain("refreshDiagnosticCounts");
+    expect(projectDetail).toContain("refreshDiagnosticSummary");
     expect(projectDetail).toContain("data-all-suggestions-dismissed");
+  });
+
+  it("lets project editors manually refresh AI review insights", () => {
+    const projectDetail = readSource("./projects/[projectId].astro");
+    const demoData = readSource("../../lib/sarge-demo.ts");
+    const wranglerConfig = readSource("../../../wrangler.jsonc");
+
+    expect(projectDetail).toContain("refreshProjectAiReview");
+    expect(projectDetail).toContain('intent === "refresh-ai-review"');
+    expect(projectDetail).toContain("canRefreshAiReview");
+    expect(projectDetail).toContain("Refresh insights");
+    expect(projectDetail).toContain('name="intent" value="refresh-ai-review"');
+    expect(projectDetail).toContain("env.AI");
+    expect(demoData).toContain("export const refreshProjectAiReview");
+    expect(demoData).toContain('DELETE FROM "DiagnosticFinding" WHERE "siteEnvironmentId" = ${siteEnvironmentId}');
+    expect(demoData).toContain('DELETE FROM "DiagnosticRun" WHERE "siteEnvironmentId" = ${siteEnvironmentId}');
+    expect(demoData).toContain('INSERT INTO "DiagnosticRun"');
+    expect(demoData).toContain("selectTrackedPageCandidates");
+    expect(wranglerConfig).toContain('"binding": "AI"');
   });
 
   it("includes a test impersonation helper with copy and live-update hooks", () => {

@@ -35,6 +35,7 @@ export interface EventStore {
   createEvent(event: EventPayload): Promise<void>;
   listActiveSitesForDiagnostics(limit: number): Promise<SiteRecord[]>;
   listRecentEventsForSite(siteId: string, since: Date, limit: number): Promise<StoredEvent[]>;
+  deleteDiagnosticRunsForSite(siteId: string): Promise<void>;
   saveDiagnosticRun(run: StoredDiagnosticRun): Promise<void>;
 }
 

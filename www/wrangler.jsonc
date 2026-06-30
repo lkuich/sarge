@@ -19,7 +19,12 @@
   ],
   "vars": {
     "PUBLIC_CLERK_SIGN_IN_URL": "/sign-in",
-    "PUBLIC_CLERK_SIGN_UP_URL": "/sign-up"
+    "PUBLIC_CLERK_SIGN_UP_URL": "/sign-up",
+    "AI_SUMMARY_MODEL": "@cf/meta/llama-3.1-8b-instruct-fp8"
+  },
+  "ai": {
+    "binding": "AI",
+    "remote": true
   },
   "routes": [
     {

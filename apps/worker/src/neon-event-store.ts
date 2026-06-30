@@ -296,6 +296,11 @@ export class NeonEventStore implements EventStore {
       `;
     }
   }
+
+  async deleteDiagnosticRunsForSite(siteEnvironmentId: string): Promise<void> {
+    await this.sql`DELETE FROM "DiagnosticFinding" WHERE "siteEnvironmentId" = ${siteEnvironmentId}`;
+    await this.sql`DELETE FROM "DiagnosticRun" WHERE "siteEnvironmentId" = ${siteEnvironmentId}`;
+  }
 }
 
 interface SiteRecordRow {

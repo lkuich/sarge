@@ -71,6 +71,11 @@ const createMemoryStore = () => {
     async listRecentEventsForSite(siteEnvironmentId) {
       return diagnosticEvents.filter((event) => event.siteId === siteEnvironmentId);
     },
+    async deleteDiagnosticRunsForSite(siteEnvironmentId) {
+      for (let index = diagnosticRuns.length - 1; index >= 0; index -= 1) {
+        if (diagnosticRuns[index].siteId === siteEnvironmentId) diagnosticRuns.splice(index, 1);
+      }
+    },
     async saveDiagnosticRun(run) {
       diagnosticRuns.push(run);
     }
@@ -493,6 +498,58 @@ describe("Cloudflare Worker hosted API", () => {
     expect(diagnosticRuns[0].findings[0]).toMatchObject({
       ruleId: "checkout-without-purchase",
       severity: "critical"
+    });
+  });
+
+  it("replaces previous diagnostic reviews when a scheduled review is generated", async () => {
+    const { ctx, promises } = createExecutionContext();
+    const { diagnosticEvents, diagnosticRuns, store } = createMemoryStore();
+    const handler = createWorkerHandler({ store, pageHealthChecker: async () => [] });
+    diagnosticRuns.push({
+      id: "old_run",
+      siteId: "env_shared_production",
+      status: "completed",
+      eventWindowStart: "2026-06-19T10:00:00.000Z",
+      eventWindowEnd: "2026-06-19T11:00:00.000Z",
+      findingCount: 1,
+      aiSummary: "Old missing page summary.",
+      findings: [
+        {
+          id: "old_tracked_page",
+          ruleId: "tracked_page_missing",
+          title: "Tracked page is missing",
+          severity: "warning",
+          summary: "Old warning",
+          evidence: ["https://preview.example.com/ returned HTTP 404."],
+          recommendation: "Restore the route.",
+          agentPrompt: "Inspect the preview route."
+        }
+      ],
+      startedAt: "2026-06-19T10:59:00.000Z",
+      completedAt: "2026-06-19T11:00:00.000Z"
+    });
+    diagnosticEvents.push({
+      id: "evt_page",
+      siteId: "env_shared_production",
+      name: "page.view",
+      occurredAt: "2026-06-19T12:00:00.000Z",
+      sessionId: "sess_page",
+      userId: "user_123",
+      properties: {},
+      url: "https://shop.example.com/",
+      title: "Home"
+    });
+
+    await handler.scheduled(createScheduledController(), createEnv(), ctx);
+    await Promise.all(promises);
+
+    expect(diagnosticRuns).toHaveLength(1);
+    expect(diagnosticRuns[0]).toMatchObject({
+      siteId: "env_shared_production",
+      status: "completed",
+      aiSummary: null,
+      findingCount: 0,
+      findings: []
     });
   });
 

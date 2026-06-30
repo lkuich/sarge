@@ -36,6 +36,9 @@ describe("project environment event queries", () => {
     expect(markTestApi).toContain("markProjectTrafficAsTest");
     expect(markTestApi).toContain('kind === "user" || kind === "session"');
     expect(markTestApi).toContain("canManageProject(project)");
+    expect(markTestApi).toContain('import { env } from "cloudflare:workers";');
+    expect(markTestApi).toContain("env.DATABASE_URL");
+    expect(markTestApi).not.toContain("runtimeEnv.DATABASE_URL");
 
     expect(demoData).toContain("export type TestTrafficSubjectKind = 'user' | 'session';");
     expect(demoData).toContain("export const markProjectTrafficAsTest");

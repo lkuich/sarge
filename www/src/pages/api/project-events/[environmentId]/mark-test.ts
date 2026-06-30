@@ -1,3 +1,4 @@
+import { env } from "cloudflare:workers";
 import type { APIRoute } from "astro";
 import {
   canManageProject,
@@ -14,7 +15,6 @@ export const POST: APIRoute = async (Astro) => {
     return json({ error: "Unauthorized" }, 401);
   }
 
-  const runtimeEnv = readRuntimeEnv(Astro.locals);
   const environmentId = Astro.params.environmentId ?? "";
   const body = await readRequestBody(Astro.request);
   const kind = body.kind;
@@ -28,7 +28,7 @@ export const POST: APIRoute = async (Astro) => {
 
   const currentUser = await Astro.locals.currentUser();
   const viewerEmails = currentUser?.emailAddresses.map((email) => email.emailAddress).filter(Boolean) ?? [];
-  const account = await getViewerAccount(userId, runtimeEnv.DATABASE_URL, { viewerEmails });
+  const account = await getViewerAccount(userId, env.DATABASE_URL, { viewerEmails });
   const project = account.projects.find((candidate) =>
     candidate.environments.some((environment) => environment.id === environmentId),
   );
@@ -42,7 +42,7 @@ export const POST: APIRoute = async (Astro) => {
     return json({ error: "Edit access is required to mark test traffic." }, 403);
   }
 
-  const result = await markProjectTrafficAsTest(runtimeEnv.DATABASE_URL, selectedEnvironment.id, {
+  const result = await markProjectTrafficAsTest(env.DATABASE_URL, selectedEnvironment.id, {
     kind,
     subjectId,
     limit,
@@ -76,9 +76,6 @@ const json = (payload: unknown, status: number) =>
       "Content-Type": "application/json",
     },
   });
-
-const readRuntimeEnv = (locals: unknown) =>
-  ((locals as { runtime?: { env?: { DATABASE_URL?: string } } }).runtime?.env ?? {}) as { DATABASE_URL?: string };
 
 interface ManualTestTrafficRequest {
   kind?: TestTrafficSubjectKind;

@@ -219,12 +219,17 @@ Send the vendor request/response summary in `properties`. Keep access tokens, ra
       "status": 200,
       "ok": true,
       "request_id": "fb_req_123"
+    },
+    "implementation": {
+      "mode": "server_gtm",
+      "note": "This project does not fire fbq directly. Meta Purchase is dispatched server-side through GTM."
     }
   }
 }
 ```
 
 `properties.upstream.status` should be the HTTP status returned by the upstream API. If you build the properties with `normalizeServerVendorCallProperties` from `@sarge/core`, `properties.upstream.ok` is inferred from the status when omitted.
+Use `properties.implementation.note` for short reviewer-facing context that should be included in AI diagnostics and implementation briefs.
 
 ### Tokenized Postback URLs
 

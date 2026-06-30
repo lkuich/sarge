@@ -166,7 +166,7 @@ Sarge emits watchdog events automatically when it observes common third-party ma
 - `gtag(...)` -> `google.tag.fire`
 - `dataLayer.push(...)` -> `data_layer.push`
 
-Backend calls to Meta Conversions API, Google Measurement Protocol, or similar vendor APIs should be reported through `/v2/server/events` with the matching watchdog event name. Include `transport: "server"` and `upstream.status` in event properties, along with non-sensitive request IDs or error codes when useful. Do not include access tokens, raw emails, phone numbers, or other secrets.
+Backend calls to Meta Conversions API, Google Measurement Protocol, or similar vendor APIs should be reported through `/v2/server/events` with the matching watchdog event name. Include `transport: "server"` and `upstream.status` in event properties, along with non-sensitive request IDs or error codes when useful. Use `implementation.note` for project-specific AI reviewer context, such as "This project does not fire fbq directly; Meta Purchase is dispatched server-side through GTM." Do not include access tokens, raw emails, phone numbers, or other secrets.
 
 ## Naming Rules
 

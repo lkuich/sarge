@@ -21,6 +21,34 @@ const event = (
 });
 
 describe("project diagnostics fallback", () => {
+  it("includes watchdog implementation notes in agent prompts", () => {
+    const findings = analyzeProjectEvents([
+      event("page.view"),
+      event("meta.pixel.fire", {
+        properties: {
+          vendor: "meta",
+          transport: "server",
+          command: "track",
+          event_name: "Purchase",
+          payload: { value: 42, currency: "USD" },
+          implementation: {
+            mode: "server_gtm",
+            note: "This project does not fire fbq directly. Meta Purchase is dispatched server-side through GTM.",
+          },
+        },
+      }),
+    ]);
+
+    const finding = findings.find((item) => item.id === "meta-purchase-without-sarge-purchase");
+
+    expect(finding?.evidence).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("server-side through GTM"),
+      ]),
+    );
+    expect(finding?.agentPrompt).toContain("server-side through GTM");
+  });
+
   it("excludes Sarge test traffic from diagnostics", () => {
     const findings = analyzeProjectEvents([
       event("page.view"),

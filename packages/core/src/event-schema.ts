@@ -64,7 +64,13 @@ export const serverVendorCallPropertiesSchema = z
       response_id: z.string().min(1).optional(),
       error_code: z.string().min(1).optional(),
       error_message: z.string().min(1).optional()
-    })
+    }),
+    implementation: z
+      .object({
+        mode: z.string().min(1).optional(),
+        note: z.string().min(1)
+      })
+      .optional()
   })
   .passthrough();
 

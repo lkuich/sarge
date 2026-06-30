@@ -113,12 +113,16 @@ curl -X POST "https://track.sargetrack.app/v2/server/events" \
         "status": 200,
         "ok": true,
         "request_id": "fb_req_123"
+      },
+      "implementation": {
+        "mode": "server_gtm",
+        "note": "This project does not fire fbq directly. Meta Purchase is dispatched server-side through GTM."
       }
     }
   }'
 ```
 
-Do not include access tokens, raw emails, phone numbers, or other secrets in the Sarge payload.
+Use `implementation.note` for short context that should appear in AI event reviews and implementation briefs. Do not include access tokens, raw emails, phone numbers, or other secrets in the Sarge payload.
 
 ## SPA Route Changes
 

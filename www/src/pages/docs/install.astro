@@ -75,6 +75,10 @@ const serverVendorEvent = `curl -X POST "https://track.sargetrack.app/v2/server/
         "status": 200,
         "ok": true,
         "request_id": "fb_req_123"
+      },
+      "implementation": {
+        "mode": "server_gtm",
+        "note": "This project does not fire fbq directly. Meta Purchase is dispatched server-side through GTM."
       }
     }
   }'`;
@@ -240,7 +244,7 @@ const troubleshooting = [
           </p>
           <pre class="mt-4 max-w-full overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{serverEvent}</code></pre>
           <p class="mt-4 text-sm leading-6 text-muted-foreground">
-            If the backend also calls Meta, Google, or another vendor API directly, report that upstream dispatch as a watchdog event with `transport: "server"` and the returned HTTP status in `properties.upstream`.
+            If the backend also calls Meta, Google, or another vendor API directly, report that upstream dispatch as a watchdog event with `transport: "server"` and the returned HTTP status in `properties.upstream`. Add `properties.implementation.note` when AI reviews need project-specific context.
           </p>
           <pre class="mt-4 max-w-full overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{serverVendorEvent}</code></pre>
           <p class="mt-4 text-sm leading-6 text-muted-foreground">

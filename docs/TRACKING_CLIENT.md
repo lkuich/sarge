@@ -194,11 +194,15 @@ Backends that call Meta Conversions API, Google Measurement Protocol, or similar
       "endpoint": "https://www.google-analytics.com/mp/collect",
       "status": 204,
       "ok": true
+    },
+    "implementation": {
+      "mode": "server_gtm",
+      "note": "This project dispatches purchase tags from the backend through server-side GTM, not direct browser gtag calls."
     }
   }
 }
 ```
 
-Use the same `sessionId` and `userId` as the related browser or order event when available. Do not include access tokens, raw emails, phone numbers, or other secrets in the Sarge payload.
+Use the same `sessionId` and `userId` as the related browser or order event when available. Add `properties.implementation.note` when the AI event reviewer needs project-specific context, such as server-side GTM replacing direct `fbq` or `gtag` calls. Do not include access tokens, raw emails, phone numbers, or other secrets in the Sarge payload.
 
 Future versions may add more globals and known network calls, such as `ttq.track`.

@@ -136,12 +136,16 @@ curl -X POST "https://events.example.com/v2/server/events" \
         "endpoint": "https://www.google-analytics.com/mp/collect",
         "status": 204,
         "ok": true
+      },
+      "implementation": {
+        "mode": "server_gtm",
+        "note": "This project dispatches purchase tags from the backend through server-side GTM, not direct browser gtag calls."
       }
     }
   }'
 ```
 
-Keep vendor access tokens, API secrets, raw emails, phone numbers, and other sensitive identifiers out of the Sarge payload.
+Use `implementation.note` for short context that should appear in AI event reviews and implementation briefs. Keep vendor access tokens, API secrets, raw emails, phone numbers, and other sensitive identifiers out of the Sarge payload.
 
 For affiliate or partner systems that only support URL callbacks, set `SiteEnvironment.postbackTokenHash` and use:
 

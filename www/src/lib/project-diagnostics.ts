@@ -79,10 +79,12 @@ export const analyzeProjectEvents = (events: SargeEvent[]): ProjectDiagnostic[] 
       summary: "The watchdog observed Meta Purchase calls, but Sarge has no matching purchase events.",
       evidence: metaPurchases
         .slice(0, 4)
-        .map((event) => `Meta Purchase observed in session ${event.sessionId}.`),
+        .map((event) => appendImplementationNote(`Meta Purchase observed in session ${event.sessionId}.`, event)),
       recommendation: "Mirror Meta Purchase into Sarge so debugging data has the same conversion boundary.",
-      agentPrompt:
+      agentPrompt: appendImplementationNotesToPrompt(
         "Locate Meta `fbq('track', 'Purchase', ...)` calls and add an adjacent Sarge `purchase.completed` event with order ID, value, and currency.",
+        metaPurchases,
+      ),
     });
   }
 
@@ -137,6 +139,24 @@ export const analyzeProjectEvents = (events: SargeEvent[]): ProjectDiagnostic[] 
 };
 
 const isSargeTestTraffic = (event: SargeEvent) => event.properties.sarge_test === true;
+
+const appendImplementationNote = (message: string, event: SargeEvent) => {
+  const note = readImplementationNote(event);
+  return note ? `${message} Implementation note: ${note}` : message;
+};
+
+const appendImplementationNotesToPrompt = (prompt: string, events: SargeEvent[]) => {
+  const notes = unique(events.map(readImplementationNote).filter((note): note is string => Boolean(note)));
+  if (notes.length === 0) return prompt;
+  return `${prompt}\n\nImplementation notes from Sarge watchdog events:\n${notes.map((note) => `- ${note}`).join("\n")}`;
+};
+
+const readImplementationNote = (event: SargeEvent) => {
+  const implementation = event.properties.implementation;
+  if (!implementation || typeof implementation !== "object" || Array.isArray(implementation)) return undefined;
+  const note = (implementation as Record<string, unknown>).note;
+  return typeof note === "string" && note.trim() ? note.trim() : undefined;
+};
 
 const findDuplicateOrderIds = (events: SargeEvent[]) => {
   const counts = new Map<string, number>();

@@ -105,7 +105,7 @@ window.sarge("track", "purchase.completed", {
 
 ## Watchdog Events
 
-Sarge emits watchdog events automatically when it observes common third-party marketing APIs after the pixel loads. Backend calls to Meta Conversions API, Google Measurement Protocol, or similar vendor APIs can use the same event names through `/v2/server/events` with `transport: "server"` and an upstream response summary.
+Sarge emits watchdog events automatically when it observes common third-party marketing APIs after the pixel loads. Backend calls to Meta Conversions API, Google Measurement Protocol, or similar vendor APIs can use the same event names through `/v2/server/events` with `transport: "server"`, an upstream response summary, and an optional implementation note for AI reviewer context.
 
 ### `meta.pixel.fire`
 
@@ -183,12 +183,16 @@ Example `/v2/server/events` payload for a backend vendor dispatch:
       "status": 200,
       "ok": true,
       "request_id": "fb_req_123"
+    },
+    "implementation": {
+      "mode": "server_gtm",
+      "note": "This project does not fire fbq directly. Meta Purchase is dispatched server-side through GTM."
     }
   }
 }
 ```
 
-Do not include access tokens, raw emails, phone numbers, or other secrets in Sarge events.
+Use `implementation.note` for short context that should appear in AI event reviews and implementation briefs. Do not include access tokens, raw emails, phone numbers, or other secrets in Sarge events.
 
 ## Event Envelope
 

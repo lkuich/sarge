@@ -116,11 +116,15 @@ export const analyzeEvents = (
           "The watchdog observed Meta Purchase calls, but Sarge did not receive matching `purchase.completed` events.",
         evidence: metaPurchases
           .slice(0, 5)
-          .map((event) => `Meta Purchase observed in session ${event.sessionId}.`),
+          .map((event) =>
+            appendImplementationNote(`Meta Purchase observed in session ${event.sessionId}.`, event)
+          ),
         recommendation:
           "Mirror the purchase event into Sarge wherever the Meta Purchase pixel is triggered.",
-        agentPrompt:
-          "Locate Meta `fbq('track', 'Purchase', ...)` calls and add an adjacent Sarge `purchase.completed` event with order ID, value, and currency."
+        agentPrompt: appendImplementationNotesToPrompt(
+          "Locate Meta `fbq('track', 'Purchase', ...)` calls and add an adjacent Sarge `purchase.completed` event with order ID, value, and currency.",
+          metaPurchases
+        )
       })
     );
   }
@@ -192,6 +196,24 @@ export const isSargeTestTraffic = (event: DiagnosticEvent) =>
   event.properties?.sarge_test === true;
 
 const createFinding = (finding: DiagnosticFinding): DiagnosticFinding => finding;
+
+const appendImplementationNote = (message: string, event: DiagnosticEvent) => {
+  const note = readImplementationNote(event);
+  return note ? `${message} Implementation note: ${note}` : message;
+};
+
+const appendImplementationNotesToPrompt = (prompt: string, events: DiagnosticEvent[]) => {
+  const notes = unique(events.map(readImplementationNote).filter((note): note is string => Boolean(note)));
+  if (notes.length === 0) return prompt;
+  return `${prompt}\n\nImplementation notes from Sarge watchdog events:\n${notes.map((note) => `- ${note}`).join("\n")}`;
+};
+
+const readImplementationNote = (event: DiagnosticEvent) => {
+  const implementation = event.properties?.implementation;
+  if (!implementation || typeof implementation !== "object" || Array.isArray(implementation)) return undefined;
+  const note = (implementation as Record<string, unknown>).note;
+  return typeof note === "string" && note.trim() ? note.trim() : undefined;
+};
 
 const findDuplicateOrderIds = (events: DiagnosticEvent[]) => {
   const counts = new Map<string, number>();

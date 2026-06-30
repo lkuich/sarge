@@ -19,6 +19,10 @@ describe("server and postback event normalization", () => {
         endpoint: "https://graph.facebook.com/v20.0/123/events",
         status: 200,
         request_id: "fb_req_123"
+      },
+      implementation: {
+        mode: "server_gtm",
+        note: "This project does not fire fbq directly. Meta Purchase is dispatched server-side through GTM."
       }
     });
 
@@ -36,6 +40,10 @@ describe("server and postback event normalization", () => {
         status: 200,
         ok: true,
         request_id: "fb_req_123"
+      },
+      implementation: {
+        mode: "server_gtm",
+        note: "This project does not fire fbq directly. Meta Purchase is dispatched server-side through GTM."
       }
     });
   });

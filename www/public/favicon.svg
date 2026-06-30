@@ -1,11 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-  <rect width="128" height="128" rx="26" fill="#0c0d14"/>
-  <path d="M30 90h64M30 64h64M30 38h64" stroke="#f4f1f2" stroke-opacity=".18" stroke-width="4"/>
-  <path d="M34 92 54 64l18 13 22-43" stroke="#497ef7" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
-  <rect x="24" y="81" width="22" height="22" rx="6" fill="#f4f1f2"/>
-  <rect x="45" y="53" width="22" height="22" rx="6" fill="#497ef7"/>
-  <rect x="64" y="66" width="22" height="22" rx="6" fill="#f4f1f2"/>
-  <rect x="87" y="23" width="22" height="22" rx="6" fill="#497ef7"/>
-  <path d="M98 78H86v20H66" stroke="#f4f1f2" stroke-opacity=".75" stroke-width="7" stroke-linecap="round"/>
-  <circle cx="98" cy="78" r="6" fill="#497ef7"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">Sarge</title>
+  <desc id="desc">Sarge stripe mark</desc>
+  <style>
+    :root { color: #111316; }
+    @media (prefers-color-scheme: dark) { :root { color: #f7f5ef; } }
+  </style>
+  <path d="M10 47h8.5L30.5 17H22Z" fill="currentColor"/>
+  <path d="M24 50h8.5L46.9 14H38.4Z" fill="currentColor"/>
+  <path d="M38 53h8.5L63.3 11H54.8Z" fill="currentColor"/>
 </svg>

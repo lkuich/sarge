@@ -1,0 +1,71 @@
+---
+export const logoVariants = ["pure", "progression", "tactical", "hidden-s"] as const;
+export type LogoVariant = (typeof logoVariants)[number];
+
+interface Props {
+  variant?: LogoVariant;
+  iconOnly?: boolean;
+  class?: string;
+  markClass?: string;
+  wordmarkClass?: string;
+}
+
+const {
+  variant = "progression",
+  iconOnly = false,
+  class: className = "",
+  markClass = "h-7 w-auto",
+  wordmarkClass = "text-[1.18rem]",
+} = Astro.props;
+
+const marks: Record<LogoVariant, string[]> = {
+  pure: [
+    "M7 38h7.5L27.5 10H20L7 38Z",
+    "M21 38h7.5L41.5 10H34L21 38Z",
+    "M35 38h7.5L55.5 10H48L35 38Z",
+  ],
+  progression: [
+    "M7 35h7.5L23.3 13H15.8Z",
+    "M21 38h7.5L38.9 12H31.4Z",
+    "M35 41h7.5L54.5 11H47Z",
+  ],
+  tactical: [
+    "M6 39h10L29 9H19L6 39Z",
+    "M22 39h10L45 9H35L22 39Z",
+    "M38 39h10L61 9H51L38 39Z",
+  ],
+  "hidden-s": [
+    "M7 35h7.5L18.9 26h-5.7L7 35ZM15.7 22h5.7l4.5-9H18.4l-2.7 9Z",
+    "M21 38h7.5l4.3-9h-7.5L21 38ZM27.2 25h7.5l3.1-6.5h-7.5L27.2 25ZM31.8 15h7.5l2-4h-7.5l-2 4Z",
+    "M35 41h7.5l6.1-21h-7.5L35 41ZM42.3 16h7.5l2-7h-7.5l-2 7Z",
+  ],
+};
+
+const title = variant === "progression" ? "Sarge progression stripe mark" : `Sarge ${variant} stripe mark`;
+---
+
+<span class:list={["inline-flex min-w-0 items-center gap-2 text-foreground", className]} aria-label="Sarge">
+  <svg
+    class:list={["shrink-0", markClass]}
+    viewBox="0 0 64 48"
+    role={iconOnly ? "img" : "presentation"}
+    aria-hidden={iconOnly ? "false" : "true"}
+    aria-labelledby={iconOnly ? "sargetrack-logo-title" : undefined}
+    fill="currentColor"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    {iconOnly && <title id="sargetrack-logo-title">{title}</title>}
+    {
+      marks[variant].map((path) => (
+        <path d={path} fill="currentColor" />
+      ))
+    }
+  </svg>
+  {
+    !iconOnly && (
+      <span class:list={["truncate font-semibold leading-none tracking-normal", wordmarkClass]}>
+        Sarge
+      </span>
+    )
+  }
+</span>

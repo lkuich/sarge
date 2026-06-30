@@ -22,6 +22,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import InstallPanel from "@/components/InstallPanel";
+import Logo from "@/components/Logo.astro";
 import ShaderEffect from "@/components/shaderBackground";
 import SiteLayout from "@/layouts/SiteLayout.astro";
 
@@ -316,8 +317,7 @@ const plans = [
   <footer class="border-t bg-background/80 px-4 py-12 backdrop-blur md:px-6">
     <div class="mx-auto grid max-w-6xl gap-8 sm:grid-cols-2 md:grid-cols-[1.5fr_1fr_1fr]">
       <div>
-        <img class="h-7 w-auto dark:hidden" src="/sarge-logo-light.svg" alt="Sarge" width="196" height="48" />
-        <img class="hidden h-7 w-auto dark:block" src="/sarge-logo-dark.svg" alt="Sarge" width="196" height="48" />
+        <Logo markClass="h-6 w-auto" wordmarkClass="text-[1.08rem]" />
         <p class="mt-3 max-w-xs text-sm leading-6 text-muted-foreground">
           Catch tracking bugs before your ad platforms lie to you.
         </p>

@@ -74,7 +74,7 @@ export function SessionFlowExplorer({ events, refreshEndpoint, onRefresh }: Sess
   const [sargeAffFilter, setSargeAffFilter] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedEventFilters, setSelectedEventFilters] = useState<EventFilter[]>(() =>
-    eventFilters.map((filter) => filter.value),
+    eventFilters.map((filter) => filter.value).filter((filter) => filter !== "watchdog"),
   );
   const [trafficFilter, setTrafficFilter] = useState<TrafficFilter>("real");
   const [startAt, setStartAt] = useState(() => getDefaultTimeRange(events).startAt);

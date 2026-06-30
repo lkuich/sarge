@@ -74,15 +74,17 @@ afterEach(() => {
 });
 
 describe("SessionFlowExplorer event filters", () => {
-  it("defaults event category filters to selected without requiring every category", () => {
+  it("defaults event category filters to selected without watchdog events", () => {
     render(<SessionFlowExplorer events={events} />);
 
     expect(container?.textContent).toContain("3 of 3 users");
     expect(hasButtonNamed("All")).toBe(false);
     expect(buttonNamed("Conversion")?.getAttribute("aria-pressed")).toBe("true");
     expect(buttonNamed("Page views")?.getAttribute("aria-pressed")).toBe("true");
-    expect(buttonNamed("Watchdog")?.getAttribute("aria-pressed")).toBe("true");
+    expect(buttonNamed("Watchdog")?.getAttribute("aria-pressed")).toBe("false");
     expect(buttonNamed("Custom")?.getAttribute("aria-pressed")).toBe("true");
+    expect(container?.querySelector('[data-flow-node="event:complete-watchdog"]')).toBeNull();
+    expect(container?.querySelector('[data-flow-node="event:missing-custom-watchdog"]')).toBeNull();
   });
 
   it("uses color to distinguish selected flow toggles", () => {
@@ -136,15 +138,27 @@ describe("SessionFlowExplorer event filters", () => {
     render(<SessionFlowExplorer events={events} />);
 
     act(() => {
+      buttonNamed("Conversion")?.click();
+    });
+
+    expect(buttonNamed("Conversion")?.getAttribute("aria-pressed")).toBe("false");
+    expect(container?.textContent).toContain("3 of 3 users");
+    expect(container?.textContent).toContain("3 visible");
+    expect(container?.querySelector('[data-flow-node="event:complete-conversion"]')).toBeNull();
+    expect(container?.querySelector('[data-flow-node="event:missing-custom-conversion"]')).toBeNull();
+    expect(container?.querySelector('[data-flow-node="event:page-only"]')).not.toBeNull();
+  });
+
+  it("can enable watchdog events from the event category filters", () => {
+    render(<SessionFlowExplorer events={events} />);
+
+    act(() => {
       buttonNamed("Watchdog")?.click();
     });
 
-    expect(buttonNamed("Watchdog")?.getAttribute("aria-pressed")).toBe("false");
-    expect(container?.textContent).toContain("3 of 3 users");
-    expect(container?.textContent).toContain("3 visible");
-    expect(container?.querySelector('[data-flow-node="event:complete-watchdog"]')).toBeNull();
-    expect(container?.querySelector('[data-flow-node="event:missing-custom-watchdog"]')).toBeNull();
-    expect(container?.querySelector('[data-flow-node="event:page-only"]')).not.toBeNull();
+    expect(buttonNamed("Watchdog")?.getAttribute("aria-pressed")).toBe("true");
+    expect(container?.querySelector('[data-flow-node="event:complete-watchdog"]')).not.toBeNull();
+    expect(container?.querySelector('[data-flow-node="event:missing-custom-watchdog"]')).not.toBeNull();
   });
 
   it("colors test traffic nodes and flow lines with the destructive chart color", () => {
@@ -152,6 +166,10 @@ describe("SessionFlowExplorer event filters", () => {
 
     act(() => {
       buttonNamed("Test traffic")?.click();
+    });
+
+    act(() => {
+      buttonNamed("Watchdog")?.click();
     });
 
     expect(flowStyle('[data-flow-node="group:user-test-flow"]')).toContain("--color-destructive");
@@ -250,6 +268,10 @@ describe("SessionFlowExplorer event filters", () => {
       />,
     );
 
+    act(() => {
+      buttonNamed("Watchdog")?.click();
+    });
+
     expect(flowPosition('[data-flow-node="event:multi-page-page-1"]')).toEqual({ x: 250, y: 0 });
     expect(flowPosition('[data-flow-node="event:multi-page-watchdog-1"]')).toEqual({ x: 500, y: 0 });
     expect(flowPosition('[data-flow-node="event:multi-page-page-2"]')).toEqual({ x: 250, y: 154 });
@@ -310,7 +332,7 @@ describe("SessionFlowExplorer event filters", () => {
     expect(payload.schemaVersion).toBe(1);
     expect(payload.mode).toBe("user");
     expect(payload.filters.traffic).toBe("real");
-    expect(payload.filters.eventCategories).toEqual(["conversion", "page", "watchdog", "custom"]);
+    expect(payload.filters.eventCategories).toEqual(["conversion", "page", "custom"]);
     expect(payload.visibleGroups).toHaveLength(3);
     expect(payload.visibleGroups[0].events[0]).toMatchObject({
       id: "page-only",

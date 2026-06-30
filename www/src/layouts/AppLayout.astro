@@ -1,6 +1,7 @@
 ---
 import { UserButton } from "@clerk/astro/components";
 import { ChevronDown, ChevronRight, ExternalLink, Home, Menu } from "lucide-react";
+import Logo from "@/components/Logo.astro";
 import type { SargeAccount } from "@/lib/sarge-demo";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import "../styles/global.css";
@@ -47,9 +48,8 @@ const activeNavigationLabel = active === "notifications" ? "Notifications" : act
       <header class="sticky top-0 z-10 border-b bg-background/90 backdrop-blur">
         <div class="mx-auto w-full max-w-6xl px-4 md:px-6">
           <div class="flex min-h-16 min-w-0 items-center justify-between gap-3 py-3">
-            <a class="flex shrink-0 items-center gap-2" href="/app" aria-label="Sarge home">
-              <img class="h-7 w-auto dark:hidden" src="/sarge-logo-light.svg" alt="Sarge" width="196" height="48" />
-              <img class="hidden h-7 w-auto dark:block" src="/sarge-logo-dark.svg" alt="Sarge" width="196" height="48" />
+            <a class="flex shrink-0 items-center gap-2.5" href="/app" aria-label="Sarge home">
+              <Logo class="shrink-0" markClass="h-6 w-auto sm:h-7" wordmarkClass="hidden text-[1.08rem] sm:inline" />
               <span class="rounded-sm border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-primary">BETA</span>
             </a>
             <nav data-desktop-app-nav class="hidden md:flex items-center gap-1" aria-label="Application">

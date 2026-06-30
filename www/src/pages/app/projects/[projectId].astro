@@ -1,6 +1,6 @@
 ---
 import { env } from "cloudflare:workers";
-import { Activity, Bot, ChevronDown, Copy, Download, ExternalLink, Globe2, KeyRound, Link2, Plus, Radio, RefreshCw, Search, TerminalSquare, UserRound, Webhook, X } from "lucide-react";
+import { Activity, Bot, ChevronDown, Copy, Download, ExternalLink, KeyRound, Link2, Plus, Radio, RefreshCw, Search, TerminalSquare, UserRound, Webhook, X } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -95,6 +95,51 @@ let webhookValues = {
   eventNames: "",
 };
 const runtimeEnv = env as unknown as Record<string, string | undefined>;
+const credentialFlashCookieName = "sarge_created_credential";
+const credentialFlashCookiePath = "/app/projects";
+type CredentialFlash = {
+  kind: "server" | "postback";
+  token: string;
+  endpoint: string;
+};
+const readCredentialFlash = (value: string | undefined): CredentialFlash | null => {
+  if (!value) return null;
+
+  try {
+    const parsed = JSON.parse(decodeURIComponent(value)) as Partial<CredentialFlash>;
+    if (
+      (parsed.kind === "server" || parsed.kind === "postback") &&
+      typeof parsed.token === "string" &&
+      parsed.token.length > 0 &&
+      typeof parsed.endpoint === "string" &&
+      parsed.endpoint.length > 0
+    ) {
+      return {
+        kind: parsed.kind,
+        token: parsed.token,
+        endpoint: parsed.endpoint,
+      };
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+};
+const setCredentialFlash = (cookies: typeof Astro.cookies, credential: CredentialFlash) => {
+  cookies.set(credentialFlashCookieName, encodeURIComponent(JSON.stringify(credential)), {
+    path: credentialFlashCookiePath,
+    httpOnly: true,
+    sameSite: "lax",
+    secure: Astro.url.protocol === "https:",
+    maxAge: 60,
+  });
+};
+const clearCredentialFlash = (cookies: typeof Astro.cookies) => {
+  cookies.delete(credentialFlashCookieName, {
+    path: credentialFlashCookiePath,
+  });
+};
 
 if (Astro.request.method === "POST") {
   const formData = await Astro.request.formData();
@@ -226,15 +271,8 @@ if (Astro.request.method === "POST") {
       const result = await createEnvironmentCredential(userId, env.DATABASE_URL, selectedEnvironment.id, kind);
 
       if (result.success) {
-        if (result.kind === "server") {
-          createdServerCredentialToken = result.token;
-          createdServerCredentialEndpoint = result.endpoint;
-          selectedEnvironment.serverEventSecretConfigured = true;
-        } else {
-          createdPostbackCredentialToken = result.token;
-          createdPostbackCredentialEndpoint = result.endpoint;
-          selectedEnvironment.postbackTokenConfigured = true;
-        }
+        setCredentialFlash(Astro.cookies, result);
+        return Astro.redirect(selectedEnvironmentHref, 303);
       } else {
         credentialError = result.error;
       }
@@ -291,6 +329,24 @@ if (Astro.request.method === "POST") {
       else siteDeletionRequestError = result.error;
     }
   }
+}
+
+if (Astro.request.method !== "POST") {
+  const credentialFlash = readCredentialFlash(Astro.cookies.get(credentialFlashCookieName)?.value);
+
+  if (credentialFlash) {
+    if (credentialFlash.kind === "server") {
+      createdServerCredentialToken = credentialFlash.token;
+      createdServerCredentialEndpoint = credentialFlash.endpoint;
+      selectedEnvironment.serverEventSecretConfigured = true;
+    } else {
+      createdPostbackCredentialToken = credentialFlash.token;
+      createdPostbackCredentialEndpoint = credentialFlash.endpoint;
+      selectedEnvironment.postbackTokenConfigured = true;
+    }
+  }
+
+  clearCredentialFlash(Astro.cookies);
 }
 
 const snippet = `<script>
@@ -352,7 +408,6 @@ const createdServerCredentialCurl = createdServerCredentialToken
 const recentEvents = selectedEnvironment.recentEvents.slice(0, 12);
 const flowEvents = selectedEnvironment.recentEvents.slice(0, 80);
 const flowEventsEndpoint = `${debugStreamEndpoint}?limit=80`;
-const eventHosts = selectedEnvironment.eventHosts;
 const webhookEndpoints = selectedEnvironment.webhookEndpoints;
 const projectTesterUserId = buildProjectTesterUserId(selectedEnvironment.id, userId);
 const recentUserOptions = buildRecentUserOptions(selectedEnvironment.recentEvents, projectTesterUserId);
@@ -1634,31 +1689,6 @@ function resolveTrackedSiteDomain(value: string) {
               )
             }
           </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Globe2 className="size-4" /> Event hosts</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-3 text-sm">
-          {
-            eventHosts.length > 0 ? (
-              eventHosts.map((eventHost) => (
-                <div class="grid grid-cols-[1fr_auto] items-center gap-3 rounded-md border p-3">
-                  <div class="min-w-0">
-                    <p class="truncate font-mono text-xs">{eventHost.host}</p>
-                    <p class="mt-1 text-xs text-muted-foreground">{formatEventTime(eventHost.lastEventAt)}</p>
-                  </div>
-                  <Badge variant="outline">{eventHost.count}</Badge>
-                </div>
-              ))
-            ) : (
-              <div class="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                No event hosts recorded in the 10 most recent events.
-              </div>
-            )
-          }
         </CardContent>
       </Card>
     </aside>

@@ -22,6 +22,7 @@ export interface SiteRecord {
   siteId: string;
   environment: "production" | "staging" | "development";
   endpointHost: string;
+  configuredHost?: string | null;
   attributionTtlDays: number;
   pixelEnabled: boolean;
   serverEventSecretHash?: string | null;
@@ -48,6 +49,7 @@ export interface StoredEvent {
   userId: string;
   properties: Record<string, unknown>;
   url?: string | null;
+  referrer?: string | null;
   title?: string | null;
 }
 

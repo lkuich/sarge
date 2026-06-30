@@ -16,4 +16,15 @@ describe("project environment event queries", () => {
     expect(demoData).toContain("NTILE(${limit}) OVER (ORDER BY e.\"occurredAt\" ASC)");
     expect(demoData).toContain("DISTINCT ON (sample_bucket)");
   });
+
+  it("filters event traffic and manual AI reviews to the configured project host", () => {
+    const demoData = readSource("./sarge-demo.ts");
+
+    expect(demoData).toContain("configuredHostSql");
+    expect(demoData).toContain("configuredHostEventSql");
+    expect(demoData).toContain("configuredHostEventMixSql");
+    expect(demoData).toContain("configuredHostEventTrendSql");
+    expect(demoData).toContain('WHERE e."siteEnvironmentId" = ${siteEnvironment.id}');
+    expect(demoData).toContain("configuredHostEventSql('e', 's')");
+  });
 });

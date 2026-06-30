@@ -1,6 +1,7 @@
 import {
   analyzeEvents,
   buildTrackedPageFinding,
+  eventMatchesConfiguredHost,
   selectTrackedPageCandidates,
   type DiagnosticEvent,
   type TrackedPageCandidate,
@@ -89,7 +90,8 @@ const runSiteDiagnostics = async (
   }
 ) => {
   const startedAt = new Date();
-  const events = await store.listRecentEventsForSite(site.id, eventWindowStart, eventLimit);
+  const events = (await store.listRecentEventsForSite(site.id, eventWindowStart, eventLimit))
+    .filter((event) => !site.configuredHost || eventMatchesConfiguredHost(event, site.configuredHost));
   const diagnosticEvents = events.map(toDiagnosticEvent);
   const eventFindings = events.length > 0 ? analyzeEvents(diagnosticEvents).map(toStoredFinding) : [];
   const pageHealthResult = events.length > 0

@@ -3,6 +3,13 @@ import { buildPlanEventLimitSqlCase, UsageLimitExceededError, type EventPayload,
 import type { EventStore, SiteRecord, StoredDiagnosticRun, StoredEvent } from "./types.js";
 
 const planEventLimitSqlCase = buildPlanEventLimitSqlCase('w."planId"');
+const configuredHostSql = (siteAlias: string) => `regexp_replace(lower(${siteAlias}."customDomain"), '^www\\.', '')`;
+const capturedEventHostSql = (eventAlias: string) => (
+  `NULLIF(regexp_replace(regexp_replace(coalesce(substring(lower(${eventAlias}.url) from '^[a-z][a-z0-9+.-]*://([^/?#]+)'), substring(lower(${eventAlias}.referrer) from '^[a-z][a-z0-9+.-]*://([^/?#]+)')), '^www\\.', ''), ':\\d+$', ''), '')`
+);
+const configuredHostEventSql = (eventAlias: string, siteAlias: string) => (
+  `(${capturedEventHostSql(eventAlias)} IS NULL OR ${capturedEventHostSql(eventAlias)} = ${configuredHostSql(siteAlias)})`
+);
 
 export class NeonEventStore implements EventStore {
   private readonly sql: ReturnType<typeof neon>;
@@ -18,6 +25,7 @@ export class NeonEventStore implements EventStore {
         se."siteId",
         se.environment,
         se."endpointHost",
+        s."customDomain" AS "configuredHost",
         se."attributionTtlDays",
         se."pixelEnabled",
         se."serverEventSecretHash",
@@ -42,6 +50,7 @@ export class NeonEventStore implements EventStore {
           siteId: string;
           environment: "production" | "staging" | "development";
           endpointHost: string;
+          configuredHost: string | null;
           attributionTtlDays: number;
           pixelEnabled: boolean;
           serverEventSecretHash: string | null;
@@ -65,6 +74,7 @@ export class NeonEventStore implements EventStore {
         se."siteId",
         se.environment,
         se."endpointHost",
+        s."customDomain" AS "configuredHost",
         se."attributionTtlDays",
         se."pixelEnabled",
         se."serverEventSecretHash",
@@ -90,6 +100,7 @@ export class NeonEventStore implements EventStore {
           siteId: string;
           environment: "production" | "staging" | "development";
           endpointHost: string;
+          configuredHost: string | null;
           attributionTtlDays: number;
           pixelEnabled: boolean;
           serverEventSecretHash: string | null;
@@ -194,11 +205,19 @@ export class NeonEventStore implements EventStore {
 
   async listActiveSitesForDiagnostics(limit: number): Promise<SiteRecord[]> {
     const rows = (await this.sql`
-      SELECT id, "siteId", environment, "endpointHost", "attributionTtlDays", "pixelEnabled"
-      FROM "SiteEnvironment"
-      WHERE "pixelEnabled" = true
-        AND environment = 'production'
-      ORDER BY "createdAt" ASC
+      SELECT
+        se.id,
+        se."siteId",
+        se.environment,
+        se."endpointHost",
+        s."customDomain" AS "configuredHost",
+        se."attributionTtlDays",
+        se."pixelEnabled"
+      FROM "SiteEnvironment" se
+      JOIN "Site" s ON s.id = se."siteId"
+      WHERE se."pixelEnabled" = true
+        AND se.environment = 'production'
+      ORDER BY se."createdAt" ASC
       LIMIT ${limit}
     `) as unknown[];
 
@@ -215,12 +234,15 @@ export class NeonEventStore implements EventStore {
         "sessionId",
         "userId",
         url,
+        referrer,
         title,
         properties
-      FROM "Event"
-      WHERE "siteEnvironmentId" = ${siteId}
-        AND "occurredAt" >= ${since.toISOString()}
-      ORDER BY "occurredAt" DESC
+      FROM "Event" e
+      JOIN "Site" s ON s.id = e."siteId"
+      WHERE e."siteEnvironmentId" = ${siteId}
+        AND e."occurredAt" >= ${since.toISOString()}
+        AND ${this.sql.unsafe(configuredHostEventSql('e', 's'))}
+      ORDER BY e."occurredAt" DESC
       LIMIT ${limit}
     `) as EventRow[];
 
@@ -232,6 +254,7 @@ export class NeonEventStore implements EventStore {
       sessionId: row.sessionId,
       userId: row.userId,
       url: row.url,
+      referrer: row.referrer,
       title: row.title,
       properties: (row.properties ?? {}) as Record<string, unknown>
     }));
@@ -308,6 +331,7 @@ interface SiteRecordRow {
   siteId: string;
   environment: "production" | "staging" | "development";
   endpointHost: string;
+  configuredHost?: string | null;
   attributionTtlDays: number;
   pixelEnabled: boolean;
   serverEventSecretHash?: string | null;
@@ -325,6 +349,7 @@ const mapSiteRecord = (row: SiteRecordRow): SiteRecord => ({
   siteId: row.siteId,
   environment: row.environment,
   endpointHost: row.endpointHost,
+  configuredHost: row.configuredHost,
   attributionTtlDays: row.attributionTtlDays,
   pixelEnabled: row.pixelEnabled,
   serverEventSecretHash: row.serverEventSecretHash,
@@ -352,6 +377,7 @@ interface EventRow {
   sessionId: string;
   userId: string;
   url: string | null;
+  referrer: string | null;
   title: string | null;
   properties: unknown;
 }

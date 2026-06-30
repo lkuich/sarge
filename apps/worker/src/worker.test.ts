@@ -29,6 +29,7 @@ const createMemoryStore = () => {
           siteId: "site_123",
           environment: "production",
           endpointHost: "acme.sarge.events",
+          configuredHost: "shop.example.com",
           attributionTtlDays: 14,
           pixelEnabled: true,
           serverEventSecretHash: "82f1c19229bdefda9e677f85bcacf68d8a173a21dae2ac685dbb91ed54a83fd3",
@@ -45,6 +46,7 @@ const createMemoryStore = () => {
           siteId: "site_shared",
           environment: "production",
           endpointHost: "shared.sarge.events",
+          configuredHost: "shop.example.com",
           attributionTtlDays: 28,
           pixelEnabled: true,
           serverEventSecretHash: "82f1c19229bdefda9e677f85bcacf68d8a173a21dae2ac685dbb91ed54a83fd3",
@@ -61,6 +63,7 @@ const createMemoryStore = () => {
           siteId: "site_shared",
           environment: "production",
           endpointHost: "shared.sarge.events",
+          configuredHost: "shop.example.com",
           attributionTtlDays: 28,
           pixelEnabled: true,
           serverEventSecretHash: "82f1c19229bdefda9e677f85bcacf68d8a173a21dae2ac685dbb91ed54a83fd3",
@@ -498,6 +501,56 @@ describe("Cloudflare Worker hosted API", () => {
     expect(diagnosticRuns[0].findings[0]).toMatchObject({
       ruleId: "checkout-without-purchase",
       severity: "critical"
+    });
+  });
+
+  it("ignores scheduled diagnostic events from hosts outside the configured project host", async () => {
+    const { ctx, promises } = createExecutionContext();
+    const { diagnosticEvents, diagnosticRuns, store } = createMemoryStore();
+    const ai = { run: vi.fn(async () => ({ response: "Should not run" })) };
+    const pageHealthChecker = vi.fn(async () => []);
+    const handler = createWorkerHandler({ store, pageHealthChecker });
+    diagnosticEvents.push(
+      {
+        id: "evt_preview_checkout",
+        siteId: "env_shared_production",
+        name: "checkout.started",
+        occurredAt: "2026-06-19T12:00:00.000Z",
+        sessionId: "sess_preview",
+        userId: "user_123",
+        properties: { value: 84, currency: "USD" },
+        url: "https://branch-preview.example.vercel.app/checkout",
+        title: "Checkout"
+      },
+      {
+        id: "evt_home",
+        siteId: "env_shared_production",
+        name: "page.view",
+        occurredAt: "2026-06-19T12:01:00.000Z",
+        sessionId: "sess_home",
+        userId: "user_123",
+        properties: {},
+        url: "https://shop.example.com/",
+        title: "Home"
+      }
+    );
+
+    await handler.scheduled(createScheduledController(), createEnv({ AI: ai }), ctx);
+    await Promise.all(promises);
+
+    expect(ai.run).not.toHaveBeenCalled();
+    expect(pageHealthChecker).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({ url: "https://shop.example.com/" })]),
+      expect.any(Object)
+    );
+    expect(pageHealthChecker).not.toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({ url: "https://branch-preview.example.vercel.app/checkout" })]),
+      expect.any(Object)
+    );
+    expect(diagnosticRuns).toHaveLength(1);
+    expect(diagnosticRuns[0]).toMatchObject({
+      findingCount: 0,
+      findings: []
     });
   });
 

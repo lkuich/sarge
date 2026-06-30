@@ -3,6 +3,7 @@ import {
   analyzeEvents,
   buildTrackedPageFinding,
   defaultPrivacySettings,
+  eventMatchesConfiguredHost,
   selectTrackedPageCandidates,
   type DiagnosticEvent,
   type DiagnosticFinding,
@@ -10,7 +11,6 @@ import {
   type TrackedPageCandidate,
   type TrackedPageHealthResult,
 } from '@sarge/core';
-import { summarizeEventHosts, type EventHostSummary } from './event-hosts';
 import { sendProjectAccessNotificationEmail, sendProjectInviteEmail, type ProjectInviteEmailInput } from './project-invite-email';
 import { analyzeProjectEvents, type ProjectDiagnostic } from './project-diagnostics';
 import { buildPlanLimitSqlCase, buildPlanRetentionFilterSql, getPlanDefinition, type PlanDefinition, type PlanId } from './pricing';
@@ -104,7 +104,6 @@ export interface SargeProjectEnvironment {
   eventMix24h: SargeEventMixItem[];
   trafficTrend7d: SargeTrafficTrendPoint[];
   recentEvents: SargeEvent[];
-  eventHosts: EventHostSummary[];
   diagnostics: ProjectDiagnostic[];
   diagnosticSummary: string | null;
   diagnosticRunAt: string | null;
@@ -305,6 +304,15 @@ const eventTrendRetentionFilterSql = buildPlanRetentionFilterSql('e_trend."occur
 const nonWatchdogEventFilterSql = `e.name NOT IN ('meta.pixel.fire', 'google.tag.fire', 'data_layer.push')`;
 const nonWatchdogEventMixFilterSql = `e_mix.name NOT IN ('meta.pixel.fire', 'google.tag.fire', 'data_layer.push')`;
 const nonWatchdogEventTrendFilterSql = `e_trend.name NOT IN ('meta.pixel.fire', 'google.tag.fire', 'data_layer.push')`;
+const configuredHostSql = (siteAlias: string) => `regexp_replace(lower(${siteAlias}."customDomain"), '^www\\.', '')`;
+const capturedEventHostSql = (eventAlias: string) => (
+  `NULLIF(regexp_replace(regexp_replace(coalesce(substring(lower(${eventAlias}.url) from '^[a-z][a-z0-9+.-]*://([^/?#]+)'), substring(lower(${eventAlias}.referrer) from '^[a-z][a-z0-9+.-]*://([^/?#]+)')), '^www\\.', ''), ':\\d+$', ''), '')`
+);
+const configuredHostEventSql = (eventAlias: string, siteAlias: string) => (
+  `(${capturedEventHostSql(eventAlias)} IS NULL OR ${capturedEventHostSql(eventAlias)} = ${configuredHostSql(siteAlias)})`
+);
+const configuredHostEventMixSql = (eventAlias: string, siteAlias: string) => configuredHostEventSql(eventAlias, siteAlias);
+const configuredHostEventTrendSql = (eventAlias: string, siteAlias: string) => configuredHostEventSql(eventAlias, siteAlias);
 
 const adminIds = new Set(
   (import.meta.env.SARGE_ADMIN_USER_IDS ?? '')
@@ -329,6 +337,8 @@ const members: AccountMember[] = [
     lastActive: 'Yesterday',
   },
 ];
+
+export { eventMatchesConfiguredHost };
 
 const resolveRole = (userId: string): AccountRole => {
   if (adminIds.size === 0) return 'user';
@@ -603,6 +613,7 @@ export const getViewerAccount = async (
             FROM "Event" e_mix
             WHERE e_mix."siteEnvironmentId" = se.id
               AND e_mix."occurredAt" >= NOW() - INTERVAL '48 hours'
+              AND ${sql.unsafe(configuredHostEventMixSql('e_mix', 's'))}
               AND ${sql.unsafe(nonWatchdogEventMixFilterSql)}
               AND ${sql.unsafe(eventMixRetentionFilterSql)}
             GROUP BY e_mix.name
@@ -632,6 +643,7 @@ export const getViewerAccount = async (
             LEFT JOIN "Event" e_trend ON e_trend."siteEnvironmentId" = se.id
               AND e_trend."occurredAt" >= day_bucket
               AND e_trend."occurredAt" < day_bucket + INTERVAL '1 day'
+              AND ${sql.unsafe(configuredHostEventTrendSql('e_trend', 's'))}
               AND ${sql.unsafe(nonWatchdogEventTrendFilterSql)}
               AND ${sql.unsafe(eventTrendRetentionFilterSql)}
             GROUP BY day_bucket
@@ -643,8 +655,9 @@ export const getViewerAccount = async (
       JOIN "Workspace" w ON w.id = s."workspaceId"
       LEFT JOIN "Event" e ON e."siteEnvironmentId" = se.id
         AND ${sql.unsafe(eventRetentionFilterSql)}
+        AND ${sql.unsafe(configuredHostEventSql('e', 's'))}
       WHERE s.id = ANY(${allSiteIds})
-      GROUP BY se.id, w."planId"
+      GROUP BY se.id, s."customDomain", w."planId"
       ORDER BY se."siteId" ASC, se."createdAt" ASC
     `) as SiteEnvironmentSummaryRow[]) : [];
 
@@ -669,6 +682,7 @@ export const getViewerAccount = async (
       JOIN "Workspace" w ON w.id = s."workspaceId"
       WHERE s.id = ANY(${allSiteIds})
         AND ${sql.unsafe(eventRetentionFilterSql)}
+        AND ${sql.unsafe(configuredHostEventSql('e', 's'))}
       ORDER BY e."occurredAt" DESC
       LIMIT 200
     `) as EventRow[]) : [];
@@ -898,6 +912,7 @@ export const getPublicEventStream = async (
       JOIN "Workspace" w ON w.id = s."workspaceId"
       WHERE e."siteEnvironmentId" = ${site.id}
         AND ${sql.unsafe(eventRetentionFilterSql)}
+        AND ${sql.unsafe(configuredHostEventSql('e', 's'))}
       ORDER BY e."occurredAt" DESC
       LIMIT 30
     `) as EventRow[];
@@ -955,6 +970,7 @@ export const getProjectEnvironmentEvents = async (
         JOIN "Workspace" w ON w.id = s."workspaceId"
         WHERE e."siteEnvironmentId" = ${environmentId}
           AND ${sql.unsafe(eventRetentionFilterSql)}
+          AND ${sql.unsafe(configuredHostEventSql('e', 's'))}
         ORDER BY e."occurredAt" DESC
         LIMIT ${limit}
       `) as EventRow[];
@@ -985,6 +1001,7 @@ export const getProjectEnvironmentEvents = async (
         JOIN "Workspace" w ON w.id = s."workspaceId"
         WHERE e."siteEnvironmentId" = ${environmentId}
           AND ${sql.unsafe(eventRetentionFilterSql)}
+          AND ${sql.unsafe(configuredHostEventSql('e', 's'))}
           AND (${startAt}::timestamptz IS NULL OR e."occurredAt" >= ${startAt}::timestamptz)
           AND (${endAt}::timestamptz IS NULL OR e."occurredAt" <= ${endAt}::timestamptz)
       ),
@@ -1067,8 +1084,10 @@ export const refreshProjectAiReview = async (
         e.title,
         e.properties
       FROM "Event" e
+      JOIN "Site" s ON s.id = e."siteId"
       WHERE e."siteEnvironmentId" = ${siteEnvironment.id}
         AND e."occurredAt" >= NOW() - INTERVAL '60 minutes'
+        AND ${sql.unsafe(configuredHostEventSql('e', 's'))}
       ORDER BY e."occurredAt" DESC
       LIMIT ${DEFAULT_DIAGNOSTIC_EVENT_LIMIT}
     `) as EventRow[];
@@ -1784,6 +1803,7 @@ export const createProject = async (
         ownership: "owned",
         shares: [],
         environments,
+        privacySettings: defaultSargePrivacySettings,
       },
     };
   } catch (error) {
@@ -2651,7 +2671,6 @@ const mapProjectEnvironment = (
   eventMix24h: normalizeEventMix(environment.eventMix24h, environment.eventCount24h ?? 0),
   trafficTrend7d: normalizeTrafficTrend(environment.trafficTrend7d, environment.eventCount24h ?? 0),
   recentEvents: data.recentEvents,
-  eventHosts: summarizeEventHosts(data.recentEvents),
   diagnostics: environment.environment === 'production' ? data.persistedDiagnostics ?? analyzeProjectEvents(data.recentEvents) : [],
   diagnosticSummary: environment.environment === 'production' ? data.latestRun?.aiSummary ?? null : null,
   diagnosticRunAt: environment.environment === 'production' ? data.latestRun?.createdAt.toISOString() ?? null : null,
@@ -2696,7 +2715,6 @@ const buildFallbackProject = (input: {
       eventMix24h: [],
       trafficTrend7d: buildFallbackTrafficTrend(environment === 'production' ? input.eventCount24h : 0),
       recentEvents: [],
-      eventHosts: [],
       diagnostics: [],
       diagnosticSummary: null,
       diagnosticRunAt: null,

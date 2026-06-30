@@ -31,6 +31,12 @@ export {
 } from "./diagnostics.js";
 
 export {
+  eventMatchesConfiguredHost,
+  normalizeConfiguredEventHost,
+  type EventHostMatchInput
+} from "./event-host-filter.js";
+
+export {
   buildTrackedPageFinding,
   classifyTrackedPageHealth,
   normalizeTrackedPageUrl,

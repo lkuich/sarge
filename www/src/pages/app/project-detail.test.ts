@@ -101,6 +101,14 @@ describe("project detail install panel", () => {
     expect(projectDetail).not.toContain("<p class=\"font-mono\">{selectedEnvironment.endpointHost}</p>");
   });
 
+  it("does not render the event hosts panel", () => {
+    const projectDetail = readSource("./projects/[projectId].astro");
+
+    expect(projectDetail).not.toContain("Event hosts");
+    expect(projectDetail).not.toContain("selectedEnvironment.eventHosts");
+    expect(projectDetail).not.toContain("No event hosts recorded");
+  });
+
   it("uses environment-specific event activity for the install badge and collapse state", () => {
     const projectDetail = readSource("./projects/[projectId].astro");
 
@@ -300,6 +308,10 @@ describe("project detail install panel", () => {
   it("shows rotated server and postback credentials inside their own rows", () => {
     const projectDetail = readSource("./projects/[projectId].astro");
 
+    expect(projectDetail).toContain('const credentialFlashCookieName = "sarge_created_credential"');
+    expect(projectDetail).toContain("readCredentialFlash(Astro.cookies.get(credentialFlashCookieName)?.value)");
+    expect(projectDetail).toContain("setCredentialFlash(Astro.cookies, result)");
+    expect(projectDetail).toContain("return Astro.redirect(selectedEnvironmentHref, 303)");
     expect(projectDetail).toContain("createdServerCredentialToken");
     expect(projectDetail).toContain("createdPostbackCredentialToken");
     expect(projectDetail).toContain("createdServerCredentialCurl");

@@ -599,6 +599,7 @@ export const getViewerAccount = async (
             LEFT JOIN "Event" e_trend ON e_trend."siteEnvironmentId" = se.id
               AND e_trend."occurredAt" >= day_bucket
               AND e_trend."occurredAt" < day_bucket + INTERVAL '1 day'
+              AND e_trend.name NOT IN ('meta.pixel.fire', 'google.tag.fire', 'data_layer.push')
               AND ${sql.unsafe(eventTrendRetentionFilterSql)}
             GROUP BY day_bucket
           ) event_trend

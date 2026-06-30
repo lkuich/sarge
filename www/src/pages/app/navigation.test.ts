@@ -36,6 +36,19 @@ describe("app navigation routes", () => {
     expect(layout.indexOf("{account.plan.name}")).toBeLessThan(layout.indexOf("<UserButton />"));
   });
 
+  it("collapses app navigation on mobile so the shell does not force a wide viewport", () => {
+    const layout = readSource("../../layouts/AppLayout.astro");
+
+    expect(layout).toContain('content="width=device-width, initial-scale=1"');
+    expect(layout).toContain('data-desktop-app-nav');
+    expect(layout).toContain('data-mobile-app-nav');
+    expect(layout).toContain("<details");
+    expect(layout).toContain("<summary");
+    expect(layout).toContain("md:hidden");
+    expect(layout).toContain("hidden md:flex");
+    expect(layout.indexOf("data-mobile-app-nav")).toBeLessThan(layout.indexOf("<main"));
+  });
+
   it("does not ship the old admin page", () => {
     expect(existsSync(sourcePath("../admin/index.astro"))).toBe(false);
   });

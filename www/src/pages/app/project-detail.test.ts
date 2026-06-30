@@ -154,6 +154,12 @@ describe("project detail install panel", () => {
     expect(installPanel).toBeGreaterThan(pulsePanel);
   });
 
+  it("excludes watchdog events from the weekly traffic chart", () => {
+    const demoData = readSource("../../lib/sarge-demo.ts");
+
+    expect(demoData).toContain('AND e_trend.name NOT IN (\'meta.pixel.fire\', \'google.tag.fire\', \'data_layer.push\')');
+  });
+
   it("keeps the session flow explorer off the Worker render path", () => {
     const projectDetail = readSource("./projects/[projectId].astro");
 

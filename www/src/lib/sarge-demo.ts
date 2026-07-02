@@ -92,6 +92,7 @@ export interface SargeProjectEnvironment {
   attributionTtlDays: number;
   serverEventSecretConfigured: boolean;
   postbackTokenConfigured: boolean;
+  apiReadTokenConfigured: boolean;
   eventCount24h: number;
   previousEventCount24h: number;
   sessionCount24h: number;
@@ -238,7 +239,7 @@ export interface ProjectInviteEmailOptions {
   appUrl: string;
 }
 
-export type EnvironmentCredentialKind = 'server' | 'postback';
+export type EnvironmentCredentialKind = 'server' | 'postback' | 'api-read';
 
 export type CreateProjectResult =
   | { success: true; project: SargeProject }
@@ -601,6 +602,13 @@ export const getViewerAccount = async (
         se."pixelEnabled",
         se."serverEventSecretHash",
         se."postbackTokenHash",
+        EXISTS (
+          SELECT 1
+          FROM "ApiToken" api_token
+          WHERE api_token."siteEnvironmentId" = se.id
+            AND api_token.scope = 'events:read'
+            AND api_token."revokedAt" IS NULL
+        ) AS "apiReadTokenConfigured",
         COUNT(e.id) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL '24 hours' AND ${sql.unsafe(nonWatchdogEventFilterSql)})::int AS "eventCount24h",
         COUNT(e.id) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL '48 hours' AND e."occurredAt" < NOW() - INTERVAL '24 hours' AND ${sql.unsafe(nonWatchdogEventFilterSql)})::int AS "previousEventCount24h",
         COUNT(DISTINCT NULLIF(e."sessionId", '')) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL '24 hours' AND ${sql.unsafe(nonWatchdogEventFilterSql)})::int AS "sessionCount24h",
@@ -1817,6 +1825,7 @@ export const createProject = async (
           "pixelEnabled",
           "serverEventSecretHash",
           "postbackTokenHash",
+          false AS "apiReadTokenConfigured",
           0::int AS "eventCount24h",
           0::int AS "previousEventCount24h",
           0::int AS "sessionCount24h",
@@ -1841,6 +1850,7 @@ export const createProject = async (
         inserted_environments."pixelEnabled",
         inserted_environments."serverEventSecretHash",
         inserted_environments."postbackTokenHash",
+        inserted_environments."apiReadTokenConfigured",
         inserted_environments."eventCount24h",
         inserted_environments."previousEventCount24h",
         inserted_environments."sessionCount24h",
@@ -1867,6 +1877,7 @@ export const createProject = async (
           pixelEnabled: environment.pixelEnabled,
           serverEventSecretHash: environment.serverEventSecretHash,
           postbackTokenHash: environment.postbackTokenHash,
+          apiReadTokenConfigured: environment.apiReadTokenConfigured,
           eventCount24h: environment.eventCount24h,
           previousEventCount24h: environment.previousEventCount24h,
           sessionCount24h: environment.sessionCount24h,
@@ -2242,6 +2253,61 @@ export const createEnvironmentCredential = async (
 
     const token = createCredentialToken(kind);
     const tokenHash = await sha256Hex(token);
+
+    if (kind === 'api-read') {
+      if (!getPlanDefinition(workspace.planId).features.includes('apiExport')) {
+        return { success: false, error: 'API export is available on Scale.' };
+      }
+
+      const [, , rows] = (await sql.transaction((tx) => [
+        tx`
+          SELECT id
+          FROM "Workspace"
+          WHERE id = ${workspace.id}
+            AND "ownerUserId" = ${userId}
+          FOR UPDATE
+        `,
+        tx`
+          UPDATE "ApiToken" api_token
+          SET "revokedAt" = NOW()
+          FROM "SiteEnvironment" se
+          JOIN "Site" s ON s.id = se."siteId"
+          WHERE api_token."siteEnvironmentId" = se.id
+            AND se.id = ${siteEnvironmentId}
+            AND s."workspaceId" = ${workspace.id}
+            AND api_token.scope = 'events:read'
+            AND api_token."revokedAt" IS NULL
+        `,
+        tx`
+          INSERT INTO "ApiToken" (
+            id,
+            "siteEnvironmentId",
+            name,
+            scope,
+            "tokenHash"
+          )
+          SELECT
+            ${crypto.randomUUID()},
+            se.id,
+            'Default read token',
+            'events:read',
+            ${tokenHash}
+          FROM "SiteEnvironment" se
+          JOIN "Site" s ON s.id = se."siteId"
+          WHERE se.id = ${siteEnvironmentId}
+            AND s."workspaceId" = ${workspace.id}
+          RETURNING id
+        `,
+      ])) as [unknown[], unknown[], { id: string }[]];
+      if (!rows.at(0)) return { success: false, error: 'Project environment was not found.' };
+
+      return {
+        success: true,
+        kind,
+        token,
+        endpoint: `https://${hostedEndpointHost}/v2/export/events`,
+      };
+    }
 
     if (kind === 'server') {
       const [, rows] = (await sql.transaction((tx) => [
@@ -2752,6 +2818,7 @@ const mapProjectEnvironment = (
   attributionTtlDays: environment.attributionTtlDays,
   serverEventSecretConfigured: Boolean(environment.serverEventSecretHash),
   postbackTokenConfigured: Boolean(environment.postbackTokenHash),
+  apiReadTokenConfigured: Boolean(environment.apiReadTokenConfigured),
   eventCount24h: environment.eventCount24h ?? 0,
   previousEventCount24h: environment.previousEventCount24h ?? 0,
   sessionCount24h: environment.sessionCount24h ?? 0,
@@ -2796,6 +2863,7 @@ const buildFallbackProject = (input: {
       attributionTtlDays: 28,
       serverEventSecretConfigured: false,
       postbackTokenConfigured: false,
+      apiReadTokenConfigured: false,
       eventCount24h: environment === 'production' ? input.eventCount24h : 0,
       previousEventCount24h: 0,
       sessionCount24h: 0,
@@ -2940,7 +3008,8 @@ const createCredentialToken = (kind: EnvironmentCredentialKind) => {
     .replace(/\//g, '_')
     .replace(/=+$/g, '');
 
-  return `${kind === 'server' ? 'sarge_sk' : 'sarge_pb'}_${encoded}`;
+  const prefix = kind === 'server' ? 'sarge_sk' : kind === 'postback' ? 'sarge_pb' : 'sarge_read';
+  return `${prefix}_${encoded}`;
 };
 
 const createVerificationToken = () => {
@@ -2992,6 +3061,7 @@ interface SiteEnvironmentSummaryRow {
   pixelEnabled: boolean;
   serverEventSecretHash: string | null;
   postbackTokenHash: string | null;
+  apiReadTokenConfigured: boolean;
   eventCount24h: number;
   previousEventCount24h: number;
   sessionCount24h: number;
@@ -3017,6 +3087,7 @@ interface NewProjectEnvironmentRow {
   pixelEnabled: boolean;
   serverEventSecretHash: string | null;
   postbackTokenHash: string | null;
+  apiReadTokenConfigured: boolean;
   eventCount24h: number;
   previousEventCount24h: number;
   sessionCount24h: number;

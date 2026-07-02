@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">Sarge</title>
+  <desc id="desc">Sarge stripe mark</desc>
+  <style>
+    :root { color: #111316; }
+    @media (prefers-color-scheme: dark) { :root { color: #f7f5ef; } }
+  </style>
+  <path d="M10 47h8.5L30.5 17H22Z" fill="currentColor"/>
+  <path d="M24 50h8.5L46.9 14H38.4Z" fill="currentColor"/>
+  <path d="M38 53h8.5L63.3 11H54.8Z" fill="currentColor"/>
+</svg>

@@ -1,3 +1,5 @@
+export { buildPlanRetentionFilterSql } from "@sarge/core";
+
 export type PlanId = "free" | "starter" | "growth" | "scale";
 
 export type PlanFeature =
@@ -202,13 +204,6 @@ export const buildPlanLimitSqlCase = (limit: keyof PlanLimits, planIdExpression:
             ${branches}
             ELSE ${planDefinitions[0].limits[limit]}
           END`;
-};
-
-export const buildPlanRetentionFilterSql = (occurredAtExpression: string, planIdExpression: string) => {
-  const retentionDaysSqlCase = buildPlanLimitSqlCase("retentionDays", planIdExpression);
-
-  return `(${retentionDaysSqlCase} IS NULL
-            OR ${occurredAtExpression} >= NOW() - make_interval(days => ${retentionDaysSqlCase}))`;
 };
 
 export const getLimitUsagePrompt = ({ used, limit, noun, planId }: LimitUsagePromptInput): LimitUsagePrompt | null => {

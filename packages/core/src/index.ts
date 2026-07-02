@@ -58,9 +58,13 @@ export { sha256Hex, tokenMatchesHash } from "./secrets.js";
 export {
   UsageLimitExceededError,
   buildPlanEventLimitSqlCase,
+  buildPlanRetentionFilterSql,
+  buildPlanRetentionSqlCase,
   evaluateWorkspaceEventUsage,
   getPlanEventLimit,
+  getPlanRetentionDays,
   planEventLimits,
+  planRetentionDays,
   shouldResetUsagePeriod,
   type WorkspaceUsageDecision,
   type WorkspaceUsageState

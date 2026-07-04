@@ -222,7 +222,12 @@ describe("project detail install panel", () => {
     expect(demoData).toContain("apiReadTokenConfigured: boolean;");
     expect(projectDetail).toContain("createEnvironmentCredential(userId, env.DATABASE_URL, selectedEnvironment.id, kind)");
     expect(projectDetail).toContain('intent === "rotate-api-read-token"');
-    expect(projectDetail).toContain("API export token");
+    expect(projectDetail).toContain("Raw event export API");
+    expect(projectDetail).toContain("Tracking credentials");
+    expect(projectDetail).toContain('href="/docs/api"');
+    expect(projectDetail).toContain("Reveal one-time cURL");
+    expect(projectDetail).toContain("Copy cURL");
+    expect(projectDetail).toContain("Sarge cannot show this token again after you leave this page.");
   });
 
   it("keeps AI review findings from widening the page", () => {

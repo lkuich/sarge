@@ -65,6 +65,16 @@ describe("launch readiness safeguards", () => {
       expect(source).toContain("environment-scoped");
     }
 
+    expect(apiReference).toContain("export const prerender = false;");
+    expect(apiReference).toContain("Astro.locals.auth()");
+    expect(apiReference).toContain("getViewerAccount");
+    expect(apiReference).toContain('name="siteEnvironmentId"');
+    expect(apiReference).toContain("Select a project");
+    expect(apiReference).toContain("Reveal cURL with token");
+    expect(apiReference).toContain("Copy cURL");
+    expect(apiReference).toContain("Rotate to generate a fresh copyable cURL.");
+    expect(apiReference).toContain('intent === "rotate-docs-api-read-token"');
+    expect(apiReference).toContain('createEnvironmentCredential(userId, env.DATABASE_URL, selectedDocsEnvironmentId, "api-read")');
     expect(docsIndex).toContain("API export");
   });
 

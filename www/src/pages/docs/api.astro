@@ -1,7 +1,18 @@
 ---
-import { ArrowRight, BadgeCheck, DatabaseZap, KeyRound, ListFilter, LockKeyhole, RotateCw } from "lucide-react";
+import { env } from "cloudflare:workers";
+import { ArrowRight, BadgeCheck, Copy, DatabaseZap, KeyRound, ListFilter, LockKeyhole, RotateCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import SiteLayout from "@/layouts/SiteLayout.astro";
+import {
+  canManageProject,
+  createEnvironmentCredential,
+  environmentLabels,
+  getViewerAccount,
+  hostedEndpointHost,
+} from "@/lib/sarge-demo";
+import { canUseFeature } from "@/lib/pricing";
+
+export const prerender = false;
 
 const exportCurl = `curl -G "https://track.sargetrack.app/v2/export/events" \\
   -H "authorization: Bearer sarge_read_..." \\
@@ -54,6 +65,143 @@ const errorRows = [
   ["401", "Missing, invalid, or revoked read token."],
   ["500", "Unexpected export failure."],
 ];
+
+const { userId } = Astro.locals.auth();
+const currentUser = userId ? await Astro.locals.currentUser() : null;
+const viewerEmails = currentUser?.emailAddresses.map((email) => email.emailAddress).filter(Boolean) ?? [];
+const account = userId ? await getViewerAccount(userId, env.DATABASE_URL, { viewerEmails }) : null;
+const docsApiEndpoint = `https://${hostedEndpointHost}/v2/export/events`;
+const docsCredentialFlashCookieName = "sarge_docs_api_credential";
+
+type DocsCredentialFlash = {
+  token: string;
+  endpoint: string;
+  siteEnvironmentId: string;
+};
+
+const docsEnvironmentOptions =
+  account?.projects.flatMap((project) =>
+    project.environments.map((environment) => ({
+      project,
+      environment,
+      label: `${project.name} · ${environmentLabels[environment.environment]}`,
+    })),
+  ) ?? [];
+let selectedDocsEnvironmentId =
+  Astro.request.method === "POST"
+    ? ""
+    : Astro.url.searchParams.get("siteEnvironmentId") ?? docsEnvironmentOptions.at(0)?.environment.id ?? "";
+let docsCredentialError = "";
+let createdDocsApiReadCredentialToken = "";
+let createdDocsApiReadCredentialEndpoint = "";
+
+const readDocsCredentialFlash = (value: string | undefined): DocsCredentialFlash | null => {
+  if (!value) return null;
+
+  try {
+    const parsed = JSON.parse(decodeURIComponent(value)) as Partial<DocsCredentialFlash>;
+    if (
+      typeof parsed.token === "string" &&
+      parsed.token.length > 0 &&
+      typeof parsed.endpoint === "string" &&
+      parsed.endpoint.length > 0 &&
+      typeof parsed.siteEnvironmentId === "string" &&
+      parsed.siteEnvironmentId.length > 0
+    ) {
+      return {
+        token: parsed.token,
+        endpoint: parsed.endpoint,
+        siteEnvironmentId: parsed.siteEnvironmentId,
+      };
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+};
+
+const setDocsCredentialFlash = (credential: DocsCredentialFlash) => {
+  Astro.cookies.set(docsCredentialFlashCookieName, encodeURIComponent(JSON.stringify(credential)), {
+    path: "/docs/api",
+    httpOnly: true,
+    sameSite: "lax",
+    secure: Astro.url.protocol === "https:",
+    maxAge: 60,
+  });
+};
+
+const clearDocsCredentialFlash = () => {
+  Astro.cookies.delete(docsCredentialFlashCookieName, {
+    path: "/docs/api",
+  });
+};
+
+if (Astro.request.method === "POST") {
+  const formData = await Astro.request.formData();
+  const intent = String(formData.get("intent") ?? "");
+  selectedDocsEnvironmentId = String(formData.get("siteEnvironmentId") ?? "");
+
+  if (!userId) {
+    return Astro.redirect("/sign-in", 303);
+  }
+
+  if (intent === "rotate-docs-api-read-token") {
+    const selectedOption = docsEnvironmentOptions.find((option) => option.environment.id === selectedDocsEnvironmentId);
+    const canUseApiExport = account ? canUseFeature(account.planId, "apiExport") : false;
+    const canRotateApiReadToken = Boolean(selectedOption && canManageProject(selectedOption.project) && canUseApiExport);
+
+    if (!selectedOption) {
+      docsCredentialError = "Select a project before creating an API read token.";
+    } else if (!canUseApiExport) {
+      docsCredentialError = "API export is available on Scale.";
+    } else if (!canRotateApiReadToken) {
+      docsCredentialError = "Edit access is required to manage API export tokens.";
+    } else {
+      const result = await createEnvironmentCredential(userId, env.DATABASE_URL, selectedDocsEnvironmentId, "api-read");
+      if (result.success) {
+        setDocsCredentialFlash({
+          token: result.token,
+          endpoint: result.endpoint,
+          siteEnvironmentId: selectedDocsEnvironmentId,
+        });
+        return Astro.redirect(`/docs/api?siteEnvironmentId=${encodeURIComponent(selectedDocsEnvironmentId)}`, 303);
+      }
+
+      docsCredentialError = result.error;
+    }
+  }
+}
+
+if (Astro.request.method !== "POST") {
+  const credentialFlash = readDocsCredentialFlash(Astro.cookies.get(docsCredentialFlashCookieName)?.value);
+  if (credentialFlash) {
+    createdDocsApiReadCredentialToken = credentialFlash.token;
+    createdDocsApiReadCredentialEndpoint = credentialFlash.endpoint;
+    selectedDocsEnvironmentId = credentialFlash.siteEnvironmentId;
+  }
+
+  clearDocsCredentialFlash();
+}
+
+const selectedDocsOption =
+  docsEnvironmentOptions.find((option) => option.environment.id === selectedDocsEnvironmentId) ??
+  docsEnvironmentOptions.at(0) ??
+  null;
+const selectedDocsProject = selectedDocsOption?.project ?? null;
+const selectedDocsEnvironment = selectedDocsOption?.environment ?? null;
+const selectedDocsCanUseApiExport = account ? canUseFeature(account.planId, "apiExport") : false;
+const selectedDocsCanRotateApiReadToken = Boolean(
+  selectedDocsProject && selectedDocsCanUseApiExport && canManageProject(selectedDocsProject),
+);
+if (createdDocsApiReadCredentialToken && selectedDocsEnvironment) {
+  selectedDocsEnvironment.apiReadTokenConfigured = true;
+}
+const docsGeneratedApiReadCurl = createdDocsApiReadCredentialToken
+  ? `curl -G "${createdDocsApiReadCredentialEndpoint}" \\
+  -H "authorization: Bearer ${createdDocsApiReadCredentialToken}" \\
+  --data-urlencode "limit=100"`
+  : "";
 ---
 
 <SiteLayout title="API export | Sarge Docs">
@@ -126,6 +274,95 @@ Authorization: Bearer sarge_read_...</code></pre>
 
       <aside class="grid min-w-0 content-start gap-4">
         <section class="rounded-lg border bg-card p-5">
+          <KeyRound className="size-5 text-primary" />
+          <h2 class="mt-5 font-semibold">Your project token</h2>
+          {
+            account && docsEnvironmentOptions.length > 0 ? (
+              <div class="mt-4 grid gap-4">
+                <form method="get" class="grid gap-2" data-docs-project-selector>
+                  <label class="text-sm font-medium" for="docsApiProject">Select a project</label>
+                  <select id="docsApiProject" name="siteEnvironmentId" class="h-9 min-w-0 rounded-md border bg-background px-3 text-sm">
+                    {
+                      docsEnvironmentOptions.map((option) => (
+                        <option value={option.environment.id} selected={option.environment.id === selectedDocsEnvironment?.id}>
+                          {option.label}
+                        </option>
+                      ))
+                    }
+                  </select>
+                  <button class="inline-flex h-9 items-center justify-center rounded-md border px-3 text-sm font-medium hover:bg-muted" type="submit">
+                    View project
+                  </button>
+                </form>
+
+                <div class="rounded-md border bg-background p-3 text-sm">
+                  <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                      <p class="font-medium">{selectedDocsOption?.label}</p>
+                      <p class="mt-1 break-all font-mono text-xs text-muted-foreground">{docsApiEndpoint}</p>
+                    </div>
+                    <Badge variant={selectedDocsEnvironment?.apiReadTokenConfigured ? "default" : "secondary"}>
+                      {selectedDocsEnvironment?.apiReadTokenConfigured ? "configured" : "not set"}
+                    </Badge>
+                  </div>
+
+                  {docsCredentialError && <p class="mt-3 text-xs text-destructive">{docsCredentialError}</p>}
+
+                  {
+                    docsGeneratedApiReadCurl ? (
+                      <details class="mt-3 rounded-md border bg-muted p-3">
+                        <summary class="cursor-pointer text-sm font-medium">Reveal cURL with token</summary>
+                        <p class="mt-3 text-xs text-muted-foreground">Sarge cannot show this token again after you leave this page.</p>
+                        <div class="mt-3 flex min-w-0 items-start gap-2">
+                          <pre class="min-w-0 flex-1 overflow-x-auto whitespace-pre-wrap rounded-md bg-background/70 p-2 font-mono text-xs leading-5"><code>{docsGeneratedApiReadCurl}</code></pre>
+                          <button
+                            class="inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md border bg-background px-2 text-xs font-medium hover:bg-muted"
+                            type="button"
+                            data-copy-credential
+                            data-credential={docsGeneratedApiReadCurl}
+                          >
+                            <Copy className="size-3" /> <span data-credential-label>Copy cURL</span>
+                          </button>
+                        </div>
+                      </details>
+                    ) : selectedDocsEnvironment?.apiReadTokenConfigured ? (
+                      <p class="mt-3 text-xs text-muted-foreground">
+                        A read token is configured, but Sarge cannot show it again. Rotate to generate a fresh copyable cURL.
+                      </p>
+                    ) : (
+                      <p class="mt-3 text-xs text-muted-foreground">No read token has been created for this project environment yet.</p>
+                    )
+                  }
+
+                  {
+                    selectedDocsCanRotateApiReadToken ? (
+                      <form method="post" class="mt-3">
+                        <input type="hidden" name="intent" value="rotate-docs-api-read-token" />
+                        <input type="hidden" name="siteEnvironmentId" value={selectedDocsEnvironment?.id ?? ""} />
+                        <button class="inline-flex h-9 items-center justify-center gap-2 rounded-md border px-3 text-sm font-medium hover:bg-muted" type="submit">
+                          <RotateCw className="size-4" /> {selectedDocsEnvironment?.apiReadTokenConfigured ? "Rotate token" : "Create token"}
+                        </button>
+                      </form>
+                    ) : (
+                      <p class="mt-3 text-xs text-muted-foreground">
+                        {selectedDocsCanUseApiExport ? "Edit access is required to manage this token." : "API export is available on Scale."}
+                      </p>
+                    )
+                  }
+                </div>
+              </div>
+            ) : (
+              <div class="mt-4 grid gap-3 text-sm text-muted-foreground">
+                <p>Sign in to select a project and generate a complete cURL request with a one-time API read token.</p>
+                <a class="inline-flex h-9 w-fit items-center justify-center rounded-md border px-3 font-medium text-foreground hover:bg-muted" href="/sign-in">
+                  Sign in
+                </a>
+              </div>
+            )
+          }
+        </section>
+
+        <section class="rounded-lg border bg-card p-5">
           <RotateCw className="size-5 text-primary" />
           <h2 class="mt-5 font-semibold">Create a token</h2>
           <p class="mt-3 text-sm leading-6 text-muted-foreground">
@@ -161,4 +398,28 @@ Authorization: Bearer sarge_read_...</code></pre>
       </aside>
     </div>
   </section>
+
+  <script>
+    const copyTextWithLabel = async (text: string, label: Element | null, fallback: string) => {
+      try {
+        await navigator.clipboard.writeText(text);
+        const originalText = label?.textContent ?? fallback;
+        if (label) label.textContent = "Copied";
+        window.setTimeout(() => {
+          if (label) label.textContent = originalText;
+        }, 1600);
+      } catch {
+        if (label) label.textContent = "Copy failed";
+      }
+    };
+
+    document.querySelectorAll<HTMLButtonElement>("[data-copy-credential]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const credential = button.dataset.credential;
+        if (!credential) return;
+
+        await copyTextWithLabel(credential, button.querySelector("[data-credential-label]"), "Copy cURL");
+      });
+    });
+  </script>
 </SiteLayout>

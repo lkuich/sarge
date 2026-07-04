@@ -98,11 +98,27 @@ model SiteEnvironment {
   diagnosticFindings    DiagnosticFinding[]
   webhookEndpoints      WebhookEndpoint[]
   publicVerificationTokens PublicVerificationToken[]
+  apiTokens             ApiToken[]
 
   site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
 
   @@unique([siteId, environment])
   @@index([environment, pixelEnabled])
+}
+
+model ApiToken {
+  id                String    @id @default(cuid())
+  siteEnvironmentId String
+  name              String
+  scope             String
+  tokenHash         String    @unique
+  createdAt         DateTime  @default(now())
+  revokedAt         DateTime?
+
+  siteEnvironment SiteEnvironment @relation(fields: [siteEnvironmentId], references: [id], onDelete: Cascade)
+
+  @@index([siteEnvironmentId, createdAt])
+  @@index([scope, revokedAt])
 }
 
 model PublicVerificationToken {

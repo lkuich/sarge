@@ -5,6 +5,13 @@ export const planEventLimits: Record<string, number | null> = {
   scale: null,
 };
 
+export const planRetentionDays: Record<string, number | null> = {
+  free: 7,
+  starter: 30,
+  growth: 90,
+  scale: null,
+};
+
 export class UsageLimitExceededError extends Error {
   constructor(message = "Monthly event limit reached") {
     super(message);
@@ -29,6 +36,11 @@ export const getPlanEventLimit = (planId: string) =>
     ? planEventLimits[planId]
     : planEventLimits.free;
 
+export const getPlanRetentionDays = (planId: string) =>
+  Object.prototype.hasOwnProperty.call(planRetentionDays, planId)
+    ? planRetentionDays[planId]
+    : planRetentionDays.free;
+
 export const buildPlanEventLimitSqlCase = (planIdExpression: string) => {
   const branches = Object.entries(planEventLimits)
     .map(([planId, limit]) => `WHEN '${planId}' THEN ${limit === null ? "NULL" : limit}`)
@@ -38,6 +50,24 @@ export const buildPlanEventLimitSqlCase = (planIdExpression: string) => {
             ${branches}
             ELSE ${planEventLimits.free}
           END`;
+};
+
+export const buildPlanRetentionSqlCase = (planIdExpression: string) => {
+  const branches = Object.entries(planRetentionDays)
+    .map(([planId, days]) => `WHEN '${planId}' THEN ${days === null ? "NULL" : days}`)
+    .join("\n            ");
+
+  return `CASE ${planIdExpression}
+            ${branches}
+            ELSE ${planRetentionDays.free}
+          END`;
+};
+
+export const buildPlanRetentionFilterSql = (occurredAtExpression: string, planIdExpression: string) => {
+  const retentionDaysSqlCase = buildPlanRetentionSqlCase(planIdExpression);
+
+  return `(${retentionDaysSqlCase} IS NULL
+            OR ${occurredAtExpression} >= NOW() - make_interval(days => ${retentionDaysSqlCase}))`;
 };
 
 export const shouldResetUsagePeriod = (periodStart: Date, now = new Date()) => {

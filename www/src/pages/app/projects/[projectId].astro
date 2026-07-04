@@ -67,8 +67,9 @@ const canUseAiReview = canUseFeature(account.planId, "aiReview");
 const canUseWebhooks = canUseFeature(account.planId, "webhooks");
 const canUseServerEvents = canUseFeature(account.planId, "serverEvents");
 const canUsePostbacks = canUseFeature(account.planId, "postbacks");
+const canUseApiExport = canUseFeature(account.planId, "apiExport");
 const canCreateWebhooks = canManageProject(project) && canUseWebhooks;
-const canManageCredentials = canManageProject(project) && (canUseServerEvents || canUsePostbacks);
+const canManageCredentials = canManageProject(project) && (canUseServerEvents || canUsePostbacks || canUseApiExport);
 const canRefreshAiReview = canManageProject(project) && selectedEnvironment.environment === "production" && canUseAiReview;
 let webhookError = "";
 let createdWebhookSecret = "";
@@ -82,6 +83,8 @@ let createdServerCredentialToken = "";
 let createdServerCredentialEndpoint = "";
 let createdPostbackCredentialToken = "";
 let createdPostbackCredentialEndpoint = "";
+let createdApiReadCredentialToken = "";
+let createdApiReadCredentialEndpoint = "";
 let publicVerificationError = "";
 let createdPublicVerificationUrl = "";
 let createdPublicVerificationExpiresAt: Date | null = null;
@@ -98,7 +101,7 @@ const runtimeEnv = env as unknown as Record<string, string | undefined>;
 const credentialFlashCookieName = "sarge_created_credential";
 const credentialFlashCookiePath = "/app/projects";
 type CredentialFlash = {
-  kind: "server" | "postback";
+  kind: "server" | "postback" | "api-read";
   token: string;
   endpoint: string;
 };
@@ -108,7 +111,7 @@ const readCredentialFlash = (value: string | undefined): CredentialFlash | null 
   try {
     const parsed = JSON.parse(decodeURIComponent(value)) as Partial<CredentialFlash>;
     if (
-      (parsed.kind === "server" || parsed.kind === "postback") &&
+      (parsed.kind === "server" || parsed.kind === "postback" || parsed.kind === "api-read") &&
       typeof parsed.token === "string" &&
       parsed.token.length > 0 &&
       typeof parsed.endpoint === "string" &&
@@ -257,14 +260,17 @@ if (Astro.request.method === "POST") {
     }
   }
 
-  if (intent === "rotate-server-credential" || intent === "rotate-postback-token") {
-    const kind = intent === "rotate-server-credential" ? "server" : "postback";
-    const canRotateCredential = canManageProject(project) && (kind === "server" ? canUseServerEvents : canUsePostbacks);
+  if (intent === "rotate-server-credential" || intent === "rotate-postback-token" || intent === "rotate-api-read-token") {
+    const kind = intent === "rotate-server-credential" ? "server" : intent === "rotate-postback-token" ? "postback" : "api-read";
+    const canUseCredentialKind = kind === "server" ? canUseServerEvents : kind === "postback" ? canUsePostbacks : canUseApiExport;
+    const canRotateCredential = canManageProject(project) && canUseCredentialKind;
 
     if (kind === "server" && !canUseServerEvents) {
       credentialError = "Upgrade to create server event secrets.";
     } else if (kind === "postback" && !canUsePostbacks) {
       credentialError = "Postbacks are available on Starter and higher.";
+    } else if (kind === "api-read" && !canUseApiExport) {
+      credentialError = "API export is available on Scale.";
     } else if (!canRotateCredential) {
       credentialError = "Edit access is required to manage server-side credentials.";
     } else {
@@ -339,10 +345,14 @@ if (Astro.request.method !== "POST") {
       createdServerCredentialToken = credentialFlash.token;
       createdServerCredentialEndpoint = credentialFlash.endpoint;
       selectedEnvironment.serverEventSecretConfigured = true;
-    } else {
+    } else if (credentialFlash.kind === "postback") {
       createdPostbackCredentialToken = credentialFlash.token;
       createdPostbackCredentialEndpoint = credentialFlash.endpoint;
       selectedEnvironment.postbackTokenConfigured = true;
+    } else {
+      createdApiReadCredentialToken = credentialFlash.token;
+      createdApiReadCredentialEndpoint = credentialFlash.endpoint;
+      selectedEnvironment.apiReadTokenConfigured = true;
     }
   }
 
@@ -386,6 +396,7 @@ const customDomainSnippet = `<script>
 <script async src="${customDomainPixelUrl}"></script>`;
 const serverEventEndpoint = `https://${hostedEndpointHost}/v2/server/events`;
 const postbackEndpointTemplate = `https://${hostedEndpointHost}/v2/postback/${selectedEnvironment.id}/{postbackToken}`;
+const apiExportEndpoint = `https://${hostedEndpointHost}/v2/export/events`;
 const attributionWindowDays = selectedEnvironment.attributionTtlDays;
 const affiliateCaptureUrl = `https://${trackedSiteDomain}/?sarge_ref=summer-campaign&sarge_aff=partner-42`;
 const createdServerCredentialCurl = createdServerCredentialToken
@@ -403,6 +414,11 @@ const createdServerCredentialCurl = createdServerCredentialToken
       "currency": "USD"
     }
   }'`
+  : "";
+const createdApiReadCredentialCurl = createdApiReadCredentialToken
+  ? `curl -G "${apiExportEndpoint}" \\
+  -H "authorization: Bearer ${createdApiReadCredentialToken}" \\
+  --data-urlencode "limit=100"`
   : "";
 
 const recentEvents = selectedEnvironment.recentEvents.slice(0, 12);
@@ -1336,7 +1352,7 @@ function resolveTrackedSiteDomain(value: string) {
             }
 
           {
-            !canUseServerEvents && !canUsePostbacks ? (
+            !canUseServerEvents && !canUsePostbacks && !canUseApiExport ? (
               <div class="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
                 Server-side calls are available on Starter and higher.
               </div>
@@ -1433,6 +1449,56 @@ function resolveTrackedSiteDomain(value: string) {
                       <input type="hidden" name="intent" value="rotate-postback-token" />
                       <Button type="submit" variant="outline">
                         <RefreshCw className="mr-2 size-4" /> {selectedEnvironment.postbackTokenConfigured ? "Rotate token" : "Create token"}
+                      </Button>
+                    </form>
+                  ) : (
+                    <p class="mt-3 text-xs text-muted-foreground">Ask an account admin to rotate this token.</p>
+                  )
+                }
+              </div>
+              )}
+
+              {canUseApiExport && (
+              <div class="rounded-md border p-3">
+                <div class="flex items-start justify-between gap-2">
+                  <div class="min-w-0">
+                    <p class="font-medium">API export token</p>
+                    <p class="mt-1 break-all font-mono text-xs text-muted-foreground">{apiExportEndpoint}</p>
+                  </div>
+                  <Badge variant={selectedEnvironment.apiReadTokenConfigured ? "default" : "secondary"}>
+                    {selectedEnvironment.apiReadTokenConfigured ? "configured" : "not set"}
+                  </Badge>
+                </div>
+                {
+                  createdApiReadCredentialToken && (
+                    <Alert className="mt-3">
+                      <AlertTitle>API export token rotated</AlertTitle>
+                      <AlertDescription>
+                        <p>Copy this value now. Sarge stores only the hash and will not show it again.</p>
+                        <div class="mt-2 grid gap-2 rounded-md border bg-muted p-2">
+                          <div class="flex min-w-0 items-start gap-2">
+                            <pre class="min-w-0 flex-1 overflow-x-auto whitespace-pre-wrap rounded-md bg-background/60 p-2 font-mono text-xs leading-5"><code>{createdApiReadCredentialCurl}</code></pre>
+                            <button
+                              class="inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md border bg-background px-2 text-xs font-medium hover:bg-muted"
+                              type="button"
+                              data-copy-credential
+                              data-credential={createdApiReadCredentialCurl}
+                            >
+                              <Copy className="size-3" /> <span data-credential-label>Copy</span>
+                            </button>
+                          </div>
+                          <p class="break-all font-mono text-xs text-muted-foreground">{createdApiReadCredentialEndpoint}</p>
+                        </div>
+                      </AlertDescription>
+                    </Alert>
+                  )
+                }
+                {
+                  canManageCredentials ? (
+                    <form method="post" class="mt-3">
+                      <input type="hidden" name="intent" value="rotate-api-read-token" />
+                      <Button type="submit" variant="outline">
+                        <RefreshCw className="mr-2 size-4" /> {selectedEnvironment.apiReadTokenConfigured ? "Rotate token" : "Create token"}
                       </Button>
                     </form>
                   ) : (

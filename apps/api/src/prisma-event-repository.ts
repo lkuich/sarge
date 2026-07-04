@@ -1,9 +1,17 @@
-import { buildPlanEventLimitSqlCase, UsageLimitExceededError, type EventPayload, type PrivacySettings } from "@sarge/core";
+import {
+  buildPlanEventLimitSqlCase,
+  buildPlanRetentionFilterSql,
+  sha256Hex,
+  UsageLimitExceededError,
+  type EventPayload,
+  type PrivacySettings
+} from "@sarge/core";
 import { Prisma } from "@prisma/client";
-import type { EventRepository, IngestSite } from "./event-repository.js";
+import type { EventExportPage, EventExportQuery, EventRepository, ExportedEvent, IngestSite, ReadApiToken } from "./event-repository.js";
 import { prisma } from "./prisma.js";
 
 const planEventLimitSqlCase = Prisma.raw(buildPlanEventLimitSqlCase('w."planId"'));
+const planRetentionFilterSql = Prisma.raw(buildPlanRetentionFilterSql('e."occurredAt"', 'w."planId"'));
 
 export class PrismaEventRepository implements EventRepository {
   async findSiteById(siteId: string): Promise<IngestSite | null> {
@@ -131,7 +139,108 @@ export class PrismaEventRepository implements EventRepository {
       throw new UsageLimitExceededError();
     }
   }
+
+  async findReadToken(token: string): Promise<ReadApiToken | null> {
+    const tokenHash = await sha256Hex(token);
+    const apiToken = await prisma.apiToken.findFirst({
+      where: {
+        tokenHash,
+        scope: "events:read",
+        revokedAt: null
+      },
+      select: {
+        id: true,
+        siteEnvironmentId: true
+      }
+    });
+
+    return apiToken;
+  }
+
+  async listEventsForExport(siteEnvironmentId: string, query: EventExportQuery): Promise<EventExportPage> {
+    const filters: Prisma.Sql[] = [
+      Prisma.sql`e."siteEnvironmentId" = ${siteEnvironmentId}`,
+      planRetentionFilterSql
+    ];
+
+    if (query.start) filters.push(Prisma.sql`e."occurredAt" >= ${new Date(query.start)}`);
+    if (query.end) filters.push(Prisma.sql`e."occurredAt" <= ${new Date(query.end)}`);
+    if (query.name) filters.push(Prisma.sql`e.name = ${query.name}`);
+    if (query.source) filters.push(Prisma.sql`e.source = ${query.source}`);
+    if (query.sessionId) filters.push(Prisma.sql`e."sessionId" = ${query.sessionId}`);
+    if (query.userId) filters.push(Prisma.sql`e."userId" = ${query.userId}`);
+    if (query.cursor) {
+      filters.push(Prisma.sql`(
+        e."occurredAt" < ${new Date(query.cursor.occurredAt)}
+        OR (e."occurredAt" = ${new Date(query.cursor.occurredAt)} AND e.id < ${query.cursor.id})
+      )`);
+    }
+
+    const rows = await prisma.$queryRaw<ExportedEventRow[]>`
+      SELECT
+        e.id,
+        e."siteId",
+        e."siteEnvironmentId",
+        e.source,
+        e.name,
+        e."occurredAt",
+        e."receivedAt",
+        e."sessionId",
+        e."userId",
+        e.ref,
+        e.affiliate,
+        e."attributionExpiresAt",
+        e.url,
+        e.referrer,
+        e.title,
+        e.properties
+      FROM "Event" e
+      JOIN "SiteEnvironment" se ON se.id = e."siteEnvironmentId"
+      JOIN "Site" s ON s.id = se."siteId"
+      JOIN "Workspace" w ON w.id = s."workspaceId"
+      WHERE ${Prisma.join(filters, " AND ")}
+      ORDER BY e."occurredAt" DESC, e.id DESC
+      LIMIT ${query.limit + 1}
+    `;
+    const pageRows = rows.slice(0, query.limit);
+    const events = pageRows.map(mapExportedEvent);
+    const lastEvent = events.at(-1);
+
+    return {
+      events,
+      nextCursor: rows.length > query.limit && lastEvent
+        ? {
+            occurredAt: lastEvent.occurredAt,
+            id: lastEvent.id
+          }
+        : null
+    };
+  }
 }
+
+const mapExportedEvent = (event: ExportedEventRow): ExportedEvent => ({
+  id: event.id,
+  siteId: event.siteId,
+  siteEnvironmentId: event.siteEnvironmentId,
+  source: event.source,
+  name: event.name,
+  occurredAt: event.occurredAt.toISOString(),
+  receivedAt: event.receivedAt.toISOString(),
+  sessionId: event.sessionId,
+  userId: event.userId,
+  ref: event.ref,
+  affiliate: event.affiliate,
+  attributionExpiresAt: event.attributionExpiresAt?.toISOString() ?? null,
+  url: event.url,
+  referrer: event.referrer,
+  title: event.title,
+  properties: normalizeProperties(event.properties)
+});
+
+const normalizeProperties = (value: unknown): Record<string, unknown> => {
+  if (value && typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
+  return {};
+};
 
 const resolvePrivacySettings = (
   workspaceSettings: PrivacySettingsRow | null,
@@ -164,4 +273,23 @@ interface UsageInsertResult {
   siteCount: number;
   updatedCount: number;
   insertedCount: number;
+}
+
+interface ExportedEventRow {
+  id: string;
+  siteId: string;
+  siteEnvironmentId: string;
+  source: string;
+  name: string;
+  occurredAt: Date;
+  receivedAt: Date;
+  sessionId: string;
+  userId: string;
+  ref: string | null;
+  affiliate: string | null;
+  attributionExpiresAt: Date | null;
+  url: string | null;
+  referrer: string | null;
+  title: string | null;
+  properties: unknown;
 }

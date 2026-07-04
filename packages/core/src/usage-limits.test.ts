@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   UsageLimitExceededError,
   buildPlanEventLimitSqlCase,
+  buildPlanRetentionFilterSql,
   evaluateWorkspaceEventUsage,
   getPlanEventLimit,
+  getPlanRetentionDays,
 } from "./usage-limits.js";
 
 describe("workspace usage limits", () => {
@@ -68,5 +70,17 @@ describe("workspace usage limits", () => {
     expect(buildPlanEventLimitSqlCase('w."planId"')).toContain("WHEN 'free' THEN 50000");
     expect(buildPlanEventLimitSqlCase('w."planId"')).toContain("WHEN 'scale' THEN NULL");
     expect(buildPlanEventLimitSqlCase('w."planId"')).not.toContain("enterprise");
+  });
+
+  it("builds SQL plan retention filters from shared runtime limits", () => {
+    const filter = buildPlanRetentionFilterSql('e."occurredAt"', 'w."planId"');
+
+    expect(getPlanRetentionDays("free")).toBe(7);
+    expect(getPlanRetentionDays("starter")).toBe(30);
+    expect(getPlanRetentionDays("growth")).toBe(90);
+    expect(getPlanRetentionDays("scale")).toBeNull();
+    expect(filter).toContain("WHEN 'free' THEN 7");
+    expect(filter).toContain("WHEN 'scale' THEN NULL");
+    expect(filter).toContain('e."occurredAt" >= NOW() - make_interval');
   });
 });

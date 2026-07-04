@@ -212,6 +212,19 @@ describe("project detail install panel", () => {
     expect(schema).toContain("@@unique([siteId, environment])");
   });
 
+  it("surfaces API export read tokens as project credentials", () => {
+    const projectDetail = readSource("./projects/[projectId].astro");
+    const demoData = readSource("../../lib/sarge-demo.ts");
+    const schema = readSource("../../../../apps/api/prisma/schema.prisma");
+
+    expect(schema).toContain("model ApiToken");
+    expect(schema).toContain("apiTokens");
+    expect(demoData).toContain("apiReadTokenConfigured: boolean;");
+    expect(projectDetail).toContain("createEnvironmentCredential(userId, env.DATABASE_URL, selectedEnvironment.id, kind)");
+    expect(projectDetail).toContain('intent === "rotate-api-read-token"');
+    expect(projectDetail).toContain("API export token");
+  });
+
   it("keeps AI review findings from widening the page", () => {
     const projectDetail = readSource("./projects/[projectId].astro");
 
@@ -398,7 +411,7 @@ describe("project detail install panel", () => {
     expect(projectDetail).toContain("<ProjectShareDialog");
     expect(projectDetail).toContain("{canShareProject &&");
     expect(projectDetail).toContain("canCreateWebhooks = canManageProject(project) && canUseWebhooks");
-    expect(projectDetail).toContain("canManageCredentials = canManageProject(project) && (canUseServerEvents || canUsePostbacks)");
+    expect(projectDetail).toContain("canManageCredentials = canManageProject(project) && (canUseServerEvents || canUsePostbacks || canUseApiExport)");
 
     expect(shareDialog).toContain("data-project-share-dialog");
     expect(shareDialog).toContain('name="intent" value="share-project"');

@@ -1,4 +1,4 @@
-import type { DiagnosticFinding, DiagnosticSeverity, EventPayload, PrivacySettings } from "@sarge/core";
+import type { DiagnosticFinding, DiagnosticSeverity, EventPayload, EventSource, PrivacySettings } from "@sarge/core";
 
 export interface AiBinding {
   run(model: string, input: unknown): Promise<unknown>;
@@ -34,10 +34,57 @@ export interface EventStore {
   findSiteByHost(host: string): Promise<SiteRecord | null>;
   findSiteById(id: string): Promise<SiteRecord | null>;
   createEvent(event: EventPayload): Promise<void>;
+  findReadToken(token: string): Promise<ReadApiToken | null>;
+  listEventsForExport(siteEnvironmentId: string, query: EventExportQuery): Promise<EventExportPage>;
   listActiveSitesForDiagnostics(limit: number): Promise<SiteRecord[]>;
   listRecentEventsForSite(siteId: string, since: Date, limit: number): Promise<StoredEvent[]>;
   deleteDiagnosticRunsForSite(siteId: string): Promise<void>;
   saveDiagnosticRun(run: StoredDiagnosticRun): Promise<void>;
+}
+
+export interface ReadApiToken {
+  id: string;
+  siteEnvironmentId: string;
+}
+
+export interface EventExportCursor {
+  occurredAt: string;
+  id: string;
+}
+
+export interface EventExportQuery {
+  start?: string;
+  end?: string;
+  name?: string;
+  source?: EventSource;
+  sessionId?: string;
+  userId?: string;
+  limit: number;
+  cursor?: EventExportCursor;
+}
+
+export interface EventExportPage {
+  events: ExportedEvent[];
+  nextCursor?: EventExportCursor | null;
+}
+
+export interface ExportedEvent {
+  id: string;
+  siteId: string;
+  siteEnvironmentId: string;
+  source: string;
+  name: string;
+  occurredAt: string;
+  receivedAt: string;
+  sessionId: string;
+  userId: string;
+  ref: string | null;
+  affiliate: string | null;
+  attributionExpiresAt: string | null;
+  url: string | null;
+  referrer: string | null;
+  title: string | null;
+  properties: Record<string, unknown>;
 }
 
 export interface StoredEvent {

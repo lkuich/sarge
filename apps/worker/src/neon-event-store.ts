@@ -1,8 +1,25 @@
 import { neon } from "@neondatabase/serverless";
-import { buildPlanEventLimitSqlCase, UsageLimitExceededError, type EventPayload, type PrivacySettings } from "@sarge/core";
-import type { EventStore, SiteRecord, StoredDiagnosticRun, StoredEvent } from "./types.js";
+import {
+  buildPlanEventLimitSqlCase,
+  buildPlanRetentionFilterSql,
+  sha256Hex,
+  UsageLimitExceededError,
+  type EventPayload,
+  type PrivacySettings
+} from "@sarge/core";
+import type {
+  EventExportPage,
+  EventExportQuery,
+  EventStore,
+  ExportedEvent,
+  ReadApiToken,
+  SiteRecord,
+  StoredDiagnosticRun,
+  StoredEvent
+} from "./types.js";
 
 const planEventLimitSqlCase = buildPlanEventLimitSqlCase('w."planId"');
+const planRetentionFilterSql = buildPlanRetentionFilterSql('e."occurredAt"', 'w."planId"');
 const configuredHostSql = (siteAlias: string) => `regexp_replace(lower(${siteAlias}."customDomain"), '^www\\.', '')`;
 const capturedEventHostSql = (eventAlias: string) => (
   `NULLIF(regexp_replace(regexp_replace(coalesce(substring(lower(${eventAlias}.url) from '^[a-z][a-z0-9+.-]*://([^/?#]+)'), substring(lower(${eventAlias}.referrer) from '^[a-z][a-z0-9+.-]*://([^/?#]+)')), '^www\\.', ''), ':\\d+$', ''), '')`
@@ -203,6 +220,112 @@ export class NeonEventStore implements EventStore {
     }
   }
 
+  async findReadToken(token: string): Promise<ReadApiToken | null> {
+    const tokenHash = await sha256Hex(token);
+    const rows = (await this.sql`
+      SELECT
+        id,
+        "siteEnvironmentId"
+      FROM "ApiToken"
+      WHERE "tokenHash" = ${tokenHash}
+        AND scope = 'events:read'
+        AND "revokedAt" IS NULL
+      LIMIT 1
+    `) as unknown[];
+
+    const row = rows.at(0) as ReadApiToken | undefined;
+    return row ?? null;
+  }
+
+  async listEventsForExport(siteEnvironmentId: string, query: EventExportQuery): Promise<EventExportPage> {
+    const params: unknown[] = [siteEnvironmentId];
+    const filters = [
+      'e."siteEnvironmentId" = $1',
+      planRetentionFilterSql
+    ];
+
+    if (query.start) {
+      params.push(new Date(query.start).toISOString());
+      filters.push(`e."occurredAt" >= $${params.length}::timestamptz`);
+    }
+    if (query.end) {
+      params.push(new Date(query.end).toISOString());
+      filters.push(`e."occurredAt" <= $${params.length}::timestamptz`);
+    }
+    if (query.name) {
+      params.push(query.name);
+      filters.push(`e.name = $${params.length}`);
+    }
+    if (query.source) {
+      params.push(query.source);
+      filters.push(`e.source = $${params.length}`);
+    }
+    if (query.sessionId) {
+      params.push(query.sessionId);
+      filters.push(`e."sessionId" = $${params.length}`);
+    }
+    if (query.userId) {
+      params.push(query.userId);
+      filters.push(`e."userId" = $${params.length}`);
+    }
+    if (query.cursor) {
+      params.push(new Date(query.cursor.occurredAt).toISOString());
+      const occurredAtParam = params.length;
+      params.push(query.cursor.id);
+      const idParam = params.length;
+      filters.push(`(
+        e."occurredAt" < $${occurredAtParam}::timestamptz
+        OR (e."occurredAt" = $${occurredAtParam}::timestamptz AND e.id < $${idParam})
+      )`);
+    }
+
+    params.push(query.limit + 1);
+    const limitParam = params.length;
+    const rows = (await this.sql.query(
+      `
+        SELECT
+          e.id,
+          e."siteId",
+          e."siteEnvironmentId",
+          e.source,
+          e.name,
+          e."occurredAt",
+          e."receivedAt",
+          e."sessionId",
+          e."userId",
+          e.ref,
+          e.affiliate,
+          e."attributionExpiresAt",
+          e.url,
+          e.referrer,
+          e.title,
+          e.properties
+        FROM "Event" e
+        JOIN "SiteEnvironment" se ON se.id = e."siteEnvironmentId"
+        JOIN "Site" s ON s.id = se."siteId"
+        JOIN "Workspace" w ON w.id = s."workspaceId"
+        WHERE ${filters.join("\n          AND ")}
+        ORDER BY e."occurredAt" DESC, e.id DESC
+        LIMIT $${limitParam}
+      `,
+      params
+    )) as ExportedEventRow[];
+
+    const pageRows = rows.slice(0, query.limit);
+    const events = pageRows.map(mapExportedEvent);
+    const lastEvent = events.at(-1);
+
+    return {
+      events,
+      nextCursor: rows.length > query.limit && lastEvent
+        ? {
+            occurredAt: lastEvent.occurredAt,
+            id: lastEvent.id
+          }
+        : null
+    };
+  }
+
   async listActiveSitesForDiagnostics(limit: number): Promise<SiteRecord[]> {
     const rows = (await this.sql`
       SELECT
@@ -369,6 +492,30 @@ const readStringArray = (value: unknown): string[] => {
   return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
 };
 
+const mapExportedEvent = (event: ExportedEventRow): ExportedEvent => ({
+  id: event.id,
+  siteId: event.siteId,
+  siteEnvironmentId: event.siteEnvironmentId,
+  source: event.source,
+  name: event.name,
+  occurredAt: event.occurredAt.toISOString(),
+  receivedAt: event.receivedAt.toISOString(),
+  sessionId: event.sessionId,
+  userId: event.userId,
+  ref: event.ref,
+  affiliate: event.affiliate,
+  attributionExpiresAt: event.attributionExpiresAt?.toISOString() ?? null,
+  url: event.url,
+  referrer: event.referrer,
+  title: event.title,
+  properties: normalizeProperties(event.properties)
+});
+
+const normalizeProperties = (value: unknown): Record<string, unknown> => {
+  if (value && typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
+  return {};
+};
+
 interface EventRow {
   id: string;
   siteEnvironmentId: string;
@@ -376,6 +523,25 @@ interface EventRow {
   occurredAt: Date;
   sessionId: string;
   userId: string;
+  url: string | null;
+  referrer: string | null;
+  title: string | null;
+  properties: unknown;
+}
+
+interface ExportedEventRow {
+  id: string;
+  siteId: string;
+  siteEnvironmentId: string;
+  source: string;
+  name: string;
+  occurredAt: Date;
+  receivedAt: Date;
+  sessionId: string;
+  userId: string;
+  ref: string | null;
+  affiliate: string | null;
+  attributionExpiresAt: Date | null;
   url: string | null;
   referrer: string | null;
   title: string | null;

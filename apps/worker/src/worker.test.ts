@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { UsageLimitExceededError, type TrackedPageHealthResult } from "@sarge/core";
 import { createWorkerHandler } from "./index.js";
-import type { EventStore, StoredDiagnosticRun, StoredEvent, WorkerEnv } from "./types.js";
+import type { EventExportQuery, EventStore, ExportedEvent, StoredDiagnosticRun, StoredEvent, WorkerEnv } from "./types.js";
 
 const sourcePath = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 
@@ -16,11 +16,94 @@ const createEnv = (overrides: Partial<WorkerEnv> = {}): WorkerEnv => ({
 
 const createMemoryStore = () => {
   const events: unknown[] = [];
+  const exportEvents: ExportedEvent[] = [
+    {
+      id: "evt_purchase",
+      siteId: "site_shared",
+      siteEnvironmentId: "env_shared_production",
+      source: "browser",
+      name: "purchase.completed",
+      occurredAt: "2026-06-25T12:00:00.000Z",
+      receivedAt: "2026-06-25T12:00:01.000Z",
+      sessionId: "sess_123",
+      userId: "user_123",
+      ref: "summer-campaign",
+      affiliate: "partner-42",
+      attributionExpiresAt: null,
+      url: "https://example.com/checkout",
+      referrer: null,
+      title: "Checkout",
+      properties: {
+        value: 129.99,
+        currency: "USD"
+      }
+    },
+    {
+      id: "evt_page",
+      siteId: "site_shared",
+      siteEnvironmentId: "env_shared_production",
+      source: "browser",
+      name: "page.view",
+      occurredAt: "2026-06-25T11:00:00.000Z",
+      receivedAt: "2026-06-25T11:00:01.000Z",
+      sessionId: "sess_123",
+      userId: "user_123",
+      ref: null,
+      affiliate: null,
+      attributionExpiresAt: null,
+      url: "https://example.com/",
+      referrer: null,
+      title: "Home",
+      properties: {}
+    },
+    {
+      id: "evt_other_env",
+      siteId: "site_other",
+      siteEnvironmentId: "env_other",
+      source: "browser",
+      name: "purchase.completed",
+      occurredAt: "2026-06-25T13:00:00.000Z",
+      receivedAt: "2026-06-25T13:00:01.000Z",
+      sessionId: "sess_other",
+      userId: "user_other",
+      ref: null,
+      affiliate: null,
+      attributionExpiresAt: null,
+      url: "https://example.com/other",
+      referrer: null,
+      title: "Other",
+      properties: {}
+    }
+  ];
   const diagnosticRuns: StoredDiagnosticRun[] = [];
   const diagnosticEvents: StoredEvent[] = [];
   const store: EventStore = {
     async createEvent(event) {
       events.push(event);
+    },
+    async findReadToken(token) {
+      if (token !== "sarge_read_valid") return null;
+
+      return {
+        id: "api_token_123",
+        siteEnvironmentId: "env_shared_production"
+      };
+    },
+    async listEventsForExport(siteEnvironmentId, query) {
+      const matchingEvents = filterExportEvents(exportEvents, siteEnvironmentId, query);
+      const page = matchingEvents.slice(0, query.limit + 1);
+      const events = page.slice(0, query.limit);
+      const lastEvent = events.at(-1);
+
+      return {
+        events,
+        nextCursor: page.length > query.limit && lastEvent
+          ? {
+              occurredAt: lastEvent.occurredAt,
+              id: lastEvent.id
+            }
+          : null
+      };
     },
     async findSiteByHost(host) {
       if (host === "acme.sarge.events") {
@@ -86,6 +169,23 @@ const createMemoryStore = () => {
 
   return { diagnosticEvents, diagnosticRuns, events, store };
 };
+
+const filterExportEvents = (events: ExportedEvent[], siteEnvironmentId: string, query: EventExportQuery) =>
+  events
+    .filter((event) => event.siteEnvironmentId === siteEnvironmentId)
+    .filter((event) => !query.start || event.occurredAt >= query.start)
+    .filter((event) => !query.end || event.occurredAt <= query.end)
+    .filter((event) => !query.name || event.name === query.name)
+    .filter((event) => !query.source || event.source === query.source)
+    .filter((event) => !query.sessionId || event.sessionId === query.sessionId)
+    .filter((event) => !query.userId || event.userId === query.userId)
+    .filter(
+      (event) =>
+        !query.cursor ||
+        event.occurredAt < query.cursor.occurredAt ||
+        (event.occurredAt === query.cursor.occurredAt && event.id < query.cursor.id)
+    )
+    .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt) || right.id.localeCompare(left.id));
 
 const createScheduledController = (): ScheduledController =>
   ({
@@ -437,6 +537,56 @@ describe("Cloudflare Worker hosted API", () => {
       sessionId: "postback:click_123",
       userId: "click_123"
     });
+  });
+
+  it("rejects shared-host export calls without a read token", async () => {
+    const { store } = createMemoryStore();
+    const handler = createWorkerHandler({ store });
+
+    const response = await handler.fetch(new Request("https://sarge.events/v2/export/events"), createEnv());
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ success: false, error: "Invalid credentials" });
+  });
+
+  it("exports only events for the read token environment on the shared host", async () => {
+    const { store } = createMemoryStore();
+    const handler = createWorkerHandler({ store });
+
+    const response = await handler.fetch(
+      new Request("https://sarge.events/v2/export/events?limit=1", {
+        headers: {
+          "authorization": "Bearer sarge_read_valid"
+        }
+      }),
+      createEnv()
+    );
+    const body = await response.json() as { events: ExportedEvent[]; nextCursor: string | null };
+
+    expect(response.status).toBe(200);
+    expect(body.events).toHaveLength(1);
+    expect(body.events[0]).toMatchObject({
+      siteEnvironmentId: "env_shared_production",
+      name: "purchase.completed"
+    });
+    expect(body.nextCursor).toEqual(expect.any(String));
+  });
+
+  it("validates shared-host export query parameters", async () => {
+    const { store } = createMemoryStore();
+    const handler = createWorkerHandler({ store });
+
+    const response = await handler.fetch(
+      new Request("https://sarge.events/v2/export/events?source=invalid", {
+        headers: {
+          "authorization": "Bearer sarge_read_valid"
+        }
+      }),
+      createEnv()
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ success: false, error: "Invalid export query" });
   });
 
   it("returns 404 for unknown hosted domains", async () => {

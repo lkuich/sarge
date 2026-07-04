@@ -1,0 +1,164 @@
+---
+import { ArrowRight, BadgeCheck, DatabaseZap, KeyRound, ListFilter, LockKeyhole, RotateCw } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import SiteLayout from "@/layouts/SiteLayout.astro";
+
+const exportCurl = `curl -G "https://track.sargetrack.app/v2/export/events" \\
+  -H "authorization: Bearer sarge_read_..." \\
+  --data-urlencode "start=2026-06-01T00:00:00.000Z" \\
+  --data-urlencode "end=2026-07-01T00:00:00.000Z" \\
+  --data-urlencode "name=purchase.completed" \\
+  --data-urlencode "limit=100"`;
+
+const responseExample = `{
+  "events": [
+    {
+      "id": "evt_123",
+      "siteId": "site_123",
+      "siteEnvironmentId": "env_123_production",
+      "source": "browser",
+      "name": "purchase.completed",
+      "occurredAt": "2026-06-19T12:00:00.000Z",
+      "receivedAt": "2026-06-19T12:00:01.000Z",
+      "sessionId": "sess_123",
+      "userId": "user_123",
+      "ref": "summer-campaign",
+      "affiliate": "partner-42",
+      "attributionExpiresAt": null,
+      "url": "https://example.com/checkout",
+      "referrer": null,
+      "title": "Checkout",
+      "properties": {
+        "value": 129.99,
+        "currency": "USD"
+      }
+    }
+  ],
+  "nextCursor": "eyJvY2N1cnJlZEF0IjoiMjAyNi0wNi0xOVQxMjowMDowMC4wMDBaIiwiaWQiOiJldnRfMTIzIn0"
+}`;
+
+const queryFields = [
+  ["start", "Optional ISO lower bound for occurredAt."],
+  ["end", "Optional ISO upper bound for occurredAt."],
+  ["name", "Optional exact event name."],
+  ["source", "Optional source: browser, server, or postback."],
+  ["sessionId", "Optional exact session ID."],
+  ["userId", "Optional exact user ID."],
+  ["limit", "Optional page size. Defaults to 100 and caps at 1000."],
+  ["cursor", "Opaque cursor from the previous response."],
+];
+
+const errorRows = [
+  ["200", "Returns events and a nextCursor value."],
+  ["400", "Invalid export query, timestamp, source, limit, or cursor."],
+  ["401", "Missing, invalid, or revoked read token."],
+  ["500", "Unexpected export failure."],
+];
+---
+
+<SiteLayout title="API export | Sarge Docs">
+  <section class="mx-auto max-w-6xl px-4 py-14 md:px-6">
+    <a class="inline-flex items-center text-sm text-muted-foreground hover:text-foreground" href="/docs">
+      <ArrowRight className="mr-1 size-3.5 rotate-180" /> Docs
+    </a>
+
+    <div class="mt-8 max-w-3xl">
+      <Badge variant="outline">API export</Badge>
+      <h1 class="mt-4 text-3xl font-semibold leading-tight sm:text-4xl md:text-6xl">Pull raw Sarge events into your own systems.</h1>
+      <p class="mt-4 text-sm leading-6 text-muted-foreground">
+        Use the v1 raw event export API to build custom dashboards, reporting jobs, and warehouse imports from your stored Sarge tracking data.
+      </p>
+    </div>
+
+    <div class="mt-8 grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div class="grid min-w-0 gap-4">
+        <section class="min-w-0 rounded-lg border bg-card p-4 sm:p-5">
+          <div class="flex items-center gap-2">
+            <KeyRound className="size-5 text-primary" />
+            <h2 class="text-xl font-semibold">Endpoint and auth</h2>
+          </div>
+          <p class="mt-2 text-sm leading-6 text-muted-foreground">
+            Export uses read-only <code class="font-mono">sarge_read_</code> bearer tokens. Tokens are environment-scoped, separate from ingestion secrets, and stored only as SHA-256 hashes with the <code class="font-mono">events:read</code> scope.
+          </p>
+          <pre class="mt-4 max-w-full overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>GET /v2/export/events
+Authorization: Bearer sarge_read_...</code></pre>
+          <pre class="mt-4 max-w-full overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{exportCurl}</code></pre>
+        </section>
+
+        <section class="min-w-0 rounded-lg border bg-card p-4 sm:p-5">
+          <div class="flex items-center gap-2">
+            <ListFilter className="size-5 text-primary" />
+            <h2 class="text-xl font-semibold">Query fields</h2>
+          </div>
+          <div class="mt-4 max-w-full overflow-x-auto rounded-md border">
+            <table class="min-w-[620px] w-full text-left text-sm">
+              <thead class="bg-muted text-xs uppercase text-muted-foreground">
+                <tr>
+                  <th class="px-3 py-2 font-medium">Field</th>
+                  <th class="px-3 py-2 font-medium">Meaning</th>
+                </tr>
+              </thead>
+              <tbody>
+                {
+                  queryFields.map(([field, meaning]) => (
+                    <tr class="border-t">
+                      <td class="px-3 py-3 font-mono text-xs">{field}</td>
+                      <td class="px-3 py-3 text-muted-foreground">{meaning}</td>
+                    </tr>
+                  ))
+                }
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="min-w-0 rounded-lg border bg-card p-4 sm:p-5">
+          <div class="flex items-center gap-2">
+            <DatabaseZap className="size-5 text-primary" />
+            <h2 class="text-xl font-semibold">Response shape</h2>
+          </div>
+          <p class="mt-2 text-sm leading-6 text-muted-foreground">
+            Events sort by <code class="font-mono">occurredAt DESC, id DESC</code>. Send the returned <code class="font-mono">nextCursor</code> on the next request to continue paging.
+          </p>
+          <pre class="mt-4 max-w-full overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{responseExample}</code></pre>
+        </section>
+      </div>
+
+      <aside class="grid min-w-0 content-start gap-4">
+        <section class="rounded-lg border bg-card p-5">
+          <RotateCw className="size-5 text-primary" />
+          <h2 class="mt-5 font-semibold">Create a token</h2>
+          <p class="mt-3 text-sm leading-6 text-muted-foreground">
+            Open the project environment in Sarge, find Tracking credentials, and create or rotate the API export token. The plaintext token is shown once.
+          </p>
+        </section>
+
+        <section class="rounded-lg border bg-card p-5">
+          <LockKeyhole className="size-5 text-primary" />
+          <h2 class="mt-5 font-semibold">Security model</h2>
+          <ul class="mt-3 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
+            <li>One read token maps to one environment.</li>
+            <li>Server-event and postback credentials cannot read data.</li>
+            <li>Rotating a token revokes the prior active read token.</li>
+            <li>Exports respect the workspace plan retention window.</li>
+          </ul>
+        </section>
+
+        <section class="rounded-lg border bg-card p-5">
+          <BadgeCheck className="size-5 text-primary" />
+          <h2 class="mt-5 font-semibold">Status codes</h2>
+          <div class="mt-3 grid gap-2 text-sm">
+            {
+              errorRows.map(([code, meaning]) => (
+                <div class="rounded-md border bg-background p-3">
+                  <p class="font-mono text-xs">{code}</p>
+                  <p class="mt-1 text-muted-foreground">{meaning}</p>
+                </div>
+              ))
+            }
+          </div>
+        </section>
+      </aside>
+    </div>
+  </section>
+</SiteLayout>

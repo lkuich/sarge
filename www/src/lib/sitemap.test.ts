@@ -14,6 +14,7 @@ describe("sitemap", () => {
       "/docs",
       "/docs/install",
       "/docs/events",
+      "/docs/api",
       "/legal/privacy",
       "/legal/terms",
       "/sign-in",
@@ -23,7 +24,7 @@ describe("sitemap", () => {
     }
 
     expect(xml).not.toContain("/app");
-    expect(xml).not.toContain("/api");
+    expect(xml).not.toContain("https://sargetrack.app/api/");
     expect(xml).not.toContain("/verify/");
   });
 

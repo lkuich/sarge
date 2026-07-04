@@ -9,6 +9,7 @@ export const publicSitemapRoutes: SitemapRoute[] = [
   { path: "/docs" },
   { path: "/docs/install" },
   { path: "/docs/events" },
+  { path: "/docs/api" },
   { path: "/legal/privacy" },
   { path: "/legal/terms" },
   { path: "/sign-in" },

@@ -32,6 +32,7 @@ describe("launch readiness safeguards", () => {
     const hostedInstall = readWwwFile("src/pages/docs/install.astro");
 
     expect(docsIndex).toContain('href: "/docs/install"');
+    expect(docsIndex).toContain('href: "/docs/api"');
     expect(docsIndex).not.toContain('href: "/#setup"');
 
     for (const expected of [
@@ -49,6 +50,22 @@ describe("launch readiness safeguards", () => {
     ]) {
       expect(hostedInstall).toContain(expected);
     }
+  });
+
+  it("publishes public API export documentation from the docs index", () => {
+    const docsIndex = readWwwFile("src/pages/docs/index.astro");
+    const apiReference = readWwwFile("src/pages/docs/api.astro");
+    const apiMarkdown = readWwwFile("public/docs/api.md");
+
+    for (const source of [apiReference, apiMarkdown]) {
+      expect(source).toContain("/v2/export/events");
+      expect(source).toContain("sarge_read_");
+      expect(source).toContain("cursor");
+      expect(source).toContain("events:read");
+      expect(source).toContain("environment-scoped");
+    }
+
+    expect(docsIndex).toContain("API export");
   });
 
   it("keeps the hosted install reference constrained on mobile", () => {

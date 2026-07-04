@@ -1,5 +1,5 @@
 ---
-import { ArrowRight, BookOpen, Radio, TerminalSquare } from "lucide-react";
+import { ArrowRight, BookOpen, KeyRound, Radio, TerminalSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import SiteLayout from "@/layouts/SiteLayout.astro";
@@ -16,6 +16,12 @@ const docs = [
     description: "Event names, payload shapes, watchdog events, and copy-paste tracking examples.",
     href: "/docs/events",
     icon: Radio,
+  },
+  {
+    title: "API export",
+    description: "Pull raw environment-scoped event data from Sarge into your own dashboards and jobs.",
+    href: "/docs/api",
+    icon: KeyRound,
   },
   {
     title: "LLM docs",

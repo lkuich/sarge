@@ -20,6 +20,12 @@ export type ProjectStatus = 'active' | 'paused' | 'draft';
 export type ProjectEnvironment = 'production' | 'staging' | 'development';
 export type ProjectShareRole = "view" | "edit";
 
+export interface WorkspaceAccess {
+  userId: string;
+  organizationId: string;
+  role: AccountRole;
+}
+
 export const environmentLabels: Record<ProjectEnvironment, string> = {
   production: 'Production',
   staging: 'Staging',
@@ -220,6 +226,7 @@ export interface CreateProjectInput {
 
 interface GetViewerAccountOptions {
   viewerEmails?: string[];
+  members?: AccountMember[];
 }
 
 export interface CreateWebhookInput {
@@ -326,39 +333,54 @@ const configuredHostEventSql = (eventAlias: string, siteAlias: string) => (
 const configuredHostEventMixSql = (eventAlias: string, siteAlias: string) => configuredHostEventSql(eventAlias, siteAlias);
 const configuredHostEventTrendSql = (eventAlias: string, siteAlias: string) => configuredHostEventSql(eventAlias, siteAlias);
 
-const adminIds = new Set(
-  (import.meta.env.SARGE_ADMIN_USER_IDS ?? '')
-    .split(',')
-    .map((value: string) => value.trim())
-    .filter(Boolean),
-);
-
-const members: AccountMember[] = [
-  {
-    id: 'mem_admin',
-    name: 'Account Admin',
-    email: 'admin@example.com',
-    role: 'admin',
-    lastActive: 'Today',
-  },
-  {
-    id: 'mem_user',
-    name: 'Debug User',
-    email: 'debugger@example.com',
-    role: 'user',
-    lastActive: 'Yesterday',
-  },
-];
-
 export { eventMatchesConfiguredHost };
 
-const resolveRole = (userId: string): AccountRole => {
-  if (adminIds.size === 0) return 'user';
-  return adminIds.has(userId) ? 'admin' : 'user';
-};
-
-const getViewerWorkspace = async (sql: SqlClient, userId: string) => {
+const getViewerWorkspace = async (sql: SqlClient, access: WorkspaceAccess) => {
+  // Existing personal workspaces are claimed by the first active Clerk
+  // organization selected by their original owner. Once claimed, all access
+  // is scoped exclusively through Clerk's active organization ID.
   const workspaces = (await sql`
+    WITH claimed_legacy_workspace AS (
+      UPDATE "Workspace"
+      SET "clerkOrganizationId" = ${access.organizationId}
+      WHERE id = (
+        SELECT id
+        FROM "Workspace"
+        WHERE "clerkOrganizationId" IS NULL
+          AND "ownerUserId" = ${access.userId}
+        ORDER BY "createdAt" ASC
+        LIMIT 1
+      )
+        AND ${access.role === 'admin'}
+        AND NOT EXISTS (
+          SELECT 1
+          FROM "Workspace"
+          WHERE "clerkOrganizationId" = ${access.organizationId}
+        )
+      RETURNING
+        id,
+        slug,
+        name,
+        "planId",
+        "billingStatus",
+        "currentPeriodEventCount",
+        "termsAcceptedAt",
+        "termsAcceptedVersion",
+        "privacyAcceptedVersion"
+    )
+    SELECT
+      w.id,
+      w.slug,
+      w.name,
+      w."planId",
+      w."billingStatus",
+      w."currentPeriodEventCount",
+      w."termsAcceptedAt",
+      w."termsAcceptedVersion",
+      w."privacyAcceptedVersion"
+    FROM "Workspace" w
+    WHERE w."clerkOrganizationId" = ${access.organizationId}
+    UNION ALL
     SELECT
       id,
       slug,
@@ -369,8 +391,7 @@ const getViewerWorkspace = async (sql: SqlClient, userId: string) => {
       "termsAcceptedAt",
       "termsAcceptedVersion",
       "privacyAcceptedVersion"
-    FROM "Workspace"
-    WHERE "ownerUserId" = ${userId}
+    FROM claimed_legacy_workspace
     LIMIT 1
   `) as WorkspaceRow[];
 
@@ -414,14 +435,14 @@ const getViewerProjectShares = async (
   `) as ProjectShareRow[];
 };
 
-const getOwnedSiteById = async (sql: SqlClient, userId: string, siteId: string) => {
+const getOrganizationSiteById = async (sql: SqlClient, access: WorkspaceAccess, siteId: string) => {
   const rows = (await sql`
     SELECT
       s.id,
       s.name
     FROM "Site" s
     JOIN "Workspace" w ON w.id = s."workspaceId"
-    WHERE w."ownerUserId" = ${userId}
+    WHERE w."clerkOrganizationId" = ${access.organizationId}
       AND s.id = ${siteId}
     LIMIT 1
   `) as Pick<SiteSummaryRow, 'id' | 'name'>[];
@@ -526,20 +547,20 @@ const workspaceLegalAcceptanceRequired = (workspace: Pick<WorkspaceRow, 'termsAc
 };
 
 export const getViewerAccount = async (
-  userId: string,
+  access: WorkspaceAccess,
   databaseUrl?: string,
   options: GetViewerAccountOptions = {},
 ): Promise<SargeAccount> => {
-  const role = resolveRole(userId);
+  const { role, userId } = access;
   const viewerEmails = normalizeEmails(options.viewerEmails ?? []);
 
   if (!databaseUrl) {
-    return getFallbackAccount(role);
+    return getFallbackAccount(role, options.members);
   }
 
   try {
     const sql = neon(databaseUrl);
-    const workspace = await getViewerWorkspace(sql, userId);
+    const workspace = await getViewerWorkspace(sql, access);
     const sharedProjectShares = await getViewerProjectShares(sql, userId, viewerEmails);
     const sharedSiteIds = Array.from(new Set(sharedProjectShares.map((share) => share.siteId)));
     const sharedSites = sharedSiteIds.length > 0 ? ((await sql`
@@ -551,6 +572,7 @@ export const getViewerAccount = async (
       FROM "Site" s
       JOIN "Workspace" w ON w.id = s."workspaceId"
       WHERE s.id = ANY(${sharedSiteIds})
+        AND w."clerkOrganizationId" IS DISTINCT FROM ${access.organizationId}
       ORDER BY s."createdAt" ASC
     `) as SharedSiteSummaryRow[]) : [];
 
@@ -879,11 +901,11 @@ export const getViewerAccount = async (
       ownedProjects,
       sharedProjects,
       projects: [...ownedProjects, ...sharedProjects],
-      members,
+      members: options.members ?? [],
     };
   } catch (error) {
     console.error('Unable to load live Sarge account data', error);
-    return getFallbackAccount(role);
+    return getFallbackAccount(role, options.members);
   }
 };
 
@@ -1139,7 +1161,7 @@ export const markProjectTrafficAsTest = async (
 };
 
 export const refreshProjectAiReview = async (
-  userId: string,
+  access: WorkspaceAccess,
   databaseUrl: string | undefined,
   siteEnvironmentId: string,
   options: RefreshProjectAiReviewOptions = {},
@@ -1158,11 +1180,14 @@ export const refreshProjectAiReview = async (
       JOIN "Site" s ON s.id = se."siteId"
       JOIN "Workspace" w ON w.id = s."workspaceId"
       LEFT JOIN "ProjectShare" ps ON ps."siteId" = s.id
-        AND ps."acceptedUserId" = ${userId}
+        AND ps."acceptedUserId" = ${access.userId}
         AND ps.role = 'edit'
       WHERE se.id = ${siteEnvironmentId}
         AND se.environment = 'production'
-        AND (w."ownerUserId" = ${userId} OR ps.id IS NOT NULL)
+        AND (
+          (w."clerkOrganizationId" = ${access.organizationId} AND ${access.role === 'admin'})
+          OR ps.id IS NOT NULL
+        )
       LIMIT 1
     `) as Pick<SiteEnvironmentSummaryRow, 'id' | 'siteId' | 'environment' | 'endpointHost'>[];
     const siteEnvironment = siteEnvironments.at(0);
@@ -1273,7 +1298,7 @@ export const refreshProjectAiReview = async (
 };
 
 export const createPublicVerificationLink = async (
-  userId: string,
+  access: WorkspaceAccess,
   databaseUrl: string | undefined,
   siteEnvironmentId: string,
   appUrl: string,
@@ -1282,15 +1307,19 @@ export const createPublicVerificationLink = async (
 
   try {
     const sql = neon(databaseUrl);
-    const workspace = await getViewerWorkspace(sql, userId);
-    if (!workspace) return { success: false, error: 'Account workspace was not found.' };
-
     const siteEnvironments = (await sql`
       SELECT se.id
       FROM "SiteEnvironment" se
       JOIN "Site" s ON s.id = se."siteId"
+      JOIN "Workspace" w ON w.id = s."workspaceId"
+      LEFT JOIN "ProjectShare" ps ON ps."siteId" = s.id
+        AND ps."acceptedUserId" = ${access.userId}
+        AND ps.role = 'edit'
       WHERE se.id = ${siteEnvironmentId}
-        AND s."workspaceId" = ${workspace.id}
+        AND (
+          (w."clerkOrganizationId" = ${access.organizationId} AND ${access.role === 'admin'})
+          OR ps.id IS NOT NULL
+        )
       LIMIT 1
     `) as { id: string }[];
     const siteEnvironment = siteEnvironments.at(0);
@@ -1303,7 +1332,7 @@ export const createPublicVerificationLink = async (
 
     await sql`
       INSERT INTO "PublicVerificationToken" (id, "siteEnvironmentId", "tokenHash", "expiresAt", "createdByUserId")
-      VALUES (${`pvt_${crypto.randomUUID()}`}, ${siteEnvironment.id}, ${tokenHash}, ${expiresAt.toISOString()}, ${userId})
+      VALUES (${`pvt_${crypto.randomUUID()}`}, ${siteEnvironment.id}, ${tokenHash}, ${expiresAt.toISOString()}, ${access.userId})
     `;
 
     const origin = new URL(appUrl).origin;
@@ -1322,10 +1351,11 @@ export const createPublicVerificationLink = async (
 };
 
 export const createWorkspace = async (
-  userId: string,
+  access: WorkspaceAccess,
   databaseUrl: string | undefined,
   input: CreateWorkspaceInput,
 ): Promise<CreateWorkspaceResult> => {
+  if (access.role !== 'admin') return { success: false, error: 'Only organization admins can create a workspace.' };
   if (!databaseUrl) return { success: false, error: 'DATABASE_URL is not configured.' };
 
   const name = input.name.trim();
@@ -1339,15 +1369,16 @@ export const createWorkspace = async (
 
   try {
     const sql = neon(databaseUrl);
-    const existingWorkspace = await getViewerWorkspace(sql, userId);
+    const existingWorkspace = await getViewerWorkspace(sql, access);
     const id = existingWorkspace?.id ?? `wrk_${crypto.randomUUID()}`;
-    const slug = existingWorkspace?.slug ?? buildViewerWorkspaceSlug(userId);
+    const slug = existingWorkspace?.slug ?? buildViewerWorkspaceSlug(access.organizationId);
     const acceptedAt = new Date();
     const rows = (await sql`
       INSERT INTO "Workspace" (
         id,
         slug,
         name,
+        "clerkOrganizationId",
         "ownerUserId",
         "termsAcceptedAt",
         "termsAcceptedVersion",
@@ -1359,14 +1390,15 @@ export const createWorkspace = async (
         ${id},
         ${slug},
         ${name},
-        ${userId},
+        ${access.organizationId},
+        ${access.userId},
         ${acceptedAt.toISOString()},
         ${CURRENT_LEGAL_VERSION},
         ${CURRENT_PRIVACY_VERSION},
         ${input.acceptedIp ?? null},
         ${input.acceptedUserAgent ?? null}
       )
-      ON CONFLICT ("ownerUserId") DO UPDATE SET
+      ON CONFLICT ("clerkOrganizationId") DO UPDATE SET
         name = EXCLUDED.name,
         "termsAcceptedAt" = EXCLUDED."termsAcceptedAt",
         "termsAcceptedVersion" = EXCLUDED."termsAcceptedVersion",
@@ -1392,10 +1424,11 @@ export const createWorkspace = async (
 };
 
 export const acceptWorkspaceLegalTerms = async (
-  userId: string,
+  access: WorkspaceAccess,
   databaseUrl: string | undefined,
   input: Pick<CreateWorkspaceInput, 'acceptedIp' | 'acceptedUserAgent'> = {},
 ): Promise<AcceptWorkspaceLegalTermsResult> => {
+  if (access.role !== 'admin') return { success: false, error: 'Only organization admins can accept workspace terms.' };
   if (!databaseUrl) return { success: false, error: 'DATABASE_URL is not configured.' };
 
   try {
@@ -1409,7 +1442,7 @@ export const acceptWorkspaceLegalTerms = async (
         "privacyAcceptedVersion" = ${CURRENT_PRIVACY_VERSION},
         "termsAcceptedIp" = ${input.acceptedIp ?? null},
         "termsAcceptedUserAgent" = ${input.acceptedUserAgent ?? null}
-      WHERE "ownerUserId" = ${userId}
+      WHERE "clerkOrganizationId" = ${access.organizationId}
       RETURNING id
     `) as { id: string }[];
 
@@ -1425,14 +1458,15 @@ export const acceptWorkspaceLegalTerms = async (
 };
 
 export const deleteWorkspace = async (
-  userId: string,
+  access: WorkspaceAccess,
   databaseUrl: string | undefined,
 ): Promise<DeleteWorkspaceResult> => {
+  if (access.role !== 'admin') return { success: false, error: 'Only organization admins can delete a workspace.' };
   if (!databaseUrl) return { success: false, error: 'DATABASE_URL is not configured.' };
 
   try {
     const sql = neon(databaseUrl);
-    const workspace = await getViewerWorkspace(sql, userId);
+    const workspace = await getViewerWorkspace(sql, access);
     if (!workspace) return { success: false, error: 'Workspace was not found.' };
 
     const projectCounts = (await sql`
@@ -1448,7 +1482,7 @@ export const deleteWorkspace = async (
     await sql`
       DELETE FROM "Workspace"
       WHERE id = ${workspace.id}
-        AND "ownerUserId" = ${userId}
+        AND "clerkOrganizationId" = ${access.organizationId}
     `;
 
     return { success: true };
@@ -1462,14 +1496,14 @@ export const deleteWorkspace = async (
 };
 
 export const loadWorkspacePrivacySettings = async (
-  userId: string,
+  access: WorkspaceAccess,
   databaseUrl: string | undefined,
 ): Promise<SargePrivacySettings> => {
   if (!databaseUrl) return defaultSargePrivacySettings;
 
   try {
     const sql = neon(databaseUrl);
-    const workspace = await getViewerWorkspace(sql, userId);
+    const workspace = await getViewerWorkspace(sql, access);
     if (!workspace) return defaultSargePrivacySettings;
 
     const rows = (await sql`
@@ -1493,15 +1527,16 @@ export const loadWorkspacePrivacySettings = async (
 };
 
 export const saveWorkspacePrivacySettings = async (
-  userId: string,
+  access: WorkspaceAccess,
   databaseUrl: string | undefined,
   input: PrivacySettingsInput,
 ): Promise<SavePrivacySettingsResult> => {
+  if (access.role !== 'admin') return { success: false, error: 'Only organization admins can manage workspace data controls.' };
   if (!databaseUrl) return { success: false, error: 'DATABASE_URL is not configured.' };
 
   try {
     const sql = neon(databaseUrl);
-    const workspace = await getViewerWorkspace(sql, userId);
+    const workspace = await getViewerWorkspace(sql, access);
     if (!workspace) return { success: false, error: 'Workspace was not found.' };
 
     const settings = normalizePrivacySettingsInput(input);
@@ -1544,16 +1579,17 @@ export const saveWorkspacePrivacySettings = async (
 };
 
 export const saveSitePrivacySettings = async (
-  userId: string,
+  access: WorkspaceAccess,
   databaseUrl: string | undefined,
   siteId: string,
   input: PrivacySettingsInput,
 ): Promise<SavePrivacySettingsResult> => {
+  if (access.role !== 'admin') return { success: false, error: 'Only organization admins can manage project data controls.' };
   if (!databaseUrl) return { success: false, error: 'DATABASE_URL is not configured.' };
 
   try {
     const sql = neon(databaseUrl);
-    const site = await getOwnedSiteById(sql, userId, siteId);
+    const site = await getOrganizationSiteById(sql, access, siteId);
     if (!site) return { success: false, error: 'Project was not found in your workspace.' };
 
     const settings = normalizePrivacySettingsInput(input);
@@ -1596,20 +1632,21 @@ export const saveSitePrivacySettings = async (
 };
 
 export const createDeletionRequest = async (
-  userId: string,
+  access: WorkspaceAccess,
   databaseUrl: string | undefined,
   input: { scope: 'workspace' | 'site'; targetSiteId?: string; confirmation: string },
 ): Promise<CreateDeletionRequestResult> => {
+  if (access.role !== 'admin') return { success: false, error: 'Only organization admins can request deletion.' };
   if (!databaseUrl) return { success: false, error: 'DATABASE_URL is not configured.' };
   if (input.confirmation !== 'DELETE') return { success: false, error: 'Type DELETE to confirm this deletion request.' };
 
   try {
     const sql = neon(databaseUrl);
-    const workspace = await getViewerWorkspace(sql, userId);
+    const workspace = await getViewerWorkspace(sql, access);
     if (!workspace) return { success: false, error: 'Workspace was not found.' };
 
     const targetSite = input.scope === 'site'
-      ? await getOwnedSiteById(sql, userId, input.targetSiteId ?? '')
+      ? await getOrganizationSiteById(sql, access, input.targetSiteId ?? '')
       : null;
     if (input.scope === 'site' && !targetSite) {
       return { success: false, error: 'Project was not found in your workspace.' };
@@ -1629,7 +1666,7 @@ export const createDeletionRequest = async (
         ${input.scope},
         ${workspace.id},
         ${targetSite?.id ?? null},
-        ${userId},
+        ${access.userId},
         'pending'
       )
       RETURNING id, scope, status, "targetWorkspaceId", "targetSiteId", "createdAt"
@@ -1740,12 +1777,11 @@ const normalizeDeletionStatus = (status: string): DeletionRequestSummary['status
 };
 
 export const createProject = async (
-  userId: string,
+  access: WorkspaceAccess,
   databaseUrl: string | undefined,
   input: CreateProjectInput,
 ): Promise<CreateProjectResult> => {
-  const role = resolveRole(userId);
-  if (role !== 'admin') return { success: false, error: 'Only admins can create projects.' };
+  if (access.role !== 'admin') return { success: false, error: 'Only organization admins can create projects.' };
   if (!databaseUrl) return { success: false, error: 'DATABASE_URL is not configured.' };
 
   const name = input.name.trim();
@@ -1756,7 +1792,7 @@ export const createProject = async (
 
   try {
     const sql = neon(databaseUrl);
-    const workspace = await getViewerWorkspace(sql, userId);
+    const workspace = await getViewerWorkspace(sql, access);
     if (!workspace || workspace.name === demoAccountName) {
       return { success: false, error: 'Create your workspace before adding a project.' };
     }
@@ -1773,7 +1809,7 @@ export const createProject = async (
         SELECT id
         FROM "Workspace"
         WHERE id = ${workspace.id}
-          AND "ownerUserId" = ${userId}
+          AND "clerkOrganizationId" = ${access.organizationId}
         FOR UPDATE
       `,
       tx`
@@ -1781,7 +1817,7 @@ export const createProject = async (
         SELECT id, "planId"
         FROM "Workspace"
         WHERE id = ${workspace.id}
-          AND "ownerUserId" = ${userId}
+          AND "clerkOrganizationId" = ${access.organizationId}
       ),
       limited_workspace AS (
         SELECT w.id
@@ -1924,8 +1960,11 @@ export const getProject = (account: SargeAccount, projectId: string) =>
 
 export const canAdministerAccount = (account: SargeAccount) => account.role === 'admin';
 
-export const canManageProject = (project: SargeProject) =>
-  project.ownership === 'owned' || project.shareRole === 'edit';
+export const canAdministerProject = (account: SargeAccount, project: SargeProject) =>
+  project.ownership === 'owned' && account.role === 'admin';
+
+export const canManageProject = (account: SargeAccount, project: SargeProject) =>
+  canAdministerProject(account, project) || project.shareRole === 'edit';
 
 export const formatCount = (value: number) => new Intl.NumberFormat('en-US').format(value);
 
@@ -1947,12 +1986,13 @@ export const isEventUsageOverLimit = (account: SargeAccount) => {
 };
 
 export const shareProject = async (
-  userId: string,
+  access: WorkspaceAccess,
   databaseUrl: string | undefined,
   siteId: string,
   input: ShareProjectInput,
   emailOptions: ProjectInviteEmailOptions,
 ): Promise<ShareProjectResult> => {
+  if (access.role !== 'admin') return { success: false, error: 'Only organization admins can share projects.' };
   if (!databaseUrl) return { success: false, error: 'DATABASE_URL is not configured.' };
 
   const email = normalizeInviteEmail(input.email);
@@ -1962,7 +2002,7 @@ export const shareProject = async (
 
   try {
     const sql = neon(databaseUrl);
-    const site = await getOwnedSiteById(sql, userId, siteId);
+    const site = await getOrganizationSiteById(sql, access, siteId);
     if (!site) return { success: false, error: 'Project was not found in your workspace.' };
 
     const rows = (await sql`
@@ -1970,7 +2010,7 @@ export const shareProject = async (
         SELECT s.id, s.name, ${sql.unsafe(projectShareLimitSqlCase)} AS "shareLimit"
         FROM "Site" s
         JOIN "Workspace" w ON w.id = s."workspaceId"
-        WHERE w."ownerUserId" = ${userId}
+        WHERE w."clerkOrganizationId" = ${access.organizationId}
           AND s.id = ${site.id}
         FOR UPDATE OF s, w
       ),
@@ -1990,7 +2030,7 @@ export const shareProject = async (
           OR share_usage."shareCount" < owned_site."shareLimit"
       )
       INSERT INTO "ProjectShare" (id, "siteId", email, role, "invitedByUserId")
-      SELECT ${`share_${crypto.randomUUID()}`}, allowed_site.id, ${email}, ${role}, ${userId}
+      SELECT ${`share_${crypto.randomUUID()}`}, allowed_site.id, ${email}, ${role}, ${access.userId}
       FROM allowed_site
       WHERE true
       ON CONFLICT ("siteId", email) DO UPDATE
@@ -2026,12 +2066,13 @@ export const shareProject = async (
 };
 
 export const updateProjectShare = async (
-  userId: string,
+  access: WorkspaceAccess,
   databaseUrl: string | undefined,
   shareId: string,
   role: ProjectShareRole,
   emailOptions?: ProjectInviteEmailOptions,
 ): Promise<UpdateProjectShareResult> => {
+  if (access.role !== 'admin') return { success: false, error: 'Only organization admins can manage project shares.' };
   if (!databaseUrl) return { success: false, error: 'DATABASE_URL is not configured.' };
 
   const normalizedRole = normalizeShareRole(role);
@@ -2046,7 +2087,7 @@ export const updateProjectShare = async (
       JOIN "Workspace" w ON w.id = s."workspaceId"
       WHERE ps.id = ${shareId}
         AND ps."siteId" = s.id
-        AND w."ownerUserId" = ${userId}
+        AND w."clerkOrganizationId" = ${access.organizationId}
       RETURNING ps.id, ps."siteId", ps.email, ps.role, ps."acceptedUserId", ps."createdAt", ps."acceptedAt", s.name AS "projectName"
     `) as (ProjectShareRow & { projectName: string })[];
     const share = rows.at(0);
@@ -2078,11 +2119,12 @@ export const updateProjectShare = async (
 };
 
 export const removeProjectShare = async (
-  userId: string,
+  access: WorkspaceAccess,
   databaseUrl: string | undefined,
   shareId: string,
   emailOptions?: ProjectInviteEmailOptions,
 ): Promise<RemoveProjectShareResult> => {
+  if (access.role !== 'admin') return { success: false, error: 'Only organization admins can manage project shares.' };
   if (!databaseUrl) return { success: false, error: 'DATABASE_URL is not configured.' };
 
   try {
@@ -2093,7 +2135,7 @@ export const removeProjectShare = async (
       JOIN "Workspace" w ON w.id = s."workspaceId"
       WHERE ps.id = ${shareId}
         AND ps."siteId" = s.id
-        AND w."ownerUserId" = ${userId}
+        AND w."clerkOrganizationId" = ${access.organizationId}
       RETURNING ps.id, ps.email, ps.role, s.name AS "projectName"
     `) as { id: string; email: string; role: string; projectName: string }[];
     const removedShare = rows.at(0);
@@ -2121,13 +2163,12 @@ export const removeProjectShare = async (
 };
 
 export const createWebhookEndpoint = async (
-  userId: string,
+  access: WorkspaceAccess,
   databaseUrl: string | undefined,
   siteEnvironmentId: string,
   input: CreateWebhookInput,
 ): Promise<CreateWebhookResult> => {
-  const role = resolveRole(userId);
-  if (role !== 'admin') return { success: false, error: 'Only admins can create webhooks.' };
+  if (access.role !== 'admin') return { success: false, error: 'Only organization admins can create webhooks.' };
   if (!databaseUrl) return { success: false, error: 'DATABASE_URL is not configured.' };
 
   const name = input.name.trim();
@@ -2140,7 +2181,7 @@ export const createWebhookEndpoint = async (
 
   try {
     const sql = neon(databaseUrl);
-    const workspace = await getViewerWorkspace(sql, userId);
+    const workspace = await getViewerWorkspace(sql, access);
     if (!workspace) return { success: false, error: 'Account workspace was not found.' };
 
     const siteEnvironments = (await sql`
@@ -2160,7 +2201,7 @@ export const createWebhookEndpoint = async (
         SELECT id
         FROM "Workspace"
         WHERE id = ${workspace.id}
-          AND "ownerUserId" = ${userId}
+          AND "clerkOrganizationId" = ${access.organizationId}
         FOR UPDATE
       `,
       tx`
@@ -2168,7 +2209,7 @@ export const createWebhookEndpoint = async (
         SELECT id, "planId"
         FROM "Workspace"
         WHERE id = ${workspace.id}
-          AND "ownerUserId" = ${userId}
+          AND "clerkOrganizationId" = ${access.organizationId}
       ),
       limited_site_environment AS (
         SELECT se.id, se."siteId"
@@ -2227,18 +2268,17 @@ export const createWebhookEndpoint = async (
 };
 
 export const createEnvironmentCredential = async (
-  userId: string,
+  access: WorkspaceAccess,
   databaseUrl: string | undefined,
   siteEnvironmentId: string,
   kind: EnvironmentCredentialKind,
 ): Promise<CreateEnvironmentCredentialResult> => {
-  const role = resolveRole(userId);
-  if (role !== 'admin') return { success: false, error: 'Only admins can manage server-side credentials.' };
+  if (access.role !== 'admin') return { success: false, error: 'Only organization admins can manage server-side credentials.' };
   if (!databaseUrl) return { success: false, error: 'DATABASE_URL is not configured.' };
 
   try {
     const sql = neon(databaseUrl);
-    const workspace = await getViewerWorkspace(sql, userId);
+    const workspace = await getViewerWorkspace(sql, access);
     if (!workspace) return { success: false, error: 'Account workspace was not found.' };
 
     const siteEnvironments = (await sql`
@@ -2264,7 +2304,7 @@ export const createEnvironmentCredential = async (
           SELECT id
           FROM "Workspace"
           WHERE id = ${workspace.id}
-            AND "ownerUserId" = ${userId}
+            AND "clerkOrganizationId" = ${access.organizationId}
           FOR UPDATE
         `,
         tx`
@@ -2315,7 +2355,7 @@ export const createEnvironmentCredential = async (
           SELECT id
           FROM "Workspace"
           WHERE id = ${workspace.id}
-            AND "ownerUserId" = ${userId}
+            AND "clerkOrganizationId" = ${access.organizationId}
           FOR UPDATE
         `,
         tx`
@@ -2323,7 +2363,7 @@ export const createEnvironmentCredential = async (
           SELECT id, "planId"
           FROM "Workspace"
           WHERE id = ${workspace.id}
-            AND "ownerUserId" = ${userId}
+            AND "clerkOrganizationId" = ${access.organizationId}
         ),
         target_environment AS (
           SELECT se.id, se."serverEventSecretHash"
@@ -2365,7 +2405,7 @@ export const createEnvironmentCredential = async (
         SELECT id
         FROM "Workspace"
         WHERE id = ${workspace.id}
-          AND "ownerUserId" = ${userId}
+          AND "clerkOrganizationId" = ${access.organizationId}
         FOR UPDATE
       `,
       tx`
@@ -2373,7 +2413,7 @@ export const createEnvironmentCredential = async (
         SELECT id, "planId"
         FROM "Workspace"
         WHERE id = ${workspace.id}
-          AND "ownerUserId" = ${userId}
+          AND "clerkOrganizationId" = ${access.organizationId}
       ),
       target_environment AS (
         SELECT se.id, se."postbackTokenHash"
@@ -2417,7 +2457,7 @@ export const createEnvironmentCredential = async (
   }
 };
 
-const getFallbackAccount = (role: AccountRole): SargeAccount => {
+const getFallbackAccount = (role: AccountRole, accountMembers: AccountMember[] = []): SargeAccount => {
   const ownedProjects = [
     buildFallbackProject({
       id: 'site_demo',
@@ -2457,7 +2497,7 @@ const getFallbackAccount = (role: AccountRole): SargeAccount => {
     ownedProjects,
     sharedProjects: [],
     projects: ownedProjects,
-    members,
+    members: accountMembers,
   };
 };
 

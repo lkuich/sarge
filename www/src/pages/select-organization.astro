@@ -1,0 +1,38 @@
+---
+import { OrganizationList } from "@clerk/astro/components";
+import Logo from "@/components/Logo.astro";
+import "@/styles/global.css";
+
+const { userId, orgId } = Astro.locals.auth();
+if (!userId) return Astro.redirect("/sign-in");
+
+const requestedRedirect = Astro.url.searchParams.get("redirect_url");
+const redirectUrl = requestedRedirect?.startsWith("/") && !requestedRedirect.startsWith("//")
+  ? requestedRedirect
+  : "/app";
+
+if (orgId) return Astro.redirect(redirectUrl);
+---
+
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>Choose an organization | Sarge</title>
+  </head>
+  <body class="min-h-screen bg-background text-foreground">
+    <main class="mx-auto flex min-h-screen w-full max-w-xl flex-col items-center justify-center gap-8 px-4 py-10">
+      <a href="/" aria-label="Sarge home">
+        <Logo markClass="h-8 w-auto" wordmarkClass="text-xl" />
+      </a>
+      <div class="w-full">
+        <OrganizationList
+          hidePersonal={true}
+          afterCreateOrganizationUrl={redirectUrl}
+          afterSelectOrganizationUrl={redirectUrl}
+        />
+      </div>
+    </main>
+  </body>
+</html>

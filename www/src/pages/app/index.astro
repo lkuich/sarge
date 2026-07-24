@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import AppLayout from "@/layouts/AppLayout.astro";
 import { getLimitUsagePrompt } from "@/lib/pricing";
+import { getActiveOrganizationRedirect, getWorkspaceAccess } from "@/lib/workspace-auth";
 import {
   acceptWorkspaceLegalTerms,
   canAdministerAccount,
@@ -20,8 +21,11 @@ import {
   getViewerAccount,
 } from "@/lib/sarge-demo";
 
-const { userId } = Astro.locals.auth();
+const auth = Astro.locals.auth();
+const { userId } = auth;
 if (!userId) return Astro.redirect("/sign-in");
+const access = getWorkspaceAccess(auth);
+if (!access) return Astro.redirect(getActiveOrganizationRedirect(Astro.request.url));
 const currentUser = await Astro.locals.currentUser();
 const viewerEmails = currentUser?.emailAddresses.map((email) => email.emailAddress).filter(Boolean) ?? [];
 
@@ -41,7 +45,7 @@ if (Astro.request.method === "POST") {
       name: String(formData.get("workspaceName") ?? ""),
     };
 
-    const result = await createWorkspace(userId, env.DATABASE_URL, {
+    const result = await createWorkspace(access, env.DATABASE_URL, {
       ...workspaceValues,
       acceptLegalTerms: formData.get("acceptLegalTerms") === "on",
       ...getLegalRequestMetadata(Astro.request.headers),
@@ -52,21 +56,21 @@ if (Astro.request.method === "POST") {
   }
 
   if (intent === "accept-legal-terms") {
-    const result = await acceptWorkspaceLegalTerms(userId, env.DATABASE_URL, getLegalRequestMetadata(Astro.request.headers));
+    const result = await acceptWorkspaceLegalTerms(access, env.DATABASE_URL, getLegalRequestMetadata(Astro.request.headers));
     if (result.success) return Astro.redirect("/app", 303);
 
     legalAcceptanceError = result.error;
   }
 
   if (intent === "delete-workspace") {
-    const result = await deleteWorkspace(userId, env.DATABASE_URL);
+    const result = await deleteWorkspace(access, env.DATABASE_URL);
     if (result.success) return Astro.redirect("/app", 303);
 
     workspaceDeleteError = result.error;
   }
 }
 
-const account = await getViewerAccount(userId, env.DATABASE_URL, { viewerEmails });
+const account = await getViewerAccount(access, env.DATABASE_URL, { viewerEmails });
 const accountUsage = getAccountUsage(account);
 const eventUsagePrompt = getLimitUsagePrompt({
   used: accountUsage.eventsThisPeriod,
@@ -143,8 +147,8 @@ function getLegalRequestMetadata(headers: Headers) {
   title="Dashboard | Sarge"
   heading={needsWorkspaceSetup ? "Create your workspace" : "Overview"}
   description={needsWorkspaceSetup
-    ? "Start by naming the workspace that will own your Sarge projects."
-    : "Projects are grouped under your account. Admins manage access and setup; users inspect assigned projects and event flow."}
+    ? "Set up the Sarge workspace for your active Clerk organization."
+    : "Projects belong to your active organization. Organization admins manage access and setup; members inspect project event flow."}
   active="overview"
   breadcrumbs={[{ label: "Overview" }]}
 >
@@ -159,10 +163,16 @@ function getLegalRequestMetadata(headers: Headers) {
               We need a workspace owner to accept the current <a class="font-medium underline underline-offset-4" href="/legal/terms">Terms of Service</a> and acknowledge the <a class="font-medium underline underline-offset-4" href="/legal/privacy">Privacy Policy</a>.
             </span>
             {legalAcceptanceError && <span class="mt-2 block font-medium">{legalAcceptanceError}</span>}
-            <form method="post" class="mt-3">
-              <input type="hidden" name="intent" value="accept-legal-terms" />
-              <Button type="submit" size="sm">Accept current terms</Button>
-            </form>
+            {
+              canCreateProjects ? (
+                <form method="post" class="mt-3">
+                  <input type="hidden" name="intent" value="accept-legal-terms" />
+                  <Button type="submit" size="sm">Accept current terms</Button>
+                </form>
+              ) : (
+                <span class="mt-2 block">An organization admin must accept the current terms.</span>
+              )
+            }
           </AlertDescription>
         </Alert>
       </section>
@@ -195,13 +205,13 @@ function getLegalRequestMetadata(headers: Headers) {
                 </span>
                 <div class="min-w-0">
                   <CardTitle className="text-base">Create your workspace</CardTitle>
-                  <p class="mt-1 text-sm leading-5 text-muted-foreground">This is the account your projects and events will live under.</p>
+                  <p class="mt-1 text-sm leading-5 text-muted-foreground">This workspace is linked to the active Clerk organization.</p>
                 </div>
               </div>
             </CardHeader>
             <CardContent className="pt-0">
               {
-                needsWorkspaceSetup ? (
+                needsWorkspaceSetup && canCreateProjects ? (
                   <>
                     {workspaceError && (
                       <Alert className="mb-4">
@@ -231,6 +241,10 @@ function getLegalRequestMetadata(headers: Headers) {
                       </div>
                     </form>
                   </>
+                ) : needsWorkspaceSetup ? (
+                  <div class="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                    Ask an organization admin to finish setting up this workspace.
+                  </div>
                 ) : (
                   <div class="grid gap-3">
                     <p class="text-sm font-medium">{account.name}</p>
@@ -289,6 +303,8 @@ function getLegalRequestMetadata(headers: Headers) {
                   <p class="text-sm font-medium">{account.ownedProjects[0].name}</p>
                 ) : needsWorkspaceSetup ? (
                   <p class="text-sm text-muted-foreground">Create your workspace first.</p>
+                ) : !canCreateProjects ? (
+                  <p class="text-sm text-muted-foreground">Ask an organization admin to add the first project.</p>
                 ) : (
                   <a
                     class="inline-flex h-8 items-center justify-center rounded-md bg-primary px-2.5 text-sm font-medium text-primary-foreground transition hover:bg-primary/80"

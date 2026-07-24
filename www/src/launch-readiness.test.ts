@@ -74,7 +74,7 @@ describe("launch readiness safeguards", () => {
     expect(apiReference).toContain("Copy cURL");
     expect(apiReference).toContain("Rotate to generate a fresh copyable cURL.");
     expect(apiReference).toContain('intent === "rotate-docs-api-read-token"');
-    expect(apiReference).toContain('createEnvironmentCredential(userId, env.DATABASE_URL, selectedDocsEnvironmentId, "api-read")');
+    expect(apiReference).toContain('createEnvironmentCredential(access, env.DATABASE_URL, selectedDocsEnvironmentId, "api-read")');
     expect(docsIndex).toContain("API export");
   });
 

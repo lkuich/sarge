@@ -1,0 +1,27 @@
+{
+  // Deploy config for the Sarge promo landing page (July-4 campaign).
+  //
+  // Build first:  bun run build   (Nitro emits the Cloudflare worker to .output/)
+  // Then deploy:  npx wrangler deploy
+  //
+  // The build also writes .output/server/wrangler.json, but this committed config
+  // is the source of truth — it pins the worker name, observability, and the route.
+  //
+  // Routing note: the sarge-hosted worker owns a wildcard route `*.sargetrack.app/*`.
+  // A Cloudflare Custom Domain does NOT reliably win against that wildcard, but a
+  // more-specific route does — so we use an explicit `promo.sargetrack.app/*` route,
+  // the same pattern sarge-demo-shop uses for `shop.sargetrack.app/*`. The `*.sargetrack.app`
+  // wildcard DNS record already resolves the host, so no per-host DNS record is needed.
+  "name": "sarge-promo",
+  "main": ".output/server/index.mjs",
+  "compatibility_date": "2026-06-28",
+  "compatibility_flags": ["nodejs_compat"],
+  "no_bundle": true,
+  "rules": [{ "type": "ESModule", "globs": ["**/*.mjs", "**/*.js"] }],
+  "assets": {
+    "binding": "ASSETS",
+    "directory": ".output/public"
+  },
+  "observability": { "enabled": true },
+  "routes": [{ "pattern": "promo.sargetrack.app/*", "zone_name": "sargetrack.app" }]
+}

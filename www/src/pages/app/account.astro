@@ -1,4 +1,5 @@
 ---
+import { clerkClient } from "@clerk/astro/server";
 import { env } from "cloudflare:workers";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -9,13 +10,31 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import AppLayout from "@/layouts/AppLayout.astro";
 import { createDeletionRequest, getViewerAccount, saveWorkspacePrivacySettings } from "@/lib/sarge-demo";
+import {
+  getActiveOrganizationRedirect,
+  getWorkspaceAccess,
+  mapOrganizationMemberships,
+} from "@/lib/workspace-auth";
 
-const { userId } = Astro.locals.auth();
+const auth = Astro.locals.auth();
+const { userId } = auth;
 if (!userId) return Astro.redirect("/sign-in");
+const access = getWorkspaceAccess(auth);
+if (!access) return Astro.redirect(getActiveOrganizationRedirect(Astro.request.url));
 const currentUser = await Astro.locals.currentUser();
 const viewerEmails = currentUser?.emailAddresses.map((email) => email.emailAddress).filter(Boolean) ?? [];
+const organizationMembers = await clerkClient(Astro).organizations
+  .getOrganizationMembershipList({
+    organizationId: access.organizationId,
+    limit: 100,
+  })
+  .then((response) => mapOrganizationMemberships(response.data))
+  .catch((error) => {
+    console.error("Unable to load Clerk organization members", error);
+    return [];
+  });
 
-let account = await getViewerAccount(userId, env.DATABASE_URL, { viewerEmails });
+let account = await getViewerAccount(access, env.DATABASE_URL, { viewerEmails, members: organizationMembers });
 let privacySettingsError = "";
 let privacySettingsSuccess = "";
 let deletionRequestError = "";
@@ -26,7 +45,7 @@ if (Astro.request.method === "POST") {
   const intent = String(formData.get("intent") ?? "");
 
   if (intent === "save-workspace-privacy-settings") {
-    const result = await saveWorkspacePrivacySettings(userId, env.DATABASE_URL, {
+    const result = await saveWorkspacePrivacySettings(access, env.DATABASE_URL, {
       piiRedactionEnabled: formData.get("piiRedactionEnabled") === "on",
       propertyPolicyMode: String(formData.get("propertyPolicyMode") ?? "blocklist"),
       blockedPropertyKeys: String(formData.get("blockedPropertyKeys") ?? ""),
@@ -44,7 +63,7 @@ if (Astro.request.method === "POST") {
   }
 
   if (intent === "request-workspace-deletion") {
-    const result = await createDeletionRequest(userId, env.DATABASE_URL, {
+    const result = await createDeletionRequest(access, env.DATABASE_URL, {
       scope: "workspace",
       confirmation: String(formData.get("deleteConfirmation") ?? ""),
     });
@@ -53,19 +72,19 @@ if (Astro.request.method === "POST") {
     else deletionRequestError = result.error;
   }
 
-  account = await getViewerAccount(userId, env.DATABASE_URL, { viewerEmails });
+  account = await getViewerAccount(access, env.DATABASE_URL, { viewerEmails, members: organizationMembers });
 }
 
 const workspaceSettings = account.privacySettings;
-const canManageWorkspaceData = account.workspaceSetupComplete && account.id !== "shared";
+const canManageWorkspaceData = account.role === "admin" && account.workspaceSetupComplete && account.id !== "shared";
 const formatSettingsList = (values: string[]) => values.join(", ");
 ---
 
 <AppLayout
   account={account}
   title="Account | Sarge"
-  heading="Account settings"
-  description="Account-level users, roles, and project ownership live here."
+  heading="Organization settings"
+  description="Clerk organization members, roles, and workspace data controls live here."
   active="account"
   breadcrumbs={[{ label: "Account" }]}
 >
@@ -171,7 +190,7 @@ const formatSettingsList = (values: string[]) => values.join(", ");
             <TableHead>Name</TableHead>
             <TableHead>Email</TableHead>
             <TableHead>Role</TableHead>
-            <TableHead>Last active</TableHead>
+            <TableHead>Joined</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

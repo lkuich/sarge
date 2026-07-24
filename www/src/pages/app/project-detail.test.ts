@@ -90,7 +90,7 @@ describe("project detail install panel", () => {
 
     expect(projectDetail).toContain("project.siteId,");
     expect(projectDetail).not.toContain("project.slug,");
-    expect(demoData).toContain("getOwnedSiteById");
+    expect(demoData).toContain("getOrganizationSiteById");
     expect(demoData).not.toContain("getOwnedSiteBySlug");
   });
 
@@ -220,7 +220,7 @@ describe("project detail install panel", () => {
     expect(schema).toContain("model ApiToken");
     expect(schema).toContain("apiTokens");
     expect(demoData).toContain("apiReadTokenConfigured: boolean;");
-    expect(projectDetail).toContain("createEnvironmentCredential(userId, env.DATABASE_URL, selectedEnvironment.id, kind)");
+    expect(projectDetail).toContain("createEnvironmentCredential(access, env.DATABASE_URL, selectedEnvironment.id, kind)");
     expect(projectDetail).toContain('intent === "rotate-api-read-token"');
     expect(projectDetail).toContain("Raw event export API");
     expect(projectDetail).toContain("Tracking credentials");
@@ -415,8 +415,8 @@ describe("project detail install panel", () => {
     expect(projectDetail).toContain('intent === "remove-project-share"');
     expect(projectDetail).toContain("<ProjectShareDialog");
     expect(projectDetail).toContain("{canShareProject &&");
-    expect(projectDetail).toContain("canCreateWebhooks = canManageProject(project) && canUseWebhooks");
-    expect(projectDetail).toContain("canManageCredentials = canManageProject(project) && (canUseServerEvents || canUsePostbacks || canUseApiExport)");
+    expect(projectDetail).toContain("canCreateWebhooks = canAdministerProject(account, project) && canUseWebhooks");
+    expect(projectDetail).toContain("canManageCredentials = canAdministerProject(account, project) && (canUseServerEvents || canUsePostbacks || canUseApiExport)");
 
     expect(shareDialog).toContain("data-project-share-dialog");
     expect(shareDialog).toContain('name="intent" value="share-project"');

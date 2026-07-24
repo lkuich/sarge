@@ -4,13 +4,14 @@ import { ArrowRight, BadgeCheck, Copy, DatabaseZap, KeyRound, ListFilter, LockKe
 import { Badge } from "@/components/ui/badge";
 import SiteLayout from "@/layouts/SiteLayout.astro";
 import {
-  canManageProject,
+  canAdministerProject,
   createEnvironmentCredential,
   environmentLabels,
   getViewerAccount,
   hostedEndpointHost,
 } from "@/lib/sarge-demo";
 import { canUseFeature } from "@/lib/pricing";
+import { getActiveOrganizationRedirect, getWorkspaceAccess } from "@/lib/workspace-auth";
 
 export const prerender = false;
 
@@ -66,10 +67,12 @@ const errorRows = [
   ["500", "Unexpected export failure."],
 ];
 
-const { userId } = Astro.locals.auth();
+const auth = Astro.locals.auth();
+const { userId } = auth;
+const access = getWorkspaceAccess(auth);
 const currentUser = userId ? await Astro.locals.currentUser() : null;
 const viewerEmails = currentUser?.emailAddresses.map((email) => email.emailAddress).filter(Boolean) ?? [];
-const account = userId ? await getViewerAccount(userId, env.DATABASE_URL, { viewerEmails }) : null;
+const account = access ? await getViewerAccount(access, env.DATABASE_URL, { viewerEmails }) : null;
 const docsApiEndpoint = `https://${hostedEndpointHost}/v2/export/events`;
 const docsCredentialFlashCookieName = "sarge_docs_api_credential";
 
@@ -145,11 +148,12 @@ if (Astro.request.method === "POST") {
   if (!userId) {
     return Astro.redirect("/sign-in", 303);
   }
+  if (!access) return Astro.redirect(getActiveOrganizationRedirect(Astro.request.url), 303);
 
   if (intent === "rotate-docs-api-read-token") {
     const selectedOption = docsEnvironmentOptions.find((option) => option.environment.id === selectedDocsEnvironmentId);
     const canUseApiExport = account ? canUseFeature(account.planId, "apiExport") : false;
-    const canRotateApiReadToken = Boolean(selectedOption && canManageProject(selectedOption.project) && canUseApiExport);
+    const canRotateApiReadToken = Boolean(account && selectedOption && canAdministerProject(account, selectedOption.project) && canUseApiExport);
 
     if (!selectedOption) {
       docsCredentialError = "Select a project before creating an API read token.";
@@ -158,7 +162,7 @@ if (Astro.request.method === "POST") {
     } else if (!canRotateApiReadToken) {
       docsCredentialError = "Edit access is required to manage API export tokens.";
     } else {
-      const result = await createEnvironmentCredential(userId, env.DATABASE_URL, selectedDocsEnvironmentId, "api-read");
+      const result = await createEnvironmentCredential(access, env.DATABASE_URL, selectedDocsEnvironmentId, "api-read");
       if (result.success) {
         setDocsCredentialFlash({
           token: result.token,
@@ -192,7 +196,7 @@ const selectedDocsProject = selectedDocsOption?.project ?? null;
 const selectedDocsEnvironment = selectedDocsOption?.environment ?? null;
 const selectedDocsCanUseApiExport = account ? canUseFeature(account.planId, "apiExport") : false;
 const selectedDocsCanRotateApiReadToken = Boolean(
-  selectedDocsProject && selectedDocsCanUseApiExport && canManageProject(selectedDocsProject),
+  account && selectedDocsProject && selectedDocsCanUseApiExport && canAdministerProject(account, selectedDocsProject),
 );
 if (createdDocsApiReadCredentialToken && selectedDocsEnvironment) {
   selectedDocsEnvironment.apiReadTokenConfigured = true;

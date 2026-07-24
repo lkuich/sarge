@@ -7,6 +7,7 @@ import {
   resolvePlanIdForStripePrice,
   type StripeBillingEnv,
 } from "./stripe-billing";
+import type { WorkspaceAccess } from "./sarge-demo";
 
 const stripeCheckoutSessionsCreate = vi.hoisted(() => vi.fn());
 const neonQuery = vi.hoisted(() => vi.fn());
@@ -32,6 +33,11 @@ const env = {
   STRIPE_PRICE_STARTER: "price_starter",
   STRIPE_PRICE_GROWTH: "price_growth",
 } satisfies StripeBillingEnv;
+const access = {
+  userId: "user_123",
+  organizationId: "org_123",
+  role: "admin",
+} satisfies WorkspaceAccess;
 
 describe("Stripe billing helpers", () => {
   beforeEach(() => {
@@ -114,7 +120,7 @@ describe("Stripe billing helpers", () => {
       {
         id: "wrk_123",
         name: "Acme",
-        ownerUserId: "user_123",
+        clerkOrganizationId: "org_123",
         planId: "free",
         billingStatus: "active",
         stripeCustomerId: null,
@@ -128,7 +134,7 @@ describe("Stripe billing helpers", () => {
       createCheckoutSession({
         env,
         databaseUrl: "postgres://example",
-        userId: "user_123",
+        access,
         customerEmail: "owner@example.com",
         appUrl: "https://sargetrack.app/app/billing",
         planId: "starter",
@@ -144,7 +150,7 @@ describe("Stripe billing helpers", () => {
       {
         id: "wrk_123",
         name: "Acme",
-        ownerUserId: "user_123",
+        clerkOrganizationId: "org_123",
         planId: "free",
         billingStatus: "active",
         stripeCustomerId: "cus_test_mode",
@@ -164,7 +170,7 @@ describe("Stripe billing helpers", () => {
       createCheckoutSession({
         env,
         databaseUrl: "postgres://example",
-        userId: "user_123",
+        access,
         customerEmail: "owner@example.com",
         appUrl: "https://sargetrack.app/app/billing",
         planId: "starter",

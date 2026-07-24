@@ -1,6 +1,7 @@
 import { neon } from "@neondatabase/serverless";
 import Stripe from "stripe";
 import { getPlanDefinition, type PlanId } from "./pricing";
+import type { WorkspaceAccess } from "./sarge-demo";
 
 export interface StripeBillingEnv {
   STRIPE_SECRET_KEY?: string;
@@ -14,7 +15,7 @@ export type BillingStatus = "active" | "past_due" | "canceled";
 export interface WorkspaceBillingProfile {
   id: string;
   name: string;
-  ownerUserId: string;
+  clerkOrganizationId: string;
   planId: PlanId;
   billingStatus: BillingStatus;
   stripeCustomerId: string | null;
@@ -114,11 +115,12 @@ export const mapStripeSubscriptionStatus = (status: string): BillingStatus => {
 export const createCheckoutSession = async (input: {
   env: StripeBillingEnv;
   databaseUrl?: string;
-  userId: string;
+  access: WorkspaceAccess;
   customerEmail: string | null;
   appUrl: string;
   planId: PlanId;
 }): Promise<BillingActionResult> => {
+  if (input.access.role !== "admin") return { success: false, error: "Only organization admins can manage billing." };
   const stripeSecretKey = input.env.STRIPE_SECRET_KEY?.trim();
   if (!stripeSecretKey) return { success: false, error: "Stripe billing is not configured." };
   if (!input.databaseUrl) return { success: false, error: "DATABASE_URL is not configured." };
@@ -126,7 +128,7 @@ export const createCheckoutSession = async (input: {
   const price = getStripePriceIdForPlan(input.env, input.planId);
   if (!price.success) return price;
 
-  const workspace = await getWorkspaceBillingProfile(input.userId, input.databaseUrl);
+  const workspace = await getWorkspaceBillingProfile(input.access.organizationId, input.databaseUrl);
   if (!workspace) return { success: false, error: "Create your workspace before choosing a plan." };
 
   const stripe = createStripeClient(stripeSecretKey);
@@ -134,7 +136,7 @@ export const createCheckoutSession = async (input: {
     appUrl: input.appUrl,
     customerEmail: input.customerEmail,
     priceId: price.priceId,
-    userId: input.userId,
+    userId: input.access.userId,
     workspaceId: workspace.id,
     planId: input.planId,
   };
@@ -179,14 +181,15 @@ export const createCheckoutSession = async (input: {
 export const createBillingPortalSession = async (input: {
   env: StripeBillingEnv;
   databaseUrl?: string;
-  userId: string;
+  access: WorkspaceAccess;
   appUrl: string;
 }): Promise<BillingActionResult> => {
+  if (input.access.role !== "admin") return { success: false, error: "Only organization admins can manage billing." };
   const stripeSecretKey = input.env.STRIPE_SECRET_KEY?.trim();
   if (!stripeSecretKey) return { success: false, error: "Stripe billing is not configured." };
   if (!input.databaseUrl) return { success: false, error: "DATABASE_URL is not configured." };
 
-  const workspace = await getWorkspaceBillingProfile(input.userId, input.databaseUrl);
+  const workspace = await getWorkspaceBillingProfile(input.access.organizationId, input.databaseUrl);
   if (!workspace) return { success: false, error: "Create your workspace before managing billing." };
   if (!workspace.stripeCustomerId) {
     return { success: false, error: "Start a paid plan before opening the billing portal." };
@@ -202,7 +205,7 @@ export const createBillingPortalSession = async (input: {
 };
 
 export const getWorkspaceBillingProfile = async (
-  userId: string,
+  organizationId: string,
   databaseUrl?: string,
 ): Promise<WorkspaceBillingProfile | null> => {
   if (!databaseUrl) return null;
@@ -212,14 +215,14 @@ export const getWorkspaceBillingProfile = async (
     SELECT
       id,
       name,
-      "ownerUserId",
+      "clerkOrganizationId",
       "planId",
       "billingStatus",
       "stripeCustomerId",
       "stripeSubscriptionId",
       "stripePriceId"
     FROM "Workspace"
-    WHERE "ownerUserId" = ${userId}
+    WHERE "clerkOrganizationId" = ${organizationId}
     LIMIT 1
   `) as WorkspaceBillingProfile[];
 

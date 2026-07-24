@@ -9,9 +9,13 @@ import AppLayout from "@/layouts/AppLayout.astro";
 import { getViewerAccount } from "@/lib/sarge-demo";
 import { planDefinitions, type PlanId } from "@/lib/pricing";
 import { createBillingPortalSession, createCheckoutSession } from "@/lib/stripe-billing";
+import { getActiveOrganizationRedirect, getWorkspaceAccess } from "@/lib/workspace-auth";
 
-const { userId } = Astro.locals.auth();
+const auth = Astro.locals.auth();
+const { userId } = auth;
 if (!userId) return Astro.redirect("/sign-in");
+const access = getWorkspaceAccess(auth);
+if (!access) return Astro.redirect(getActiveOrganizationRedirect(Astro.request.url));
 const currentUser = await Astro.locals.currentUser();
 const viewerEmails = currentUser?.emailAddresses.map((email) => email.emailAddress).filter(Boolean) ?? [];
 const customerEmail = currentUser?.primaryEmailAddress?.emailAddress ?? viewerEmails[0] ?? null;
@@ -36,7 +40,7 @@ if (Astro.request.method === "POST") {
       const result = await createCheckoutSession({
         env,
         databaseUrl: env.DATABASE_URL,
-        userId,
+        access,
         customerEmail,
         appUrl: Astro.request.url,
         planId,
@@ -48,7 +52,7 @@ if (Astro.request.method === "POST") {
     const result = await createBillingPortalSession({
       env,
       databaseUrl: env.DATABASE_URL,
-      userId,
+      access,
       appUrl: Astro.request.url,
     });
     if (result.success) return Astro.redirect(result.url, 303);
@@ -56,7 +60,8 @@ if (Astro.request.method === "POST") {
   }
 }
 
-const account = await getViewerAccount(userId, env.DATABASE_URL, { viewerEmails });
+const account = await getViewerAccount(access, env.DATABASE_URL, { viewerEmails });
+const canManageBilling = account.role === "admin";
 
 const planHighlights: Record<PlanId, string[]> = {
   free: ["1 project", "1 shared user/project", "50k events/month", "7-day retention", "Basic affiliate attribution"],
@@ -149,12 +154,18 @@ const planPrices: Record<PlanId, string> = {
               {account.plan.name} / {account.billingStatus.replace("_", " ")}
             </p>
           </div>
-          <form method="post">
-            <input type="hidden" name="intent" value="billing-portal" />
-            <Button type="submit" variant="outline" disabled={account.planId === "free" || account.planId === "scale"}>
-              Manage billing
-            </Button>
-          </form>
+          {
+            canManageBilling ? (
+              <form method="post">
+                <input type="hidden" name="intent" value="billing-portal" />
+                <Button type="submit" variant="outline" disabled={account.planId === "free" || account.planId === "scale"}>
+                  Manage billing
+                </Button>
+              </form>
+            ) : (
+              <Badge variant="secondary">Admin access required</Badge>
+            )
+          }
         </div>
       </CardHeader>
     </Card>
@@ -196,6 +207,10 @@ const planPrices: Record<PlanId, string> = {
               ) : plan.id === "free" ? (
                 <Button variant="outline" disabled>
                   Included
+                </Button>
+              ) : !canManageBilling ? (
+                <Button variant="outline" disabled>
+                  Admin only
                 </Button>
               ) : (
                 <form method="post">

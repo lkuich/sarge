@@ -6,14 +6,18 @@ import {
   markProjectTrafficAsTest,
   type TestTrafficSubjectKind,
 } from "@/lib/sarge-demo";
+import { getWorkspaceAccess } from "@/lib/workspace-auth";
 
 export const prerender = false;
 
 export const POST: APIRoute = async (Astro) => {
-  const { userId } = Astro.locals.auth();
+  const auth = Astro.locals.auth();
+  const { userId } = auth;
   if (!userId) {
     return json({ error: "Unauthorized" }, 401);
   }
+  const access = getWorkspaceAccess(auth);
+  if (!access) return json({ error: "An active organization is required" }, 403);
 
   const environmentId = Astro.params.environmentId ?? "";
   const body = await readRequestBody(Astro.request);
@@ -28,7 +32,7 @@ export const POST: APIRoute = async (Astro) => {
 
   const currentUser = await Astro.locals.currentUser();
   const viewerEmails = currentUser?.emailAddresses.map((email) => email.emailAddress).filter(Boolean) ?? [];
-  const account = await getViewerAccount(userId, env.DATABASE_URL, { viewerEmails });
+  const account = await getViewerAccount(access, env.DATABASE_URL, { viewerEmails });
   const project = account.projects.find((candidate) =>
     candidate.environments.some((environment) => environment.id === environmentId),
   );
@@ -38,7 +42,7 @@ export const POST: APIRoute = async (Astro) => {
     return json({ error: "Project environment not found" }, 404);
   }
 
-  if (!canManageProject(project)) {
+  if (!canManageProject(account, project)) {
     return json({ error: "Edit access is required to mark test traffic." }, 403);
   }
 

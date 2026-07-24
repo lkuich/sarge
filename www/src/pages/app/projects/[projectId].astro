@@ -15,6 +15,7 @@ import AppLayout from "@/layouts/AppLayout.astro";
 import { canUseFeature } from "@/lib/pricing";
 import {
   canAdministerAccount,
+  canAdministerProject,
   canManageProject,
   createDeletionRequest,
   createEnvironmentCredential,
@@ -33,15 +34,19 @@ import {
   updateProjectShare,
   type ProjectShareRole,
 } from "@/lib/sarge-demo";
+import { getActiveOrganizationRedirect, getWorkspaceAccess } from "@/lib/workspace-auth";
 
 export const prerender = false;
 
-const { userId } = Astro.locals.auth();
+const auth = Astro.locals.auth();
+const { userId } = auth;
 if (!userId) return Astro.redirect("/sign-in");
+const access = getWorkspaceAccess(auth);
+if (!access) return Astro.redirect(getActiveOrganizationRedirect(Astro.request.url));
 const currentUser = await Astro.locals.currentUser();
 const viewerEmails = currentUser?.emailAddresses.map((email) => email.emailAddress).filter(Boolean) ?? [];
 
-const account = await getViewerAccount(userId, env.DATABASE_URL, { viewerEmails });
+const account = await getViewerAccount(access, env.DATABASE_URL, { viewerEmails });
 const project = getProject(account, Astro.params.projectId ?? "");
 if (!project) return Astro.redirect("/app");
 
@@ -68,9 +73,9 @@ const canUseWebhooks = canUseFeature(account.planId, "webhooks");
 const canUseServerEvents = canUseFeature(account.planId, "serverEvents");
 const canUsePostbacks = canUseFeature(account.planId, "postbacks");
 const canUseApiExport = canUseFeature(account.planId, "apiExport");
-const canCreateWebhooks = canManageProject(project) && canUseWebhooks;
-const canManageCredentials = canManageProject(project) && (canUseServerEvents || canUsePostbacks || canUseApiExport);
-const canRefreshAiReview = canManageProject(project) && selectedEnvironment.environment === "production" && canUseAiReview;
+const canCreateWebhooks = canAdministerProject(account, project) && canUseWebhooks;
+const canManageCredentials = canAdministerProject(account, project) && (canUseServerEvents || canUsePostbacks || canUseApiExport);
+const canRefreshAiReview = canManageProject(account, project) && selectedEnvironment.environment === "production" && canUseAiReview;
 let webhookError = "";
 let createdWebhookSecret = "";
 let createdWebhookName = "";
@@ -152,7 +157,7 @@ if (Astro.request.method === "POST") {
     if (!canRefreshAiReview) {
       aiReviewRefreshError = "Edit access and a Growth plan are required to refresh AI review.";
     } else {
-      const result = await refreshProjectAiReview(userId, env.DATABASE_URL, selectedEnvironment.id, {
+      const result = await refreshProjectAiReview(access, env.DATABASE_URL, selectedEnvironment.id, {
         ai: env.AI,
         aiSummaryModel: runtimeEnv.AI_SUMMARY_MODEL,
       });
@@ -163,10 +168,10 @@ if (Astro.request.method === "POST") {
 
   if (intent === "share-project") {
     if (!canShareProject) {
-      shareError = "Only project owners can share projects.";
+      shareError = "Only organization admins can share projects.";
     } else {
       const result = await shareProject(
-        userId,
+        access,
         env.DATABASE_URL,
         project.siteId,
         {
@@ -192,10 +197,10 @@ if (Astro.request.method === "POST") {
 
   if (intent === "update-project-share") {
     if (!canShareProject) {
-      shareError = "Only project owners can update project shares.";
+      shareError = "Only organization admins can update project shares.";
     } else {
       const result = await updateProjectShare(
-        userId,
+        access,
         env.DATABASE_URL,
         String(formData.get("shareId") ?? ""),
         String(formData.get("role") ?? "view") as ProjectShareRole,
@@ -217,10 +222,10 @@ if (Astro.request.method === "POST") {
 
   if (intent === "remove-project-share") {
     if (!canShareProject) {
-      shareError = "Only project owners can remove project shares.";
+      shareError = "Only organization admins can remove project shares.";
     } else {
       const shareId = String(formData.get("shareId") ?? "");
-      const result = await removeProjectShare(userId, env.DATABASE_URL, shareId, {
+      const result = await removeProjectShare(access, env.DATABASE_URL, shareId, {
         emailSender: env.EMAIL,
         emailFrom: runtimeEnv.SARGE_EMAIL_FROM,
         appUrl: `${Astro.url.origin}/app`,
@@ -247,7 +252,7 @@ if (Astro.request.method === "POST") {
     } else if (!canCreateWebhooks) {
       webhookError = "Edit access is required to create webhooks.";
     } else {
-      const result = await createWebhookEndpoint(userId, env.DATABASE_URL, selectedEnvironment.id, webhookValues);
+      const result = await createWebhookEndpoint(access, env.DATABASE_URL, selectedEnvironment.id, webhookValues);
 
       if (result.success) {
         selectedEnvironment.webhookEndpoints = [result.webhook, ...selectedEnvironment.webhookEndpoints];
@@ -263,7 +268,7 @@ if (Astro.request.method === "POST") {
   if (intent === "rotate-server-credential" || intent === "rotate-postback-token" || intent === "rotate-api-read-token") {
     const kind = intent === "rotate-server-credential" ? "server" : intent === "rotate-postback-token" ? "postback" : "api-read";
     const canUseCredentialKind = kind === "server" ? canUseServerEvents : kind === "postback" ? canUsePostbacks : canUseApiExport;
-    const canRotateCredential = canManageProject(project) && canUseCredentialKind;
+    const canRotateCredential = canAdministerProject(account, project) && canUseCredentialKind;
 
     if (kind === "server" && !canUseServerEvents) {
       credentialError = "Upgrade to create server event secrets.";
@@ -274,7 +279,7 @@ if (Astro.request.method === "POST") {
     } else if (!canRotateCredential) {
       credentialError = "Edit access is required to manage server-side credentials.";
     } else {
-      const result = await createEnvironmentCredential(userId, env.DATABASE_URL, selectedEnvironment.id, kind);
+      const result = await createEnvironmentCredential(access, env.DATABASE_URL, selectedEnvironment.id, kind);
 
       if (result.success) {
         setCredentialFlash(Astro.cookies, result);
@@ -286,10 +291,10 @@ if (Astro.request.method === "POST") {
   }
 
   if (intent === "create-public-verification-link") {
-    if (!canManageProject(project)) {
+    if (!canManageProject(account, project)) {
       publicVerificationError = "Edit access is required to create verification links.";
     } else {
-      const result = await createPublicVerificationLink(userId, env.DATABASE_URL, selectedEnvironment.id, Astro.url.origin);
+      const result = await createPublicVerificationLink(access, env.DATABASE_URL, selectedEnvironment.id, Astro.url.origin);
       if (result.success) {
         createdPublicVerificationUrl = result.url;
         createdPublicVerificationExpiresAt = result.expiresAt;
@@ -300,10 +305,10 @@ if (Astro.request.method === "POST") {
   }
 
   if (intent === "save-site-privacy-settings") {
-    if (project.ownership !== "owned") {
-      sitePrivacySettingsError = "Only project owners can manage data controls.";
+    if (!canShareProject) {
+      sitePrivacySettingsError = "Only organization admins can manage data controls.";
     } else {
-      const result = await saveSitePrivacySettings(userId, env.DATABASE_URL, project.siteId, {
+      const result = await saveSitePrivacySettings(access, env.DATABASE_URL, project.siteId, {
         piiRedactionEnabled: formData.get("piiRedactionEnabled") === "on",
         propertyPolicyMode: String(formData.get("propertyPolicyMode") ?? "blocklist"),
         blockedPropertyKeys: String(formData.get("blockedPropertyKeys") ?? ""),
@@ -322,10 +327,10 @@ if (Astro.request.method === "POST") {
   }
 
   if (intent === "request-site-deletion") {
-    if (project.ownership !== "owned") {
-      siteDeletionRequestError = "Only project owners can request deletion.";
+    if (!canShareProject) {
+      siteDeletionRequestError = "Only organization admins can request deletion.";
     } else {
-      const result = await createDeletionRequest(userId, env.DATABASE_URL, {
+      const result = await createDeletionRequest(access, env.DATABASE_URL, {
         scope: "site",
         targetSiteId: project.siteId,
         confirmation: String(formData.get("deleteConfirmation") ?? ""),
@@ -447,7 +452,7 @@ const recentUserDelta = buildMetricDelta(selectedEnvironment.userCount24h, selec
 const weeklyTrafficChart = buildTrafficTrendChart(selectedEnvironment.trafficTrend7d);
 const projectShareLimit = account.plan.limits.projectShares;
 const projectShareCount = project.shares.length;
-const canManageProjectData = project.ownership === "owned";
+const canManageProjectData = canAdministerProject(account, project);
 const projectPrivacySettings = project.privacySettings;
 const formatSettingsList = (values: string[]) => values.join(", ");
 const severityVariant = (severity: string) => {

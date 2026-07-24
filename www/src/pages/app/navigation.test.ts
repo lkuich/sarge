@@ -173,12 +173,14 @@ describe("app navigation routes", () => {
     expect(newProject).toContain("Upgrade to add more projects");
   });
 
-  it("defaults users to non-admin unless explicitly listed in SARGE_ADMIN_USER_IDS", () => {
+  it("derives workspace admin access from the active Clerk organization role", () => {
     const demoData = readSource("../../lib/sarge-demo.ts");
+    const workspaceAuth = readSource("../../lib/workspace-auth.ts");
 
-    expect(demoData).toContain("if (adminIds.size === 0) return 'user';");
-    expect(demoData).toContain("return adminIds.has(userId) ? 'admin' : 'user';");
-    expect(demoData).not.toContain("if (adminIds.size === 0) return 'admin';");
+    expect(workspaceAuth).toContain('auth.has({ role: "org:admin" })');
+    expect(workspaceAuth).toContain("organizationId: auth.orgId");
+    expect(demoData).toContain('"clerkOrganizationId" = ${access.organizationId}');
+    expect(demoData).not.toContain("SARGE_ADMIN_USER_IDS");
   });
 
   it("filters visible event logs by the owning workspace plan retention", () => {

@@ -407,6 +407,17 @@ describe("Cloudflare Worker hosted API", () => {
     expect(source).not.toMatch(/::jsonb\s*\)\s*FROM site_environment se/);
   });
 
+  it("qualifies the event id in the scheduled diagnostics recent events query", () => {
+    const source = readFileSync(sourcePath("./neon-event-store.ts"), "utf8");
+    const methodStart = source.indexOf("async listRecentEventsForSite");
+    const methodEnd = source.indexOf("async saveDiagnosticRun", methodStart);
+    const listRecentEventsForSiteSource = source.slice(methodStart, methodEnd);
+
+    expect(listRecentEventsForSiteSource).toContain("JOIN \"Site\" s ON s.id = e.\"siteId\"");
+    expect(listRecentEventsForSiteSource).toContain("SELECT\n        e.id,");
+    expect(listRecentEventsForSiteSource).not.toContain("SELECT\n        id,");
+  });
+
   it("stores shared-host events by site ID", async () => {
     const { events, store } = createMemoryStore();
     const handler = createWorkerHandler({ store });

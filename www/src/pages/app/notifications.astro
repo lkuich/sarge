@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import AppLayout from "@/layouts/AppLayout.astro";
 import { canUseFeature } from "@/lib/pricing";
 import { getViewerAccount } from "@/lib/sarge-demo";
+import { getActiveOrganizationRedirect, getWorkspaceAccess } from "@/lib/workspace-auth";
 import {
   loadNotificationPreferences,
   notificationCategories,
@@ -16,15 +17,18 @@ import {
   type NotificationCategoryId,
 } from "@/lib/notifications";
 
-const { userId } = Astro.locals.auth();
+const auth = Astro.locals.auth();
+const { userId } = auth;
 if (!userId) return Astro.redirect("/sign-in");
+const access = getWorkspaceAccess(auth);
+if (!access) return Astro.redirect(getActiveOrganizationRedirect(Astro.request.url));
 const currentUser = await Astro.locals.currentUser();
 const viewerEmails = currentUser?.emailAddresses.map((email) => email.emailAddress).filter(Boolean) ?? [];
 const primaryEmail = currentUser?.primaryEmailAddress?.emailAddress ?? viewerEmails[0] ?? "";
 let saveError = "";
 let saveSuccess = false;
 
-const account = await getViewerAccount(userId, env.DATABASE_URL, { viewerEmails });
+const account = await getViewerAccount(access, env.DATABASE_URL, { viewerEmails });
 const alertsIncluded = canUseFeature(account.planId, "alerts");
 
 if (Astro.request.method === "POST") {

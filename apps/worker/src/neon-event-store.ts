@@ -350,16 +350,16 @@ export class NeonEventStore implements EventStore {
   async listRecentEventsForSite(siteId: string, since: Date, limit: number): Promise<StoredEvent[]> {
     const rows = (await this.sql`
       SELECT
-        id,
-        "siteEnvironmentId",
-        name,
-        "occurredAt",
-        "sessionId",
-        "userId",
-        url,
-        referrer,
-        title,
-        properties
+        e.id,
+        e."siteEnvironmentId",
+        e.name,
+        e."occurredAt",
+        e."sessionId",
+        e."userId",
+        e.url,
+        e.referrer,
+        e.title,
+        e.properties
       FROM "Event" e
       JOIN "Site" s ON s.id = e."siteId"
       WHERE e."siteEnvironmentId" = ${siteId}

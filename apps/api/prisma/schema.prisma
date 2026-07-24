@@ -11,7 +11,8 @@ model Workspace {
   id                      String   @id @default(cuid())
   slug                    String   @unique
   name                    String
-  ownerUserId             String?  @unique
+  clerkOrganizationId     String?  @unique
+  ownerUserId             String?
   planId                  String   @default("free")
   billingStatus           String   @default("active")
   currentPeriodStart      DateTime @default(now())

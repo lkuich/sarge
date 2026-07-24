@@ -1,14 +1,23 @@
 import { env } from "cloudflare:workers";
 import type { APIRoute } from "astro";
 import { getProjectEnvironmentEvents, getViewerAccount } from "@/lib/sarge-demo";
+import { getWorkspaceAccess } from "@/lib/workspace-auth";
 
 export const prerender = false;
 
 export const GET: APIRoute = async (Astro) => {
-  const { userId } = Astro.locals.auth();
+  const auth = Astro.locals.auth();
+  const { userId } = auth;
   if (!userId) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
+      headers: { "Cache-Control": "no-store" },
+    });
+  }
+  const access = getWorkspaceAccess(auth);
+  if (!access) {
+    return new Response(JSON.stringify({ error: "An active organization is required" }), {
+      status: 403,
       headers: { "Cache-Control": "no-store" },
     });
   }
@@ -20,7 +29,7 @@ export const GET: APIRoute = async (Astro) => {
   const endAt = Astro.url.searchParams.get("endAt");
   const currentUser = await Astro.locals.currentUser();
   const viewerEmails = currentUser?.emailAddresses.map((email) => email.emailAddress).filter(Boolean) ?? [];
-  const account = await getViewerAccount(userId, env.DATABASE_URL, { viewerEmails });
+  const account = await getViewerAccount(access, env.DATABASE_URL, { viewerEmails });
   const project = account.projects.find((candidate) =>
     candidate.environments.some((environment) => environment.id === environmentId),
   );

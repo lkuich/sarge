@@ -8,7 +8,7 @@ Connect an MCP client to Sarge to inspect tracking events without write access.
 
 ## Create a token
 
-On the Scale plan, open a project, select Production, Staging, or Development, and create an API export read token under **Tracking credentials**. You can also create one at [API export docs](https://sargetrack.app/docs/api). Copy the token when shown; Sarge stores only its hash.
+MCP and API read access are available on every plan, including Free. Open a project, select Production, Staging, or Development, and create an API export read token under **Tracking credentials**. You can also create one at [API export docs](https://sargetrack.app/docs/api). Copy the token when shown; Sarge stores only its hash.
 
 Use that token as the MCP client's bearer token. It grants access only to the selected environment. Server-event secrets, postback tokens, and temporary verification keys cannot authenticate to MCP. Rotating the read token revokes the old token for both MCP and API exports.
 

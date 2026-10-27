@@ -34,4 +34,4 @@ For test flows, use `impersonate("customer_123")` in the page console to make ev
 
 Each project can create a temporary public verification stream at `/verify/{siteEnvironmentId}?key={temporaryVerificationKey}`. The `siteEnvironmentId` is the `env` query parameter in the project pixel URL, and the temporary verification key is generated from the Sarge project page. Open that page after triggering events in the target app and confirm the expected event names and payloads appear. The page auto-refreshes while events are coming in.
 
-Sarge provides a read-only, authenticated MCP endpoint at `https://track.sargetrack.app/mcp` using environment-scoped API export bearer tokens (Scale plan). See [MCP connection instructions](/docs/mcp.md). No npm package is required; do not run `npx sarge@latest` or install `@sarge/mcp`.
+Sarge provides a read-only, authenticated MCP endpoint at `https://track.sargetrack.app/mcp` using environment-scoped API export bearer tokens on every plan, including Free. See [MCP connection instructions](/docs/mcp.md). No npm package is required; do not run `npx sarge@latest` or install `@sarge/mcp`.

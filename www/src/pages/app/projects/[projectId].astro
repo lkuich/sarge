@@ -275,7 +275,7 @@ if (Astro.request.method === "POST") {
     } else if (kind === "postback" && !canUsePostbacks) {
       credentialError = "Postbacks are available on Starter and higher.";
     } else if (kind === "api-read" && !canUseApiExport) {
-      credentialError = "API export is available on Scale.";
+      credentialError = "API read access is unavailable.";
     } else if (!canRotateCredential) {
       credentialError = "Edit access is required to manage server-side credentials.";
     } else {
@@ -1469,10 +1469,11 @@ function resolveTrackedSiteDomain(value: string) {
                   <div class="min-w-0">
                     <p class="font-medium">Raw event export API</p>
                     <p class="mt-1 text-xs text-muted-foreground">
-                      Find this under Tracking credentials. Create or rotate the read token here, then use it with the API docs.
+                      Available on every plan. Create or rotate the read token here for MCP and the raw event export API.
                     </p>
                     <p class="mt-1 break-all font-mono text-xs text-muted-foreground">{apiExportEndpoint}</p>
                     <a class="mt-2 inline-flex text-xs font-medium text-primary hover:underline" href="/docs/api">Open API export docs</a>
+                    <a class="mt-2 ml-3 inline-flex text-xs font-medium text-primary hover:underline" href="/docs/mcp.md">Connect your LLM</a>
                   </div>
                   <Badge variant={selectedEnvironment.apiReadTokenConfigured ? "default" : "secondary"}>
                     {selectedEnvironment.apiReadTokenConfigured ? "configured" : "not set"}

@@ -60,6 +60,10 @@ describe("pricing plan definitions", () => {
     expect(canUseFeature("free", "webhooks")).toBe(false);
   });
 
+  it.each(["free", "starter", "growth", "scale"] as const)("allows MCP and API read tokens on %s", (planId) => {
+    expect(canUseFeature(planId, "apiExport")).toBe(true);
+  });
+
   it("formats finite and unlimited limits for UI copy", () => {
     expect(formatPlanLimit(50_000, "events")).toBe("50,000 events");
     expect(formatPlanLimit(null, "webhooks")).toBe("Unlimited webhooks");

@@ -2296,7 +2296,7 @@ export const createEnvironmentCredential = async (
 
     if (kind === 'api-read') {
       if (!getPlanDefinition(workspace.planId).features.includes('apiExport')) {
-        return { success: false, error: 'API export is available on Scale.' };
+        return { success: false, error: 'API read access is unavailable.' };
       }
 
       const [, , rows] = (await sql.transaction((tx) => [

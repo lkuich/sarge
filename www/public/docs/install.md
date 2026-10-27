@@ -239,7 +239,7 @@ When using a coding agent, give it:
 - Instructions to preserve existing Meta, Google, analytics, and tag-manager pixels.
 - A verification step that confirms events arrive in the Sarge project event stream.
 
-No public Sarge MCP server or npm skill package is currently published. Do not run `npx sarge@latest` or install `@sarge/mcp`.
+Sarge provides a read-only, authenticated MCP endpoint at `https://track.sargetrack.app/mcp` using environment-scoped API export bearer tokens (Scale plan). See [MCP connection instructions](/docs/mcp.md). No npm package is required; do not run `npx sarge@latest` or install `@sarge/mcp`.
 
 ## Troubleshooting
 

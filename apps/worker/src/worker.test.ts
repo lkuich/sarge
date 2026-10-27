@@ -1,3 +1,5 @@
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
@@ -547,6 +549,105 @@ describe("Cloudflare Worker hosted API", () => {
       name: "affiliate.conversion",
       sessionId: "postback:click_123",
       userId: "click_123"
+    });
+  });
+
+  describe("authenticated MCP", () => {
+    const rpcRequest = (body: unknown, headers: Record<string, string> = {}, host = "sarge.events") =>
+      new Request(`https://${host}/mcp`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream",
+          authorization: "Bearer sarge_read_valid",
+          ...headers
+        },
+        body: JSON.stringify(body)
+      });
+    const call = (args: unknown = {}) => ({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "list_events", arguments: args } });
+
+    it.each(["", "Bearer invalid", "Bearer server-secret", "Basic sarge_read_valid"])("rejects invalid credentials %s before reading events", async (authorization) => {
+      const { store } = createMemoryStore();
+      const read = vi.spyOn(store, "listEventsForExport");
+      const response = await createWorkerHandler({ store }).fetch(rpcRequest(call(), { authorization }), createEnv());
+      expect(response.status).toBe(401);
+      expect(response.headers.get("www-authenticate")).toContain("Bearer");
+      expect(read).not.toHaveBeenCalled();
+    });
+
+    it("supports SDK initialization, discovery, filtering and pagination with environment isolation", async () => {
+      const { store } = createMemoryStore();
+      const handler = createWorkerHandler({ store });
+      const read = vi.spyOn(store, "listEventsForExport");
+      const client = new Client({ name: "sarge-test", version: "1.0.0" });
+      const transport = new StreamableHTTPClientTransport(new URL("https://sarge.events/mcp"), {
+        requestInit: { headers: { authorization: "Bearer sarge_read_valid" } },
+        fetch: async (url, init) => handler.fetch(new Request(url, init), createEnv())
+      });
+      try {
+        await client.connect(transport);
+        expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual(["list_events"]);
+        const first = await client.callTool({ name: "list_events", arguments: { limit: 1 } });
+        const page = first.structuredContent as { events: ExportedEvent[]; nextCursor: string };
+        expect(page.events.map((event) => event.id)).toEqual(["evt_purchase"]);
+        expect(page.nextCursor).toEqual(expect.any(String));
+        const second = await client.callTool({ name: "list_events", arguments: { cursor: page.nextCursor, limit: 1 } });
+        expect(second.structuredContent).toMatchObject({ events: [{ id: "evt_page" }], nextCursor: null });
+        const filtered = await client.callTool({ name: "list_events", arguments: { name: "page.view", sessionId: "sess_123", userId: "user_123", source: "browser", start: "2026-06-25T10:00:00Z", end: "2026-06-25T12:00:00Z" } });
+        expect(filtered.structuredContent).toMatchObject({ events: [{ id: "evt_page" }] });
+        expect(read.mock.calls.every(([environment]) => environment === "env_shared_production")).toBe(true);
+
+        vi.spyOn(store, "findReadToken").mockResolvedValue(null);
+        const revoked = await handler.fetch(rpcRequest(call()), createEnv());
+        expect(revoked.status).toBe(401);
+      } finally {
+        await client.close();
+      }
+    });
+
+    it.each([
+      { siteEnvironmentId: "env_other" }, { limit: 1001 }, { limit: 0 }, { limit: 1.5 },
+      { source: "invalid" }, { cursor: "bad" }, { start: "yesterday" },
+      { start: "2026-06-26T00:00:00Z", end: "2026-06-25T00:00:00Z" }
+    ])("rejects invalid tool arguments %j without querying events", async (args) => {
+      const { store } = createMemoryStore();
+      const read = vi.spyOn(store, "listEventsForExport");
+      const response = await createWorkerHandler({ store }).fetch(rpcRequest(call(args)), createEnv());
+      expect(await response.json()).toMatchObject({ result: { isError: true } });
+      expect(read).not.toHaveBeenCalled();
+    });
+
+    it("rejects foreign origins, non-shared hosts, unsupported methods, and oversized bodies", async () => {
+      const { store } = createMemoryStore();
+      const handler = createWorkerHandler({ store });
+      expect((await handler.fetch(rpcRequest(call(), { origin: "https://evil.example" }), createEnv())).status).toBe(403);
+      expect((await handler.fetch(rpcRequest(call(), {}, "acme.sarge.events"), createEnv())).status).toBe(404);
+      for (const method of ["GET", "DELETE", "PUT"]) {
+        expect((await handler.fetch(new Request("https://sarge.events/mcp", { method, headers: { authorization: "Bearer sarge_read_valid" } }), createEnv())).status).toBe(405);
+      }
+      expect((await handler.fetch(rpcRequest(call({ name: "x".repeat(65536) })), createEnv())).status).toBe(413);
+    });
+
+    it("returns protocol errors for malformed JSON and unknown tools", async () => {
+      const { store } = createMemoryStore();
+      const handler = createWorkerHandler({ store });
+      const invalid = rpcRequest(call());
+      const response = await handler.fetch(new Request(invalid, { body: "{" }), createEnv());
+      expect(response.status).toBe(400);
+      const unknown = await handler.fetch(rpcRequest({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "delete_events" } }), createEnv());
+      expect(await unknown.json()).toMatchObject({ result: { isError: true } });
+    });
+
+    it("does not expose database errors", async () => {
+      const { store } = createMemoryStore();
+      vi.spyOn(store, "listEventsForExport").mockRejectedValue(new Error("secret database details"));
+      const handler = createWorkerHandler({ store });
+      const response = await handler.fetch(rpcRequest(call()), createEnv());
+      expect(await response.json()).toMatchObject({ result: { isError: true, content: [{ text: "Unable to read events" }] } });
+      vi.spyOn(store, "findReadToken").mockRejectedValue(new Error("secret database details"));
+      const failure = await handler.fetch(rpcRequest(call()), createEnv());
+      expect(failure.status).toBe(500);
+      expect(await failure.text()).not.toContain("secret");
     });
   });
 

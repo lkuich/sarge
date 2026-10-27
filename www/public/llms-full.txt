@@ -86,7 +86,7 @@ This is debug labeling only. It does not authenticate as the target user or gran
 
 For agentic verification, create a temporary verification key in the Sarge project page and open `https://sargetrack.app/verify/{siteEnvironmentId}?key={temporaryVerificationKey}`. The `siteEnvironmentId` is the `env` query parameter in the pixel URL. The page shows recent events and auto-refreshes while the agent exercises the target app.
 
-No public Sarge MCP server or npm skill package is currently published. Do not run `npx sarge@latest` or install `@sarge/mcp`.
+Sarge provides a read-only, authenticated MCP endpoint at `https://track.sargetrack.app/mcp` using environment-scoped API export bearer tokens (Scale plan). See [MCP connection instructions](/docs/mcp.md). No npm package is required; do not run `npx sarge@latest` or install `@sarge/mcp`.
 
 ---
 

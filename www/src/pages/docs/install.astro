@@ -1,5 +1,5 @@
 ---
-import { ArrowRight, BadgeCheck, Bot, Cable, Eye, Link2, Route, SatelliteDish, ServerCog, ShoppingCart, TerminalSquare, UserRound } from "lucide-react";
+import { ArrowRight, BadgeCheck, Bot, Cable, Eye, Link2, Route, SatelliteDish, ServerCog, ShoppingCart, TerminalSquare, UserRound, Webhook } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import SiteLayout from "@/layouts/SiteLayout.astro";
 
@@ -119,7 +119,7 @@ const troubleshooting = [
 
     <div class="mt-8 grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
       <div class="grid min-w-0 gap-4">
-        <section class="min-w-0 rounded-lg border bg-card p-4 sm:p-5">
+        <section id="hosted-pixel" class="scroll-mt-24 min-w-0 rounded-lg border bg-card p-4 sm:p-5">
           <div class="flex items-center gap-2">
             <TerminalSquare className="size-5 text-primary" />
             <h2 class="text-xl font-semibold">Hosted pixel snippet</h2>
@@ -216,7 +216,7 @@ const troubleshooting = [
           </p>
         </section>
 
-        <section class="min-w-0 rounded-lg border bg-card p-4 sm:p-5">
+        <section id="affiliate-tracking" class="scroll-mt-24 min-w-0 rounded-lg border bg-card p-4 sm:p-5">
           <div class="flex items-center gap-2">
             <Link2 className="size-5 text-primary" />
             <h2 class="text-xl font-semibold">Affiliate tracking and latents</h2>
@@ -234,7 +234,7 @@ const troubleshooting = [
           </p>
         </section>
 
-        <section class="min-w-0 rounded-lg border bg-card p-4 sm:p-5">
+        <section id="server-side-events" class="scroll-mt-24 min-w-0 rounded-lg border bg-card p-4 sm:p-5">
           <div class="flex items-center gap-2">
             <ServerCog className="size-5 text-primary" />
             <h2 class="text-xl font-semibold">Server-side and postback events</h2>
@@ -251,6 +251,25 @@ const troubleshooting = [
             URL-only partner postbacks are useful when an affiliate network can only call a tracking URL. Keep server event secrets out of browser code and rotate postback tokens if a URL is exposed.
           </p>
           <pre class="mt-4 max-w-full overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{postbackUrl}</code></pre>
+        </section>
+
+        <section id="webhooks" class="scroll-mt-24 min-w-0 rounded-lg border bg-card p-4 sm:p-5">
+          <div class="flex items-center gap-2">
+            <Webhook className="size-5 text-primary" />
+            <h2 class="text-xl font-semibold">Webhooks</h2>
+          </div>
+          <p class="mt-2 text-sm leading-6 text-muted-foreground">
+            Webhook destinations belong to the selected project environment. Organization admins on Starter and higher can configure them in Setup.
+          </p>
+          <ol class="mt-4 list-decimal space-y-2 pl-5 text-sm leading-6 text-muted-foreground">
+            <li>Open the project, select the environment, and open the Setup tab.</li>
+            <li>In Webhooks, enter a name and an HTTPS destination URL.</li>
+            <li>Optionally enter event names separated by commas or newlines, such as <code>purchase.completed</code>. Leave filters blank to select all events.</li>
+            <li>Select Create webhook and copy the signing secret into secure storage. It is shown only once.</li>
+          </ol>
+          <p class="mt-4 text-sm leading-6 text-muted-foreground">
+            Outbound event delivery is not implemented yet. Saving a destination stores its configuration; an active status does not confirm delivery. Use the <a class="underline underline-offset-4 hover:text-foreground" href="/docs/api">read-only export API</a> to retrieve events from your backend today.
+          </p>
         </section>
 
         <section class="min-w-0 rounded-lg border bg-card p-4 sm:p-5">

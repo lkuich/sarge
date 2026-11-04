@@ -1036,6 +1036,15 @@ function resolveTrackedSiteDomain(value: string) {
           <span class="font-heading text-base leading-snug font-medium">Install pixel</span>
           <span class="inline-flex items-center gap-2">
             <Badge>{pixelInstallStatus}</Badge>
+            <a
+              class="inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md border bg-background px-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+              href="/docs/install#hosted-pixel"
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Pixel installation docs (opens in a new tab)"
+            >
+              Docs <ExternalLink className="size-3" />
+            </a>
             <ChevronDown className="size-4 text-muted-foreground transition-transform group-open/install:rotate-180" />
           </span>
         </summary>
@@ -1310,6 +1319,9 @@ function resolveTrackedSiteDomain(value: string) {
               <a
                 class="inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md border bg-background px-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
                 href="/docs/install#test-impersonation"
+                target="_blank"
+                rel="noreferrer"
+                aria-label="Test impersonation docs (opens in a new tab)"
                 data-impersonation-docs-link
               >
                 Docs <ExternalLink className="size-3" />
@@ -1388,7 +1400,18 @@ function resolveTrackedSiteDomain(value: string) {
 
         <Card>
           <CardHeader>
-          <CardTitle className="flex items-center gap-2"><KeyRound className="size-4" /> Server-side calls</CardTitle>
+          <div class="flex items-center justify-between gap-3">
+            <CardTitle className="flex items-center gap-2"><KeyRound className="size-4" /> Server-side calls</CardTitle>
+            <a
+              class="inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md border bg-background px-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+              href="/docs/install#server-side-events"
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Server-side calls docs (opens in a new tab)"
+            >
+              Docs <ExternalLink className="size-3" />
+            </a>
+          </div>
         </CardHeader>
         <CardContent className="grid gap-4 text-sm">
           {
@@ -1674,7 +1697,18 @@ function resolveTrackedSiteDomain(value: string) {
     <div class="grid min-w-0 content-start gap-4 lg:col-span-2 lg:grid-cols-2">
       <Card data-affiliate-tracking-card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Link2 className="size-4" /> Affiliate tracking</CardTitle>
+          <div class="flex items-center justify-between gap-3">
+            <CardTitle className="flex items-center gap-2"><Link2 className="size-4" /> Affiliate tracking</CardTitle>
+            <a
+              class="inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md border bg-background px-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+              href="/docs/install#affiliate-tracking"
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Affiliate tracking docs (opens in a new tab)"
+            >
+              Docs <ExternalLink className="size-3" />
+            </a>
+          </div>
         </CardHeader>
         <CardContent className="grid gap-4 text-sm">
           <div class="rounded-md border p-3">
@@ -1716,7 +1750,18 @@ function resolveTrackedSiteDomain(value: string) {
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Webhook className="size-4" /> Webhooks</CardTitle>
+          <div class="flex items-center justify-between gap-3">
+            <CardTitle className="flex items-center gap-2"><Webhook className="size-4" /> Webhooks</CardTitle>
+            <a
+              class="inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md border bg-background px-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+              href="/docs/install#webhooks"
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Webhooks docs (opens in a new tab)"
+            >
+              Docs <ExternalLink className="size-3" />
+            </a>
+          </div>
         </CardHeader>
         <CardContent className="grid gap-4 text-sm">
           {

@@ -208,6 +208,17 @@ https://track.sargetrack.app/v2/postback/{siteEnvironmentId}/{postbackToken}?eve
 
 Keep server event secrets out of browser code. Postback tokens are easier to paste into partner tools, but rotate them if the URL is exposed.
 
+## Webhooks
+
+Webhook destinations belong to the selected project environment. Organization admins on Starter and higher can configure them in Setup.
+
+1. Open the project, select the environment, and open the Setup tab.
+2. In Webhooks, enter a name and an HTTPS destination URL.
+3. Optionally enter event names separated by commas or newlines, such as `purchase.completed`. Leave filters blank to select all events.
+4. Select Create webhook and copy the signing secret into secure storage. It is shown only once.
+
+Outbound event delivery is not implemented yet. Saving a destination stores its configuration; an active status does not confirm delivery. Use the [read-only export API](/docs/api.md) to retrieve events from your backend today.
+
 ## Verify Installation
 
 1. Open the target site in a browser.

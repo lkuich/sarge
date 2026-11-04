@@ -68,7 +68,7 @@ describe("app navigation routes", () => {
 
     expect(overview).toContain("data-overview-metrics");
     expect(overview).toContain("Coverage");
-    expect(overview).toContain("Throughput");
+    expect(overview).toContain("Real events · last 24h");
     expect(overview).toContain("Attention");
     expect(overview).toContain("buildProjectDistribution(account.projects)");
     expect(overview).not.toContain("data-project-distribution");

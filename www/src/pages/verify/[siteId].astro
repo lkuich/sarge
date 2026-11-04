@@ -19,9 +19,11 @@ const formatEventTime = (value: string) =>
     hour: "numeric",
     minute: "2-digit",
     second: "2-digit",
+    timeZone: "UTC",
+    timeZoneName: "short",
   }).format(new Date(value));
 
-const formatFullTime = (value: string) => new Date(value).toLocaleString();
+const formatFullTime = (value: string) => new Date(value).toLocaleString("en-US", { timeZone: "UTC", timeZoneName: "short" });
 const formatEventPayload = (value: Record<string, unknown>) => JSON.stringify(value, null, 2);
 const isWatchdogEvent = (name: string) =>
   name === "meta.pixel.fire" || name === "google.tag.fire" || name === "data_layer.push";
@@ -71,7 +73,7 @@ const isWatchdogEvent = (name: string) =>
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Events shown</CardTitle>
+                <CardTitle className="text-sm font-medium">Latest events shown (up to 30)</CardTitle>
               </CardHeader>
               <CardContent>
                 <p class="text-2xl font-semibold">{stream.events.length}</p>

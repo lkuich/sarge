@@ -77,7 +77,7 @@ describe("SessionFlowExplorer event filters", () => {
   it("defaults event category filters to selected without watchdog events", () => {
     render(<SessionFlowExplorer events={events} />);
 
-    expect(container?.textContent).toContain("3 of 3 users");
+    expect(container?.textContent).toContain("3 loaded users");
     expect(hasButtonNamed("All")).toBe(false);
     expect(buttonNamed("Conversion")?.getAttribute("aria-pressed")).toBe("true");
     expect(buttonNamed("Page views")?.getAttribute("aria-pressed")).toBe("true");
@@ -104,7 +104,7 @@ describe("SessionFlowExplorer event filters", () => {
   it("defaults to real traffic and can switch to impersonation test traffic", () => {
     render(<SessionFlowExplorer events={[...trafficEvents("real-flow"), ...trafficEvents("test-flow", true)]} />);
 
-    expect(container?.textContent).toContain("1 of 1 users");
+    expect(container?.textContent).toContain("1 loaded users");
     expect(container?.textContent).toContain("real-flow");
     expect(container?.textContent).not.toContain("test-flow");
     expect(buttonNamed("Real traffic")?.getAttribute("aria-pressed")).toBe("true");
@@ -114,7 +114,7 @@ describe("SessionFlowExplorer event filters", () => {
       buttonNamed("Test traffic")?.click();
     });
 
-    expect(container?.textContent).toContain("1 of 1 users");
+    expect(container?.textContent).toContain("1 loaded users");
     expect(container?.textContent).toContain("test-flow");
     expect(container?.textContent).not.toContain("real-flow");
     expect(buttonNamed("Real traffic")?.getAttribute("aria-pressed")).toBe("false");
@@ -128,7 +128,7 @@ describe("SessionFlowExplorer event filters", () => {
       buttonNamed("Test traffic")?.click();
     });
 
-    expect(container?.textContent).toContain("1 of 1 users");
+    expect(container?.textContent).toContain("1 loaded users");
     expect(container?.textContent).toContain("test-flow");
     expect(container?.textContent).toContain("2 of 2 events");
     expect(container?.textContent).toContain("1 visible");
@@ -142,7 +142,7 @@ describe("SessionFlowExplorer event filters", () => {
     });
 
     expect(buttonNamed("Conversion")?.getAttribute("aria-pressed")).toBe("false");
-    expect(container?.textContent).toContain("3 of 3 users");
+    expect(container?.textContent).toContain("3 loaded users");
     expect(container?.textContent).toContain("3 visible");
     expect(container?.querySelector('[data-flow-node="event:complete-conversion"]')).toBeNull();
     expect(container?.querySelector('[data-flow-node="event:missing-custom-conversion"]')).toBeNull();
@@ -320,7 +320,7 @@ describe("SessionFlowExplorer event filters", () => {
     render(<SessionFlowExplorer events={events} />);
 
     act(() => {
-      buttonNamed("Export JSON")?.click();
+      buttonNamed("Export loaded JSON")?.click();
     });
 
     const blob = createObjectURL.mock.calls[0]?.[0] as Blob;
@@ -447,7 +447,7 @@ describe("SessionFlowExplorer event filters", () => {
       buttonNamed("Last 24h")?.click();
     });
 
-    expect(container?.textContent).toContain("No matching users in this event sample.");
+    expect(container?.textContent).toContain("No matching users in the loaded events.");
     expect(buttonNamed("Clear dates")).not.toBeUndefined();
   });
 
@@ -588,3 +588,51 @@ function sparseTrafficEvents(sessionId: string, testTraffic = false) {
       : {},
   }));
 }
+
+describe('complete remote flow browsing', () => {
+  it('loads filtered results, keeps exact totals, and appends the next page', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({
+      events: [event('purchase-1', 'purchase.completed', 'buyer-1', 0)],
+      totalEvents: 2, totalUsers: 2, totalSessions: 2, nextCursor: '["2026-06-25T00:00:00Z","purchase-1"]',
+    }) }).mockResolvedValueOnce({ ok: true, json: async () => ({
+      events: [event('purchase-2', 'purchase.completed', 'buyer-2', 1)],
+      totalEvents: 2, totalUsers: 2, totalSessions: 2, nextCursor: null,
+    }) });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      render(<SessionFlowExplorer events={[]} refreshEndpoint="/api/project-events/env_123?limit=80&view=flow" />);
+      await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+      const firstUrl = new URL(fetchMock.mock.calls[0][0], 'https://sarge.test');
+      expect(firstUrl.searchParams.get('traffic')).toBe('real');
+      expect(firstUrl.searchParams.get('categories')).toBe('conversion,page,custom');
+      expect(container?.textContent).toContain('1 loaded of 2 matching events');
+      await act(async () => { buttonNamed('Load more events')?.click(); });
+      expect(container?.textContent).toContain('2 loaded of 2 matching events');
+      expect(container?.textContent).toContain('buyer-1');
+      expect(container?.textContent).toContain('buyer-2');
+      expect(buttonNamed('Load more events')).toBeUndefined();
+      const nextUrl = new URL(fetchMock.mock.calls[1][0], 'https://sarge.test');
+      expect(nextUrl.searchParams.get('endAt')).toBe(firstUrl.searchParams.get('endAt'));
+      expect(nextUrl.searchParams.has('cursor')).toBe(true);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('refetches category filters and reports failures without displaying a complete empty result', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({
+      events: [], totalEvents: 0, totalUsers: 0, totalSessions: 0, nextCursor: null,
+    }) }).mockResolvedValueOnce({ ok: false, json: async () => ({ error: 'Database unavailable' }) });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      render(<SessionFlowExplorer events={[]} refreshEndpoint="/api/project-events/env_123?limit=80&view=flow" />);
+      await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+      act(() => { buttonNamed('Page views')?.click(); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+      const url = new URL(fetchMock.mock.calls[1][0], 'https://sarge.test');
+      expect(url.searchParams.get('categories')).toBe('conversion,custom');
+      expect(container?.querySelector('[role="alert"]')?.textContent).toContain('Database unavailable');
+      expect(container?.textContent).not.toContain('0 loaded of 0 matching events');
+    } finally { vi.useRealTimers(); }
+  });
+});

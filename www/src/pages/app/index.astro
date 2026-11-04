@@ -86,7 +86,7 @@ const projectUsagePrompt = getLimitUsagePrompt({
 });
 const usagePrompts = [eventUsagePrompt, projectUsagePrompt].filter((prompt) => prompt !== null);
 const totalEvents = account.projects.reduce((sum, project) => sum + project.eventCount24h, 0);
-const failedEvents = account.projects.reduce((sum, project) => sum + project.failedEvents24h, 0);
+
 const hasProjects = account.projects.length > 0;
 const hasOwnedProjects = account.ownedProjects.length > 0;
 const hasSharedProjects = account.sharedProjects.length > 0;
@@ -98,9 +98,9 @@ const needsLegalAcceptance = account.workspaceLegalAcceptanceRequired;
 const projectCountLabel = `${account.ownedProjects.length} ${account.ownedProjects.length === 1 ? "project" : "projects"} under ${account.name}`;
 const activeProjects = account.projects.filter((project) => project.status === "active").length;
 const collectingProjects = account.projects.filter((project) => project.eventCount24h > 0).length;
-const attentionItems = account.projects.filter((project) => project.status !== "active").length + failedEvents;
+const attentionItems = account.projects.filter((project) => project.status !== "active").length;
 const coveragePercent = hasProjects ? Math.round((collectingProjects / account.projects.length) * 100) : 0;
-const failureRate = totalEvents > 0 ? Math.round((failedEvents / totalEvents) * 1000) / 10 : 0;
+
 const busiestProject = [...account.projects].sort((left, right) => right.eventCount24h - left.eventCount24h).at(0);
 const projectDistribution = buildProjectDistribution(account.projects);
 const projectActivityScale = Math.max(1, ...account.projects.map((project) => project.eventCount24h));
@@ -340,7 +340,7 @@ function getLegalRequestMetadata(headers: Headers) {
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Throughput</CardTitle>
+              <CardTitle className="text-sm font-medium">Real events · last 24h</CardTitle>
               <Activity className="size-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
@@ -355,7 +355,7 @@ function getLegalRequestMetadata(headers: Headers) {
             </CardHeader>
             <CardContent>
               <p class="text-3xl font-semibold">{attentionItems}</p>
-              <p class="text-xs text-muted-foreground">{failedEvents} failed · {failureRate}% failure rate</p>
+              <p class="text-xs text-muted-foreground">Paused or draft projects · ingestion failure rate is not measured</p>
             </CardContent>
           </Card>
           <Card data-plan-usage-panel>

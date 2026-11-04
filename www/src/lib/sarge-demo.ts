@@ -1,3 +1,4 @@
+import { buildFlowEventQuery, realTrafficEventSql, type FlowEventQuery } from './flow-event-query';
 import { neon } from '@neondatabase/serverless';
 import {
   analyzeEvents,
@@ -320,9 +321,9 @@ const postbackTokenLimitSqlCase = buildPlanLimitSqlCase('postbackTokens', 'w."pl
 const eventRetentionFilterSql = buildPlanRetentionFilterSql('e."occurredAt"', 'w."planId"');
 const eventMixRetentionFilterSql = buildPlanRetentionFilterSql('e_mix."occurredAt"', 'w."planId"');
 const eventTrendRetentionFilterSql = buildPlanRetentionFilterSql('e_trend."occurredAt"', 'w."planId"');
-const nonWatchdogEventFilterSql = `e.name NOT IN ('meta.pixel.fire', 'google.tag.fire', 'data_layer.push')`;
-const nonWatchdogEventMixFilterSql = `e_mix.name NOT IN ('meta.pixel.fire', 'google.tag.fire', 'data_layer.push')`;
-const nonWatchdogEventTrendFilterSql = `e_trend.name NOT IN ('meta.pixel.fire', 'google.tag.fire', 'data_layer.push')`;
+const nonWatchdogEventFilterSql = realTrafficEventSql('e');
+const nonWatchdogEventMixFilterSql = realTrafficEventSql('e_mix');
+const nonWatchdogEventTrendFilterSql = realTrafficEventSql('e_trend');
 const configuredHostSql = (siteAlias: string) => `regexp_replace(lower(${siteAlias}."customDomain"), '^www\\.', '')`;
 const capturedEventHostSql = (eventAlias: string) => (
   `NULLIF(regexp_replace(regexp_replace(coalesce(substring(lower(${eventAlias}.url) from '^[a-z][a-z0-9+.-]*://([^/?#]+)'), substring(lower(${eventAlias}.referrer) from '^[a-z][a-z0-9+.-]*://([^/?#]+)')), '^www\\.', ''), ':\\d+$', ''), '')`
@@ -555,7 +556,7 @@ export const getViewerAccount = async (
   const viewerEmails = normalizeEmails(options.viewerEmails ?? []);
 
   if (!databaseUrl) {
-    return getFallbackAccount(role, options.members);
+    throw new Error('Live traffic data is unavailable. Please retry.');
   }
 
   try {
@@ -655,12 +656,12 @@ export const getViewerAccount = async (
             WHERE e_mix."siteEnvironmentId" = se.id
               AND e_mix."occurredAt" >= NOW() - INTERVAL '48 hours'
               AND ${sql.unsafe(configuredHostEventMixSql('e_mix', 's'))}
+              AND e_mix."occurredAt" <= NOW() AT TIME ZONE 'UTC'
               AND ${sql.unsafe(nonWatchdogEventMixFilterSql)}
               AND ${sql.unsafe(eventMixRetentionFilterSql)}
             GROUP BY e_mix.name
             HAVING COUNT(e_mix.id) FILTER (WHERE e_mix."occurredAt" >= NOW() - INTERVAL '24 hours') > 0
             ORDER BY event_count DESC, event_name ASC
-            LIMIT 4
           ) event_mix
         ), '[]'::jsonb) AS "eventMix24h",
         COALESCE((
@@ -677,14 +678,15 @@ export const getViewerAccount = async (
               day_bucket,
               COUNT(e_trend.id)::int AS event_count
             FROM generate_series(
-              date_trunc('day', NOW()) - INTERVAL '6 days',
-              date_trunc('day', NOW()),
+              date_trunc('day', NOW() AT TIME ZONE 'UTC') - INTERVAL '6 days',
+              date_trunc('day', NOW() AT TIME ZONE 'UTC'),
               INTERVAL '1 day'
             ) AS trend_days(day_bucket)
             LEFT JOIN "Event" e_trend ON e_trend."siteEnvironmentId" = se.id
               AND e_trend."occurredAt" >= day_bucket
               AND e_trend."occurredAt" < day_bucket + INTERVAL '1 day'
               AND ${sql.unsafe(configuredHostEventTrendSql('e_trend', 's'))}
+              AND e_trend."occurredAt" <= NOW() AT TIME ZONE 'UTC'
               AND ${sql.unsafe(nonWatchdogEventTrendFilterSql)}
               AND ${sql.unsafe(eventTrendRetentionFilterSql)}
             GROUP BY day_bucket
@@ -695,6 +697,7 @@ export const getViewerAccount = async (
       JOIN "Site" s ON s.id = se."siteId"
       JOIN "Workspace" w ON w.id = s."workspaceId"
       LEFT JOIN "Event" e ON e."siteEnvironmentId" = se.id
+        AND e."occurredAt" <= NOW() AT TIME ZONE 'UTC'
         AND ${sql.unsafe(eventRetentionFilterSql)}
         AND ${sql.unsafe(configuredHostEventSql('e', 's'))}
       WHERE s.id = ANY(${allSiteIds})
@@ -703,7 +706,7 @@ export const getViewerAccount = async (
     `) as SiteEnvironmentSummaryRow[]) : [];
 
     const events = allSiteIds.length > 0 ? ((await sql`
-      SELECT
+      WITH ranked_events AS (SELECT
         e.id,
         e."siteId",
         e."siteEnvironmentId",
@@ -717,15 +720,16 @@ export const getViewerAccount = async (
         e.ref,
         e.affiliate,
         e.title,
-        e.properties
+        e.properties,
+        row_number() OVER (PARTITION BY e."siteEnvironmentId" ORDER BY e."occurredAt" DESC, e.id DESC) AS event_rank
       FROM "Event" e
       JOIN "Site" s ON s.id = e."siteId"
       JOIN "Workspace" w ON w.id = s."workspaceId"
       WHERE s.id = ANY(${allSiteIds})
         AND ${sql.unsafe(eventRetentionFilterSql)}
         AND ${sql.unsafe(configuredHostEventSql('e', 's'))}
-      ORDER BY e."occurredAt" DESC
-      LIMIT 200
+      ) SELECT * FROM ranked_events WHERE event_rank <= 80
+      ORDER BY "occurredAt" DESC, id DESC
     `) as EventRow[]) : [];
     const diagnosticRuns = allSiteIds.length > 0 ? ((await sql`
       SELECT DISTINCT ON (dr."siteEnvironmentId")
@@ -905,7 +909,7 @@ export const getViewerAccount = async (
     };
   } catch (error) {
     console.error('Unable to load live Sarge account data', error);
-    return getFallbackAccount(role, options.members);
+    throw new Error('Live traffic data is unavailable. Please retry.');
   }
 };
 
@@ -987,87 +991,32 @@ export const getProjectEnvironmentEvents = async (
     const limit = Math.min(Math.max(query.limit, 1), 80);
     const startAt = normalizeEventBoundary(query.startAt);
     const endAt = normalizeEventBoundary(query.endAt);
-    const hasTimeWindow = Boolean(startAt || endAt);
-
-    if (!hasTimeWindow) {
-      const events = (await sql`
-        SELECT
-          e.id,
-          e."siteId",
-          e."siteEnvironmentId",
-          e.name,
-          e."occurredAt",
-          e."receivedAt",
-          e."sessionId",
-          e."userId",
-          e.url,
-          e.referrer,
-          e.ref,
-          e.affiliate,
-          e.title,
-          e.properties
-        FROM "Event" e
-        JOIN "Site" s ON s.id = e."siteId"
-        JOIN "Workspace" w ON w.id = s."workspaceId"
-        WHERE e."siteEnvironmentId" = ${environmentId}
-          AND ${sql.unsafe(eventRetentionFilterSql)}
-          AND ${sql.unsafe(configuredHostEventSql('e', 's'))}
-        ORDER BY e."occurredAt" DESC
-        LIMIT ${limit}
-      `) as EventRow[];
-
-      return events.map(mapEvent);
-    }
 
     const events = (await sql`
-      WITH matching_events AS (
-        SELECT
-          e.id,
-          e."siteId",
-          e."siteEnvironmentId",
-          e.name,
-          e."occurredAt",
-          e."receivedAt",
-          e."sessionId",
-          e."userId",
-          e.url,
-          e.referrer,
-          e.ref,
-          e.affiliate,
-          e.title,
-          e.properties,
-          NTILE(${limit}) OVER (ORDER BY e."occurredAt" ASC) AS sample_bucket
-        FROM "Event" e
-        JOIN "Site" s ON s.id = e."siteId"
-        JOIN "Workspace" w ON w.id = s."workspaceId"
-        WHERE e."siteEnvironmentId" = ${environmentId}
-          AND ${sql.unsafe(eventRetentionFilterSql)}
-          AND ${sql.unsafe(configuredHostEventSql('e', 's'))}
-          AND (${startAt}::timestamptz IS NULL OR e."occurredAt" >= ${startAt}::timestamptz)
-          AND (${endAt}::timestamptz IS NULL OR e."occurredAt" <= ${endAt}::timestamptz)
-      ),
-      sampled_events AS (
-        SELECT DISTINCT ON (sample_bucket)
-          id,
-          "siteId",
-          "siteEnvironmentId",
-          name,
-          "occurredAt",
-          "receivedAt",
-          "sessionId",
-          "userId",
-          url,
-          referrer,
-          ref,
-          affiliate,
-          title,
-          properties
-        FROM matching_events
-        ORDER BY sample_bucket ASC, "occurredAt" DESC
-      )
-      SELECT *
-      FROM sampled_events
-      ORDER BY "occurredAt" DESC
+      SELECT
+        e.id,
+        e."siteId",
+        e."siteEnvironmentId",
+        e.name,
+        e."occurredAt",
+        e."receivedAt",
+        e."sessionId",
+        e."userId",
+        e.url,
+        e.referrer,
+        e.ref,
+        e.affiliate,
+        e.title,
+        e.properties
+      FROM "Event" e
+      JOIN "Site" s ON s.id = e."siteId"
+      JOIN "Workspace" w ON w.id = s."workspaceId"
+      WHERE e."siteEnvironmentId" = ${environmentId}
+        AND ${sql.unsafe(eventRetentionFilterSql)}
+        AND ${sql.unsafe(configuredHostEventSql('e', 's'))}
+        AND (${startAt}::timestamptz IS NULL OR e."occurredAt" >= ${startAt}::timestamptz)
+        AND (${endAt}::timestamptz IS NULL OR e."occurredAt" <= ${endAt}::timestamptz)
+      ORDER BY e."occurredAt" DESC, e.id DESC
       LIMIT ${limit}
     `) as EventRow[];
 
@@ -1076,6 +1025,21 @@ export const getProjectEnvironmentEvents = async (
     console.error('Unable to load project environment events', error);
     return null;
   }
+};
+
+export const getProjectEnvironmentEventPage = async (databaseUrl: string | undefined, environmentId: string, query: FlowEventQuery) => {
+  if (!databaseUrl) throw new Error('Database unavailable');
+  const compiled = buildFlowEventQuery(query, environmentId, `${eventRetentionFilterSql} AND ${configuredHostEventSql('e', 's')}`);
+  const [result] = await neon(databaseUrl).query(compiled.sql, compiled.params);
+  const rows = result.events as EventRow[];
+  const events = rows.slice(0, compiled.limit).map(row => mapEvent({
+    ...row, occurredAt: new Date(row.occurredAt), receivedAt: new Date(row.receivedAt),
+  }));
+  const last = events.at(-1);
+  return {
+    events, totalEvents: result.totalEvents, totalUsers: result.totalUsers, totalSessions: result.totalSessions,
+    nextCursor: rows.length > compiled.limit && last ? JSON.stringify([last.occurredAt, last.id]) : null,
+  };
 };
 
 export const markProjectTrafficAsTest = async (
@@ -2457,50 +2421,6 @@ export const createEnvironmentCredential = async (
   }
 };
 
-const getFallbackAccount = (role: AccountRole, accountMembers: AccountMember[] = []): SargeAccount => {
-  const ownedProjects = [
-    buildFallbackProject({
-      id: 'site_demo',
-      name: 'Demo Site',
-      customDomain: 'sarge.demo-site.example.com',
-      status: 'active',
-      eventCount24h: 184,
-      failedEvents24h: 2,
-      lastEventAt: '2 minutes ago',
-    }),
-    buildFallbackProject({
-      id: 'site_checkout',
-      name: 'Checkout Lab',
-      customDomain: 'sarge.checkout-lab.example.com',
-      status: 'draft',
-      eventCount24h: 0,
-      failedEvents24h: 0,
-      lastEventAt: 'No events yet',
-    }),
-  ];
-
-  return {
-    id: 'acct_demo',
-    name: demoAccountName,
-    slug: 'demo',
-    role,
-    planId: 'free',
-    plan: getPlanDefinition('free'),
-    billingStatus: 'active',
-    currentPeriodEventCount: 184,
-    termsAcceptedAt: new Date('2026-06-25T00:00:00.000Z'),
-    termsAcceptedVersion: CURRENT_LEGAL_VERSION,
-    privacyAcceptedVersion: CURRENT_PRIVACY_VERSION,
-    workspaceLegalAcceptanceRequired: false,
-    privacySettings: defaultSargePrivacySettings,
-    workspaceSetupComplete: true,
-    ownedProjects,
-    sharedProjects: [],
-    projects: ownedProjects,
-    members: accountMembers,
-  };
-};
-
 const getSetupAccount = (role: AccountRole): SargeAccount => ({
   id: 'setup',
   name: 'Set up workspace',
@@ -2554,8 +2474,8 @@ const normalizeEventMix = (value: unknown, totalEvents: number): SargeEventMixIt
     .filter((item): item is SargeEventMixItem => Boolean(item));
 };
 
-const normalizeTrafficTrend = (value: unknown, fallbackEventCount24h = 0): SargeTrafficTrendPoint[] => {
-  const fallback = buildFallbackTrafficTrend(fallbackEventCount24h);
+const normalizeTrafficTrend = (value: unknown): SargeTrafficTrendPoint[] => {
+  const fallback: SargeTrafficTrendPoint[] = [];
   let parsedValue = value;
   if (typeof value === 'string') {
     try {
@@ -2586,20 +2506,6 @@ const normalizeTrafficTrend = (value: unknown, fallbackEventCount24h = 0): Sarge
     .slice(-7);
 
   return normalized.length === 7 ? normalized : fallback;
-};
-
-const buildFallbackTrafficTrend = (eventCount24h: number): SargeTrafficTrendPoint[] => {
-  const today = new Date();
-  return Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(today);
-    date.setDate(today.getDate() - (6 - index));
-
-    return {
-      date: date.toISOString().slice(0, 10),
-      label: new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(date),
-      value: index === 6 ? Math.max(0, eventCount24h) : 0,
-    };
-  });
 };
 
 const mapEvent = (event: EventRow): SargeEvent => {
@@ -2869,75 +2775,13 @@ const mapProjectEnvironment = (
   lastEventAt: formatRelativeTime(environment.lastOccurredAt),
   pixelVersion: '0.1.0',
   eventMix24h: normalizeEventMix(environment.eventMix24h, environment.eventCount24h ?? 0),
-  trafficTrend7d: normalizeTrafficTrend(environment.trafficTrend7d, environment.eventCount24h ?? 0),
+  trafficTrend7d: normalizeTrafficTrend(environment.trafficTrend7d),
   recentEvents: data.recentEvents,
   diagnostics: environment.environment === 'production' ? data.persistedDiagnostics ?? analyzeProjectEvents(data.recentEvents) : [],
   diagnosticSummary: environment.environment === 'production' ? data.latestRun?.aiSummary ?? null : null,
   diagnosticRunAt: environment.environment === 'production' ? data.latestRun?.createdAt.toISOString() ?? null : null,
   webhookEndpoints: data.webhookEndpoints,
 });
-
-const buildFallbackProject = (input: {
-  id: string;
-  name: string;
-  customDomain: string;
-  status: ProjectStatus;
-  eventCount24h: number;
-  failedEvents24h: number;
-  lastEventAt: string;
-}): SargeProject => {
-  const environments = projectEnvironmentOptions.map((environment) => {
-    const id = `${input.id}_${environment}`;
-
-    return {
-      id,
-      siteId: input.id,
-      environment,
-      endpointHost:
-        environment === 'production'
-          ? `${normalizeSlug(input.id)}.sargetrack.app`
-          : `${normalizeSlug(input.id)}-${environment}.sargetrack.app`,
-      pixelUrl: buildPixelUrl(id),
-      endpointHealthUrl: buildHealthUrl(),
-      status: input.status,
-      attributionTtlDays: 28,
-      serverEventSecretConfigured: false,
-      postbackTokenConfigured: false,
-      apiReadTokenConfigured: false,
-      eventCount24h: environment === 'production' ? input.eventCount24h : 0,
-      previousEventCount24h: 0,
-      sessionCount24h: 0,
-      previousSessionCount24h: 0,
-      userCount24h: 0,
-      previousUserCount24h: 0,
-      failedEvents24h: environment === 'production' ? input.failedEvents24h : 0,
-      lastEventAt: environment === 'production' ? input.lastEventAt : 'No events yet',
-      pixelVersion: '0.1.0',
-      eventMix24h: [],
-      trafficTrend7d: buildFallbackTrafficTrend(environment === 'production' ? input.eventCount24h : 0),
-      recentEvents: [],
-      diagnostics: [],
-      diagnosticSummary: null,
-      diagnosticRunAt: null,
-      webhookEndpoints: [],
-    } satisfies SargeProjectEnvironment;
-  });
-  const productionEnvironment = environments.find((environment) => environment.environment === 'production') ?? environments[0];
-
-  return {
-    ...productionEnvironment,
-    name: input.name,
-    siteId: input.id,
-    customDomain: input.customDomain,
-    ownership: "owned",
-    shares: [],
-    eventCount24h: input.eventCount24h,
-    failedEvents24h: input.failedEvents24h,
-    lastEventAt: input.lastEventAt,
-    environments,
-    privacySettings: defaultSargePrivacySettings,
-  };
-};
 
 const formatRelativeTime = (date: Date | null) => {
   if (!date) return 'No events yet';

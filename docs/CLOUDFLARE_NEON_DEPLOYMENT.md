@@ -166,3 +166,19 @@ GET  https://acme.sargetrack.app/v2/e
 - Custom customer domains are not implemented yet.
 - Cloudflare Hyperdrive is documented as a future Neon connectivity optimization, not enabled yet.
 - The Worker expects the hosted schema shape described in `docs/HOSTED_SHARED_TECHNICAL_SPEC.md`.
+
+## Traffic reporting verification (2026-10-27)
+
+Portal traffic reporting was deployed to `sarge-www` at `sargetrack.app` and
+`www.sargetrack.app`, version `3b5a785b-e5a1-46f2-a340-4f400a795fb5`, using the
+framework-generated `www/dist/server/wrangler.json` with `--keep-vars`. No
+migration or ingestion-Worker deployment was needed.
+
+Validation: 151 portal tests passed, Astro production build and Wrangler dry run
+passed, and live read-only queries reconciled event mix with the 24-hour total.
+For the investigated three-day interval, all 9 conversion events (including 3
+purchases) were returned without sampling. Timestamp/ID pagination returned each
+event once. Authenticated production-browser checks confirmed conversions and
+loading the second page; unauthenticated requests still return HTTP 401.
+The standalone TypeScript check reports the same 21 errors as the unchanged HEAD
+baseline (Clerk appearance, Neon generic types, and a notification test).

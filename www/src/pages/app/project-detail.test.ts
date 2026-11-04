@@ -133,10 +133,10 @@ describe("project detail install panel", () => {
     expect(projectDetail).toContain("Project pulse");
     expect(projectDetail).toContain("Event mix");
     expect(projectDetail).toContain("Last 24h vs previous 24h");
-    expect(projectDetail).toContain("Sessions");
-    expect(projectDetail).toContain("Users");
+    expect(projectDetail).toContain("Identified sessions");
+    expect(projectDetail).toContain("Identified users");
     expect(projectDetail).toContain("Weekly traffic");
-    expect(projectDetail).toContain("Events received by day");
+    expect(projectDetail).toContain("Real events by UTC day");
     expect(projectDetail).toContain("Events received");
     expect(projectDetail).toContain("eventVolumeDelta");
     expect(projectDetail).toContain("yAxisLabels");
@@ -165,9 +165,9 @@ describe("project detail install panel", () => {
   it("excludes watchdog events from project pulse metrics", () => {
     const demoData = readSource("../../lib/sarge-demo.ts");
 
-    expect(demoData).toContain("const nonWatchdogEventFilterSql = `e.name NOT IN ('meta.pixel.fire', 'google.tag.fire', 'data_layer.push')`;");
-    expect(demoData).toContain("const nonWatchdogEventMixFilterSql = `e_mix.name NOT IN ('meta.pixel.fire', 'google.tag.fire', 'data_layer.push')`;");
-    expect(demoData).toContain("const nonWatchdogEventTrendFilterSql = `e_trend.name NOT IN ('meta.pixel.fire', 'google.tag.fire', 'data_layer.push')`;");
+    expect(demoData).toContain("const nonWatchdogEventFilterSql = realTrafficEventSql('e');");
+    expect(demoData).toContain("const nonWatchdogEventMixFilterSql = realTrafficEventSql('e_mix');");
+    expect(demoData).toContain("const nonWatchdogEventTrendFilterSql = realTrafficEventSql('e_trend');");
     expect(demoData).toContain('FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL \'24 hours\' AND ${sql.unsafe(nonWatchdogEventFilterSql)})::int AS "eventCount24h"');
     expect(demoData).toContain('COUNT(DISTINCT NULLIF(e."sessionId", \'\')) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL \'24 hours\' AND ${sql.unsafe(nonWatchdogEventFilterSql)})::int AS "sessionCount24h"');
     expect(demoData).toContain("AND ${sql.unsafe(nonWatchdogEventMixFilterSql)}");
@@ -178,7 +178,7 @@ describe("project detail install panel", () => {
     const projectDetail = readSource("./projects/[projectId].astro");
 
     expect(projectDetail).toContain("const flowEvents = selectedEnvironment.recentEvents.slice(0, 80);");
-    expect(projectDetail).toContain("const flowEventsEndpoint = `${debugStreamEndpoint}?limit=80`;");
+    expect(projectDetail).toContain("const flowEventsEndpoint = `${debugStreamEndpoint}?limit=80&view=flow`;");
     expect(projectDetail).toContain("const flowMarkTestEndpoint = `${debugStreamEndpoint}/mark-test`;");
     expect(projectDetail).toContain("<SessionFlowExplorer events={flowEvents} refreshEndpoint={flowEventsEndpoint} markTestEndpoint={flowMarkTestEndpoint} client:only=\"react\" />");
     expect(projectDetail).not.toContain("<SessionFlowExplorer events={flowEvents} client:visible />");
@@ -455,7 +455,7 @@ describe("project detail install panel", () => {
     expect(eventStreamApi).toContain("Astro.locals.auth()");
     expect(eventStreamApi).toContain('headers: { "Cache-Control": "no-store" }');
     expect(eventStreamApi).toContain('Astro.url.searchParams.get("limit")');
-    expect(eventStreamApi).toContain("selectedEnvironment.recentEvents.slice(0, limit)");
+    expect(eventStreamApi).not.toContain("selectedEnvironment.recentEvents.slice(0, limit)");
   });
 
   it("shows affiliate tracking and latent conversion windows in the project view", () => {

@@ -428,7 +428,7 @@ const createdApiReadCredentialCurl = createdApiReadCredentialToken
 
 const recentEvents = selectedEnvironment.recentEvents.slice(0, 12);
 const flowEvents = selectedEnvironment.recentEvents.slice(0, 80);
-const flowEventsEndpoint = `${debugStreamEndpoint}?limit=80`;
+const flowEventsEndpoint = `${debugStreamEndpoint}?limit=80&view=flow`;
 const flowMarkTestEndpoint = `${debugStreamEndpoint}/mark-test`;
 const webhookEndpoints = selectedEnvironment.webhookEndpoints;
 const projectTesterUserId = buildProjectTesterUserId(selectedEnvironment.id, userId);
@@ -444,7 +444,7 @@ const isPixelActive = pixelInstallStatus === "active";
 const diagnosticDismissalStorageKey = `sarge:dismissed-diagnostics:${project.siteId}:${selectedEnvironment.id}`;
 const criticalFindings = diagnostics.filter((finding) => finding.severity === "critical").length;
 const warningFindings = diagnostics.filter((finding) => finding.severity === "warning").length;
-const diagnosticRunLabel = selectedEnvironment.diagnosticRunAt ? new Date(selectedEnvironment.diagnosticRunAt).toLocaleString() : "Pending first scheduled run";
+const diagnosticRunLabel = selectedEnvironment.diagnosticRunAt ? new Date(selectedEnvironment.diagnosticRunAt).toLocaleString("en-US", { timeZone: "UTC", timeZoneName: "short" }) : "Pending first scheduled run";
 const eventTypeMix = selectedEnvironment.eventMix24h;
 const eventVolumeDelta = buildMetricDelta(selectedEnvironment.eventCount24h, selectedEnvironment.previousEventCount24h);
 const recentSessionDelta = buildMetricDelta(selectedEnvironment.sessionCount24h, selectedEnvironment.previousSessionCount24h);
@@ -535,6 +535,8 @@ const formatEventTime = (value: string) =>
     hour: "numeric",
     minute: "2-digit",
     second: "2-digit",
+    timeZone: "UTC",
+    timeZoneName: "short",
   }).format(new Date(value));
 
 const formatEventPayload = (value: Record<string, unknown>) => JSON.stringify(value, null, 2);
@@ -771,7 +773,7 @@ function resolveTrackedSiteDomain(value: string) {
               </span>
               <p class="text-2xl font-semibold leading-none">{formatCount(selectedEnvironment.eventCount24h)}</p>
             </div>
-            <p class="mt-1 text-xs text-muted-foreground">Events received</p>
+            <p class="mt-1 text-xs text-muted-foreground">Real events · last 24h · excludes watchdogs</p>
             <p class="mt-1 text-xs text-muted-foreground">{selectedEnvironment.lastEventAt}</p>
           </div>
         </div>
@@ -781,10 +783,10 @@ function resolveTrackedSiteDomain(value: string) {
           <div class="rounded-md border bg-muted/20 p-4" data-project-traffic-trend>
             <div class="flex flex-wrap items-start justify-between gap-3">
               <div class="min-w-0">
-                <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Weekly traffic</p>
-                <p class="mt-1 text-sm text-muted-foreground">Events received by day</p>
+                <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Weekly traffic · real events (UTC)</p>
+                <p class="mt-1 text-sm text-muted-foreground">Real events by UTC day · excludes watchdogs</p>
               </div>
-              <p class="text-xs text-muted-foreground">Peak {formatCount(weeklyTrafficChart.maxValue)}</p>
+              <p class="text-xs text-muted-foreground">{selectedEnvironment.trafficTrend7d.length ? `Peak ${formatCount(Math.max(0, ...selectedEnvironment.trafficTrend7d.map(point => point.value)))}` : "Traffic trend unavailable"}</p>
             </div>
             <div class="mt-4">
               <svg
@@ -907,7 +909,7 @@ function resolveTrackedSiteDomain(value: string) {
           <div class="grid gap-3 text-sm">
             <div class="rounded-md border p-3">
               <div class="flex items-start justify-between gap-2">
-                <p class="text-xs text-muted-foreground">Sessions</p>
+                <p class="text-xs text-muted-foreground">Identified sessions · 24h</p>
                 <span
                   class:list={[
                     "inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-medium",
@@ -922,7 +924,7 @@ function resolveTrackedSiteDomain(value: string) {
             </div>
             <div class="rounded-md border p-3">
               <div class="flex items-start justify-between gap-2">
-                <p class="text-xs text-muted-foreground">Users</p>
+                <p class="text-xs text-muted-foreground">Identified users · 24h</p>
                 <span
                   class:list={[
                     "inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-medium",
@@ -1131,7 +1133,7 @@ function resolveTrackedSiteDomain(value: string) {
                 <Bot className="size-4" /> AI review
               </CardTitle>
               <p class="mt-1 text-sm text-muted-foreground">
-                Deterministic checks over recent events, formatted for agentic code fixes.
+                Deterministic checks over a bounded recent-event sample, formatted for agentic code fixes.
               </p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
@@ -1311,7 +1313,7 @@ function resolveTrackedSiteDomain(value: string) {
                         type="button"
                         data-recent-impersonation-user
                         data-user-id={recentUser.userId}
-                        title={`${recentUser.userId} · ${recentUser.eventCount} events`}
+                        title={`${recentUser.userId} · ${recentUser.eventCount} events in the loaded recent list`}
                       >
                         <span class="truncate">{recentUser.userId}</span>
                         <Badge variant="outline">{recentUser.eventCount}</Badge>
@@ -1530,7 +1532,7 @@ function resolveTrackedSiteDomain(value: string) {
       <Card data-live-debug-stream data-events-endpoint={debugStreamEndpoint}>
         <CardHeader>
           <div class="flex flex-wrap items-center justify-between gap-3">
-            <CardTitle>Debug stream</CardTitle>
+            <CardTitle>Debug stream · latest 12 events</CardTitle>
             <span class="inline-flex items-center gap-1.5 text-xs text-muted-foreground" data-debug-stream-status>
               <Radio className="size-3.5 text-primary" /> Live
             </span>
@@ -1595,11 +1597,11 @@ function resolveTrackedSiteDomain(value: string) {
                         </div>
                         <div>
                           <p class="text-xs text-muted-foreground">Occurred</p>
-                          <p class="mt-1">{new Date(event.occurredAt).toLocaleString()}</p>
+                          <p class="mt-1">{new Date(event.occurredAt).toLocaleString("en-US", { timeZone: "UTC", timeZoneName: "short" })}</p>
                         </div>
                         <div>
                           <p class="text-xs text-muted-foreground">Received</p>
-                          <p class="mt-1">{new Date(event.receivedAt).toLocaleString()}</p>
+                          <p class="mt-1">{new Date(event.receivedAt).toLocaleString("en-US", { timeZone: "UTC", timeZoneName: "short" })}</p>
                         </div>
                       </div>
                       <div>
@@ -1615,7 +1617,7 @@ function resolveTrackedSiteDomain(value: string) {
               ))
             ) : (
               <div class="rounded-md border border-dashed p-6 text-sm text-muted-foreground">
-                No live events yet. Open the sample shop and click around to populate this stream.
+                No recent events are available for this environment.
               </div>
             )
           }
@@ -2102,6 +2104,8 @@ function resolveTrackedSiteDomain(value: string) {
         hour: "numeric",
         minute: "2-digit",
         second: "2-digit",
+    timeZone: "UTC",
+    timeZoneName: "short",
       }).format(new Date(value));
     const escapeDebugHtml = (value: unknown) =>
       String(value ?? "")
@@ -2113,7 +2117,7 @@ function resolveTrackedSiteDomain(value: string) {
     const renderDebugEvents = (events: LiveDebugEvent[]) => {
       if (events.length === 0) {
         return `<div class="rounded-md border border-dashed p-6 text-sm text-muted-foreground">
-          No live events yet. Open the sample shop and click around to populate this stream.
+          No recent events are available for this environment.
         </div>`;
       }
 
@@ -2172,11 +2176,11 @@ function resolveTrackedSiteDomain(value: string) {
                   </div>
                   <div>
                     <p class="text-xs text-muted-foreground">Occurred</p>
-                    <p class="mt-1">${escapeDebugHtml(new Date(event.occurredAt).toLocaleString())}</p>
+                    <p class="mt-1">${escapeDebugHtml(new Date(event.occurredAt).toLocaleString("en-US", { timeZone: "UTC", timeZoneName: "short" }))}</p>
                   </div>
                   <div>
                     <p class="text-xs text-muted-foreground">Received</p>
-                    <p class="mt-1">${escapeDebugHtml(new Date(event.receivedAt).toLocaleString())}</p>
+                    <p class="mt-1">${escapeDebugHtml(new Date(event.receivedAt).toLocaleString("en-US", { timeZone: "UTC", timeZoneName: "short" }))}</p>
                   </div>
                 </div>
                 <div>

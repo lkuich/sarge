@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   BackgroundVariant,
@@ -66,7 +66,13 @@ const pageRowGap = 154;
 const groupGap = 96;
 
 export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint, onRefresh }: SessionFlowExplorerProps) {
-  const [liveEvents, setLiveEvents] = useState(events);
+  const remote = Boolean(refreshEndpoint?.includes("view=flow"));
+  const [liveEvents, setLiveEvents] = useState(remote ? [] : events);
+  const [pageInfo, setPageInfo] = useState<{ totalEvents: number; totalUsers: number; totalSessions: number; nextCursor: string | null } | null>(null);
+  const [loadError, setLoadError] = useState("");
+  const requestId = useRef(0);
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  const [snapshotEnd, setSnapshotEnd] = useState(() => new Date().toISOString());
   const [mode, setMode] = useState<FlowMode>("user");
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -81,21 +87,21 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
     eventFilters.map((filter) => filter.value).filter((filter) => filter !== "watchdog"),
   );
   const [trafficFilter, setTrafficFilter] = useState<TrafficFilter>("real");
-  const [startAt, setStartAt] = useState(() => getDefaultTimeRange(events).startAt);
+  const [startAt, setStartAt] = useState(() => remote ? getPresetTimeRange("1h", new Date().toISOString()).startAt : getDefaultTimeRange(events).startAt);
   const [endAt, setEndAt] = useState(() => getDefaultTimeRange(events).endAt);
   const [hasChosenTimeWindow, setHasChosenTimeWindow] = useState(false);
 
   const canRefresh = Boolean(refreshEndpoint || onRefresh);
-  const trafficFilteredEvents = useMemo(() => filterEventsByTraffic(liveEvents, trafficFilter), [liveEvents, trafficFilter]);
+  const trafficFilteredEvents = useMemo(() => remote ? liveEvents : filterEventsByTraffic(liveEvents, trafficFilter), [liveEvents, trafficFilter]);
   const sampleBounds = useMemo(() => getSampleBounds(trafficFilteredEvents), [trafficFilteredEvents]);
   const defaultTimeRange = useMemo(() => getPresetTimeRange("1h", sampleBounds.latest), [sampleBounds.latest]);
   const timeFilteredEvents = useMemo(
-    () => filterEventsByTime(trafficFilteredEvents, startAt, endAt),
+    () => remote ? trafficFilteredEvents : filterEventsByTime(trafficFilteredEvents, startAt, endAt),
     [endAt, startAt, trafficFilteredEvents],
   );
   const groups = useMemo(() => buildGroups(timeFilteredEvents, mode), [mode, timeFilteredEvents]);
   const filteredGroups = useMemo(
-    () => filterGroups(groups, query, selectedEventFilters, { ref: sargeRefFilter, affiliate: sargeAffFilter }),
+    () => remote ? groups : filterGroups(groups, query, selectedEventFilters, { ref: sargeRefFilter, affiliate: sargeAffFilter }),
     [groups, query, selectedEventFilters, sargeAffFilter, sargeRefFilter],
   );
   const visibleGroups = useMemo(() => {
@@ -116,7 +122,7 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
 
     downloadJsonFile(
       getFlowExportFilename(mode, generatedAt),
-      buildFlowExportPayload({
+      { ...buildFlowExportPayload({
         generatedAt,
         mode,
         query,
@@ -136,10 +142,15 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
         visibleGroups,
         nodes,
         edges,
-      }),
+      }), pagination: { ...pageInfo, complete: remote ? Boolean(pageInfo && !pageInfo.nextCursor && !loadError && !isRefreshing && !selectedGroupId) : false } },
     );
   };
   const refreshFlowData = async (timeWindow?: { startAt: string; endAt: string }) => {
+    if (remote) {
+      setSnapshotEnd(new Date().toISOString());
+      setRefreshVersion(value => value + 1);
+      return;
+    }
     if (!canRefresh || isRefreshing) return;
 
     setIsRefreshing(true);
@@ -163,6 +174,47 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
       setIsRefreshing(false);
     }
   };
+  const remoteKey = JSON.stringify([startAt, endAt, trafficFilter, selectedEventFilters, query, sargeRefFilter, sargeAffFilter, snapshotEnd, refreshVersion]);
+  const loadRemotePage = async (cursor?: string, signal?: AbortSignal) => {
+    const id = ++requestId.current;
+    setIsRefreshing(true);
+    setLoadError("");
+    const url = new URL(buildRefreshEndpoint(refreshEndpoint!, { startAt, endAt }), window.location.origin);
+    // Freeze the upper boundary while paging, so incoming traffic cannot shift the result set.
+    url.searchParams.set("endAt", toIsoDateTimeLocal(endAt) || snapshotEnd);
+    url.searchParams.set("traffic", trafficFilter);
+    url.searchParams.set("categories", selectedEventFilters.join(","));
+    url.searchParams.set("search", query);
+    url.searchParams.set("ref", sargeRefFilter);
+    url.searchParams.set("affiliate", sargeAffFilter);
+    if (cursor) url.searchParams.set("cursor", cursor);
+    try {
+      const response = await fetch(`${url.pathname}${url.search}`, { cache: "no-store", signal });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Unable to load events");
+      if (id !== requestId.current || signal?.aborted) return;
+      setLiveEvents(current => cursor ? [...current, ...payload.events.filter((event: FlowEvent) => !current.some(item => item.id === event.id))] : payload.events);
+      setPageInfo(payload);
+    } catch (error) {
+      if (id === requestId.current && !signal?.aborted) setLoadError(error instanceof Error ? error.message : "Unable to load events");
+    } finally {
+      if (id === requestId.current && !signal?.aborted) setIsRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!remote) return;
+    const controller = new AbortController();
+    ++requestId.current;
+    setLiveEvents([]);
+    setPageInfo(null);
+    setSelectedGroupId(null);
+    setSelectedEventId(null);
+    setIsRefreshing(true);
+    const timer = setTimeout(() => { void loadRemotePage(undefined, controller.signal); }, 150);
+    return () => { controller.abort(); clearTimeout(timer); ++requestId.current; };
+  }, [remoteKey, refreshEndpoint]);
+
   const markSelectedGroupAsTest = async () => {
     if (!markTestEndpoint || !selectedGroup || isMarkingTestTraffic) return;
 
@@ -184,6 +236,7 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
 
       setLiveEvents(Array.isArray(payload.events) ? payload.events : []);
       setTrafficFilter("all");
+      if (remote) setRefreshVersion(value => value + 1);
       setSelectedEventId(null);
       setMarkTestMessage(`Marked ${payload.updatedCount ?? 0} events as test.`);
     } catch (error) {
@@ -194,11 +247,11 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
   };
 
   useEffect(() => {
-    setLiveEvents(events);
+    if (!remote) setLiveEvents(events);
   }, [events]);
 
   useEffect(() => {
-    if (hasChosenTimeWindow) return;
+    if (remote || hasChosenTimeWindow) return;
 
     setStartAt(defaultTimeRange.startAt);
     setEndAt(defaultTimeRange.endAt);
@@ -238,7 +291,7 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [selectedEvent]);
 
-  if (liveEvents.length === 0 && !hasChosenTimeWindow) {
+  if (!remote && liveEvents.length === 0 && !hasChosenTimeWindow) {
     return (
       <div className="rounded-md border border-dashed p-6 text-sm text-muted-foreground">
         Session and user flows will appear after this project receives events.
@@ -284,7 +337,7 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
         <div className="flex flex-wrap items-center justify-end gap-2">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Radio className="size-3.5" />
-            {filteredGroups.length} of {groups.length} {mode === "session" ? "sessions" : "users"}
+            {filteredGroups.length} loaded {remote ? `${mode} groups` : mode === "session" ? "sessions" : "users"}{pageInfo ? ` of ${mode === "session" ? pageInfo.totalSessions : pageInfo.totalUsers} matching` : ""}
           </div>
           <Button
             className="h-7 gap-1.5 px-2.5"
@@ -299,7 +352,7 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
           </Button>
           <Button className="h-7 gap-1.5 px-2.5" size="sm" variant="outline" type="button" onClick={exportFlowData}>
             <Download className="size-3.5" />
-            Export JSON
+            Export loaded JSON
           </Button>
         </div>
       </div>
@@ -420,11 +473,11 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
                 key={preset.value}
                 className="h-8"
                 size="sm"
-                variant={isTimePresetActive(preset.value, startAt, endAt, sampleBounds.latest) ? "default" : "outline"}
+                variant={isTimePresetActive(preset.value, startAt, endAt, remote ? snapshotEnd : sampleBounds.latest) ? "default" : "outline"}
                 type="button"
-                aria-pressed={isTimePresetActive(preset.value, startAt, endAt, sampleBounds.latest)}
+                aria-pressed={isTimePresetActive(preset.value, startAt, endAt, remote ? snapshotEnd : sampleBounds.latest)}
                 onClick={() => {
-                  const range = getPresetTimeRange(preset.value, sampleBounds.latest);
+                  const range = getPresetTimeRange(preset.value, remote ? new Date().toISOString() : sampleBounds.latest);
                   setStartAt(range.startAt);
                   setEndAt(range.endAt);
                   setHasChosenTimeWindow(true);
@@ -442,8 +495,8 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
             <Input
               type="datetime-local"
               value={startAt}
-              min={sampleBounds.earliest ? toDateTimeLocal(sampleBounds.earliest) : undefined}
-              max={endAt || (sampleBounds.latest ? toDateTimeLocal(sampleBounds.latest) : undefined)}
+              min={undefined}
+              max={endAt || undefined}
               onChange={(event) => {
                 const nextStartAt = event.target.value;
                 setStartAt(nextStartAt);
@@ -460,7 +513,7 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
               type="datetime-local"
               value={endAt}
               min={startAt || (sampleBounds.earliest ? toDateTimeLocal(sampleBounds.earliest) : undefined)}
-              max={sampleBounds.latest ? toDateTimeLocal(sampleBounds.latest) : undefined}
+              max={undefined}
               onChange={(event) => {
                 const nextEndAt = event.target.value;
                 setEndAt(nextEndAt);
@@ -493,12 +546,12 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
         </div>
         <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
           <Badge variant="outline">
-            {timeFilteredEvents.length} of {trafficFilteredEvents.length} events
+            {remote ? `${liveEvents.length} loaded${pageInfo ? ` of ${pageInfo.totalEvents} matching events` : " events"}` : `${timeFilteredEvents.length} of ${trafficFilteredEvents.length} events`}
           </Badge>
           <Badge variant="outline">{visibleGroups.length} visible</Badge>
           {sampleBounds.earliest && sampleBounds.latest && (
             <Badge variant="outline">
-              Sample {formatDateTime(sampleBounds.earliest)} - {formatDateTime(sampleBounds.latest)}
+              Loaded range {formatDateTime(sampleBounds.earliest)} - {formatDateTime(sampleBounds.latest)}
             </Badge>
           )}
           {selectedGroupId && (
@@ -515,6 +568,13 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
           )}
         </div>
       </div>
+
+      {loadError && <p role="alert" className="text-sm text-destructive">{loadError} Use Refresh to retry.</p>}
+      {pageInfo?.nextCursor && <div className="flex items-center gap-3 text-sm">
+        <Button type="button" variant="outline" disabled={isRefreshing} onClick={() => loadRemotePage(pageInfo.nextCursor!)}>Load more events</Button>
+        <span className="text-muted-foreground">More matching events remain. Journeys may continue on later pages.</span>
+      </div>}
+      {isRefreshing && <p role="status" className="text-sm text-muted-foreground">Loading matching events…</p>}
 
       <div className="grid gap-4 xl:grid-cols-[1fr_280px]">
         <div className="h-[460px] overflow-hidden rounded-md border bg-background">
@@ -547,7 +607,7 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
             </ReactFlow>
           ) : (
             <div className="grid h-full place-items-center p-6 text-center text-sm text-muted-foreground">
-              No matching {mode === "session" ? "sessions" : "users"} in this event sample.
+              {isRefreshing ? "Loading matching events…" : loadError ? "Events could not be loaded." : `No matching ${mode === "session" ? "sessions" : "users"} in the loaded events.`}
             </div>
           )}
         </div>
@@ -565,7 +625,7 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
             }}
           >
             <span className="font-medium">Matching {mode === "session" ? "sessions" : "users"}</span>
-            <span className="text-xs text-muted-foreground">{filteredGroups.length} groups in the current filter</span>
+            <span className="text-xs text-muted-foreground">{filteredGroups.length} loaded groups in the current filter</span>
           </button>
           {selectedGroup && markTestEndpoint && (
             <div className="grid gap-2 rounded-md border bg-card p-3 text-sm">
@@ -626,7 +686,7 @@ const buildGroups = (events: FlowEvent[], mode: FlowMode): FlowGroup[] => {
   const groupsById = new Map<string, FlowEvent[]>();
 
   for (const event of events) {
-    const id = mode === "session" ? event.sessionId : event.userId;
+    const id = (mode === "session" ? event.sessionId : event.userId) || `(no ${mode} ID)`;
     const groupEvents = groupsById.get(id) ?? [];
     groupEvents.push(event);
     groupsById.set(id, groupEvents);

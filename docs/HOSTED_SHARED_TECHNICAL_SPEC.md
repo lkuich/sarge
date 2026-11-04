@@ -306,3 +306,17 @@ These should be decided during the deployment phase:
 - event retention defaults
 - admin authentication provider
 - billing/metering provider
+
+## Traffic reporting and flow completeness
+
+The project pulse and workspace overview count all retained, configured-host **real** events in the last 24 hours, excluding events explicitly marked `sarge_test: true` and watchdog events (`meta.pixel.fire`, `google.tag.fire`, `data_layer.push`). Identified user/session counts exclude absent IDs. Previous-period comparisons use the preceding 24 hours. The weekly chart uses UTC calendar days and excludes future-dated events. Event-type breakdowns include every matching type, not only the top four. Workspace event totals cover all project environments; project pulse metrics cover the selected environment.
+
+User and session flows query the selected environment with date, traffic, event-category, search, campaign and affiliate filters **before** pagination. They no longer sample events with `NTILE`. The endpoint `/api/project-events/:environmentId?view=flow` returns exact matching event/group totals and a timestamp/ID cursor. Requests remain workspace-authorized and respect retention and configured-host filtering, including server events without a URL.
+
+The graph loads 80 matching events at a time. **Load more events** appends the next page; loaded counts and matching totals distinguish partial journeys from complete results. A frozen upper date boundary prevents new arrivals from shifting a paging session. Date presets are relative to the current time, rather than the latest sampled event. Events lacking a user/session ID remain visible in a labeled unidentified group. **Export loaded JSON** exports only the loaded graph and includes pagination/completeness metadata. Refresh restarts the query; failed requests show an error instead of falling back to a smaller list.
+
+Flow controls and times use the viewer’s local timezone; debug and public verification timestamps explicitly show UTC, consistently before and after refresh. Focused-group exports are never labeled complete for the full query.
+
+The debug stream intentionally shows the latest 12 events, public verification shows up to 30, and recent impersonation-user suggestions derive from the latest 80 events **per environment**. These are inspection lists, not traffic totals. AI reviews operate on bounded recent-event samples and are labeled accordingly. Database failures never substitute demo traffic, and the overview does not claim an ingestion failure rate that Sarge does not measure.
+
+A purchase event reports the value supplied by the integration. Sarge cannot infer later installment payments or refunds that the integration does not send; flow completeness does not imply complete payment-ledger revenue.

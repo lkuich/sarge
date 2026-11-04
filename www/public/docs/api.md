@@ -9,7 +9,7 @@ GET /v2/export/events
 Authorization: Bearer sarge_read_...
 ```
 
-Read tokens are environment-scoped. A token can only read events for the `SiteEnvironment` it belongs to. Server-event and postback credentials cannot read data.
+API export and MCP read access are available on every plan, including Free. Read tokens are environment-scoped. A token can only read events for the `SiteEnvironment` it belongs to. Server-event and postback credentials cannot read data.
 
 Read tokens are stored as SHA-256 hashes with the `events:read` scope. Rotating a token revokes the prior active read token for that environment.
 
@@ -24,12 +24,14 @@ curl -G "https://track.sargetrack.app/v2/export/events" \
   --data-urlencode "limit=100"
 ```
 
+Replace the example timestamps with a range inside your plan retention window. Dates outside retention return no matching events.
+
 ## Query Fields
 
 | Field | Meaning |
 | --- | --- |
-| `start` | Optional ISO lower bound for `occurredAt`. |
-| `end` | Optional ISO upper bound for `occurredAt`. |
+| `start` | Optional inclusive ISO lower bound for `occurredAt`. |
+| `end` | Optional inclusive ISO upper bound for `occurredAt`. |
 | `name` | Optional exact event name. |
 | `source` | Optional source: `browser`, `server`, or `postback`. |
 | `sessionId` | Optional exact session ID. |
@@ -68,7 +70,7 @@ curl -G "https://track.sargetrack.app/v2/export/events" \
 }
 ```
 
-Events sort by `occurredAt DESC, id DESC`. Send `nextCursor` on the next request to continue paging. It is `null` when there are no more events.
+Events sort by `occurredAt DESC, id DESC`. Send `nextCursor` as `cursor` on the next request with the same filters to continue paging. Set a fixed `end` timestamp when you need a stable upper boundary. It is `null` when there are no more events.
 
 ## Status Codes
 
@@ -79,7 +81,11 @@ Events sort by `occurredAt DESC, id DESC`. Send `nextCursor` on the next request
 
 ## Notes
 
-- v1 export returns raw stored events only.
+- This endpoint returns raw stored events only; it does not provide aggregate analytics.
 - Export responses respect the workspace plan retention window.
 - Event properties are the values Sarge stored after ingestion-time privacy controls.
-- Create or rotate export tokens from the project credentials panel. The plaintext token is shown once.
+- Organization admins create or rotate export tokens under Setup → Server-side calls → Raw event export API, or from the signed-in [API docs](https://sargetrack.app/docs/api). The plaintext token is shown once.
+
+- Export includes test and watchdog events unless filtered by the supported fields. There is no test-traffic argument; inspect `properties.sarge_test` in returned events when separating test traffic.
+- The input `siteId` is an environment ID; exported `siteId` is the parent project ID and `siteEnvironmentId` is the environment ID.
+- Use the same read token to connect an LLM client through [MCP](https://sargetrack.app/docs/mcp.md).

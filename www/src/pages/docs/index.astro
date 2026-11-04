@@ -1,7 +1,6 @@
 ---
-import { ArrowRight, BookOpen, KeyRound, Radio, TerminalSquare } from "lucide-react";
+import { ArrowRight, BookOpen, Bot, KeyRound, Radio, TerminalSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import SiteLayout from "@/layouts/SiteLayout.astro";
 
 const docs = [
@@ -22,6 +21,18 @@ const docs = [
     description: "Pull raw environment-scoped event data from Sarge into your own dashboards and jobs.",
     href: "/docs/api",
     icon: KeyRound,
+  },
+  {
+    title: "Project dashboard",
+    description: "Find traffic, sessions, live events, diagnostics, setup, and privacy settings.",
+    href: "/docs/install#dashboard",
+    icon: BookOpen,
+  },
+  {
+    title: "Connect an LLM with MCP",
+    description: "Configure a read-only MCP connection with an environment API token on any plan.",
+    href: "/docs/mcp.md",
+    icon: Bot,
   },
   {
     title: "LLM docs",

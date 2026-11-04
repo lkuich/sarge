@@ -107,6 +107,7 @@ const watchdogEvents = [
       <p class="mt-4 text-sm leading-6 text-muted-foreground">
         Use stable, lowercase, dot-separated names. Properties should be JSON-serializable and should keep the same shape every time an event fires.
       </p>
+      <p class="mt-3 text-sm leading-6 text-muted-foreground">The listed fields are the recommended tracking contract. Ingestion accepts other non-empty names; diagnostics flags missing properties for supported event types. Keep credentials and personal information out of event payloads, URLs, titles, and user IDs.</p>
     </div>
 
     <div class="mt-8 grid gap-4 lg:grid-cols-[1fr_340px]">
@@ -176,7 +177,7 @@ const watchdogEvents = [
   properties: {}
 }`}</code></pre>
           <p class="mt-3 text-xs leading-5 text-muted-foreground">
-            The `siteId` field is the selected environment ID. Production, Staging, and Development have separate values and separate event streams.
+            In ingestion payloads, `siteId` is the selected environment ID. Export responses use `siteId` for the parent project and `siteEnvironmentId` for the environment. Production, Staging, and Development have separate event streams.
           </p>
         </section>
 

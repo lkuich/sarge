@@ -4,11 +4,11 @@ Self-hosted Sarge is for teams that want to run the event API and database in th
 
 ## What You Get
 
-- Sarge API Docker image
+- Express API source for building your own container (no production Dockerfile or published image is provided)
 - Prisma/Postgres schema and migrations, including persisted Production, Staging, and Development environments per site
 - Browser pixel bundle
 - Docker Compose example
-- Platform guides for hosts such as Fly.io, Render, Railway, and VPS deployments
+- A local Docker Compose development example; provider-specific production guides remain future work
 - Cloudflare + Neon reference notes for teams that want to mirror the hosted architecture
 - Full control over database, retention, networking, and access logs
 
@@ -72,7 +72,7 @@ NODE_ENV="production"
     attributionTtlDays: 28
   });
 
-  sarge('track', 'PageView');
+  sarge('track', 'page.view');
 </script>
 ```
 
@@ -83,7 +83,7 @@ curl -X POST "https://events.example.com/v2/events" \
   -H "content-type: application/json" \
   -d '{
     "siteId": "env_123_development",
-    "name": "TestEvent",
+    "name": "test.event",
     "occurredAt": "2026-06-19T12:00:00.000Z",
     "sessionId": "manual_test_session",
     "userId": "manual_test_user",
@@ -159,7 +159,7 @@ Generate a token and hash:
 node -e "const { createHash, randomBytes } = require('node:crypto'); const token = 'sarge_sk_' + randomBytes(32).toString('base64url'); console.log('token=' + token); console.log('sha256=' + createHash('sha256').update(token).digest('hex'));"
 ```
 
-## Fly.io Deployment Guide Target
+## Future Provider Guide Scope
 
 The Fly.io guide should include:
 
@@ -175,9 +175,11 @@ The Fly.io guide should include:
 
 - Sarge v2 does not preserve legacy `/pageView`, `/purchase`, or `/atc` routes.
 - The API stores events only for known `SiteEnvironment` IDs. The request field is still named `siteId` for compatibility.
-- The current Docker Compose file is optimized for local development; production packaging should use a dedicated API image.
+- The current Docker Compose file mounts source and runs a development server; build and operate your own production packaging. Hosted portal provisioning is not included in Compose.
 - Browser pixel ingestion is public by design. Server-side and postback ingestion use per-environment credential hashes.
-- Rate limiting, dashboard credential rotation UI, watchdog capture, and LLM querying are future product layers.
+- Monthly event quotas and property privacy controls are implemented. General request throttling and outbound webhook delivery are not.
+- Watchdog capture is in the browser pixel. Dashboard credential rotation, Clerk auth, Stripe billing, and scheduled diagnostics belong to the separate hosted portal/Worker stack.
+- The Node API supports raw event exports but does not expose MCP. Deploy the hosted Worker stack separately if you need MCP.
 
 ## Support Boundary
 

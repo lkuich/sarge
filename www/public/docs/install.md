@@ -1,8 +1,25 @@
 # Install Sarge
 
-Sarge is installed as a small hosted browser script. Each Sarge project has persisted Production, Staging, and Development environments. Every environment has its own pixel URL, event stream, user/session flows, debug stream, event hosts, webhooks, and public verify URL.
+Sarge is installed as a small hosted browser script. Each Sarge project has persisted Production, Staging, and Development environments. Every environment has its own pixel URL, events, session flows, credentials, webhook configuration, and temporary verification links.
 
-AI recommendations currently run for Production only. Staging and Development still collect their own events and show their own flows/debug streams, but the AI review panel is disabled there.
+AI recommendations are available in Diagnostics for Production on Growth and higher. Staging and Development still collect events and show their own flows, but AI review is disabled there.
+
+## Project Dashboard
+
+Open a project and select Production, Staging, or Development. The selected environment stays selected when switching between these tabs:
+
+| Tab | Use it for |
+| --- | --- |
+| Overview | 24-hour traffic, previous-period comparisons, weekly trends, and event mix. |
+| Sessions | Filter user/session journeys, inspect events, and load more matching events. |
+| Live events | Inspect the latest incoming events and captured payloads. |
+| Diagnostics | Production tracking findings, scheduled reviews, and copyable implementation briefs. |
+| Setup | Pixel installation, verification links, impersonation, server/API credentials, affiliate tracking, and webhook destinations. |
+| Settings | Project privacy rules and deletion requests; organization admins only. |
+
+Overview traffic excludes test and watchdog events and respects the configured site host and plan retention. Sessions loads matching events in pages of 80; load additional pages before treating a journey as complete. Live events shows the latest 12 events, not a total event count. A recorded purchase value is what your integration sent, not a complete payment ledger.
+
+Setup → Server-side calls contains server-event secrets, partner postback tokens, and raw event export tokens. API export and MCP read access are available on every plan, including Free. Server-event and postback credentials require Starter or higher. Only organization admins can create or rotate credentials; an editor can create temporary verification links.
 
 ## Hosted Pixel Snippet
 
@@ -13,7 +30,7 @@ AI recommendations currently run for Production only. Staging and Development st
 <script async src="https://track.sargetrack.app/pixel.js?env={siteEnvironmentId}"></script>
 ```
 
-Use the exact snippet from the selected environment tab in the Sarge portal. The browser/API payload field is still called `siteId`, but the value is the selected environment ID.
+Copy the exact snippet from Setup → Install pixel for the selected environment. The browser/API payload field is still called `siteId`, but the value is the selected environment ID.
 
 Place the snippet in the document `<head>` or as early as possible in the page body. The queued `page.view` call is replayed after `pixel.js` loads.
 
@@ -45,7 +62,17 @@ google.tag.fire
 data_layer.push
 ```
 
-Properties must be JSON-serializable.
+Properties must be JSON-serializable. If an event can fire before the async pixel loads, append it to the queue instead of calling an undefined function:
+
+```js
+if (typeof window.sarge === "function") {
+  window.sarge("track", "checkout.started", { value: 84, currency: "USD" });
+} else {
+  window._sarge.queue.push(["track", "checkout.started", { value: 84, currency: "USD" }]);
+}
+```
+
+The base snippet must already have initialized `window._sarge.queue`. Emit the initial `page.view` once; the base snippet already queues it.
 
 ## Ecommerce Examples
 
@@ -88,7 +115,7 @@ gtag(...)           -> google.tag.fire
 dataLayer.push(...) -> data_layer.push
 ```
 
-Load Sarge before the interactions you need to debug. If a third-party pixel is already installed, Sarge preserves the original function and observes calls before forwarding them.
+Load Sarge before the interactions you need to debug. Sarge wraps the functions present when it loads and forwards observed calls. Calls made before Sarge loads, or after another script replaces a wrapper, may not be captured. Verify the actual vendor calls after installation.
 
 If your backend calls Meta Conversions API, Google Measurement Protocol, or another vendor API directly, report that upstream call through `/v2/server/events` with the matching watchdog event name. Include the upstream status code in `properties.upstream`:
 
@@ -109,7 +136,7 @@ curl -X POST "https://track.sargetrack.app/v2/server/events" \
       "event_name": "Purchase",
       "payload": { "order_id": "order_123", "value": 129.99, "currency": "USD" },
       "upstream": {
-        "endpoint": "https://graph.facebook.com/v20.0/{pixel_id}/events",
+        "endpoint": "https://graph.facebook.com/{api_version}/{pixel_id}/events",
         "status": 200,
         "ok": true,
         "request_id": "fb_req_123"
@@ -179,7 +206,7 @@ https://shop.example.com/?sarge_ref=summer-campaign&sarge_aff=partner-42
 
 Use `sarge_ref` for the campaign, placement, click ID, or network click identifier. Use `sarge_aff` for the affiliate, creator, publisher, or partner ID.
 
-Sarge stores these values for the environment attribution window, which defaults to 28 days. During that window, latent conversions such as later `checkout.started`, `purchase.completed`, or server-confirmed order events can still be tied back to the original affiliate visit. After the window expires, browser events stop carrying the stored attribution unless the visitor arrives with fresh `sarge_ref` or `sarge_aff` values.
+Sarge stores these values for the environment attribution window, which defaults to 28 days. On subsequent page loads during that window, the pixel preserves attribution for later `checkout.started` and `purchase.completed` events. Expiration is checked when the pixel initializes; a page left open past expiration can continue sending its loaded attribution until reinitialization. For server-confirmed orders, explicitly send the attribution and matching identifiers from your backend; Sarge does not automatically look up browser attribution for server calls.
 
 ## Server-Side and Postback Events
 
@@ -206,7 +233,7 @@ URL-only partner postback:
 https://track.sargetrack.app/v2/postback/{siteEnvironmentId}/{postbackToken}?event=affiliate.conversion&click_id=click_123&order_id=order_123&value=42.50&currency=USD&aff=partner-42
 ```
 
-Keep server event secrets out of browser code. Postback tokens are easier to paste into partner tools, but rotate them if the URL is exposed.
+Create the server secret or postback token under Setup → Server-side calls. Keep server event secrets out of browser code. Postback tokens are easier to paste into partner tools, but rotate them if the URL is exposed.
 
 ## Webhooks
 
@@ -224,8 +251,8 @@ Outbound event delivery is not implemented yet. Saving a destination stores its 
 1. Open the target site in a browser.
 2. Open the Sarge portal.
 3. Go to Projects.
-4. Open the project and select the matching Production, Staging, or Development tab.
-5. Confirm events appear in that environment's event stream.
+4. Open the project and select the matching Production, Staging, or Development environment.
+5. Open Live events and confirm the expected event names and payloads. Use Sessions for journeys and Diagnostics for Production reviews.
 
 For agentic verification, use the temporary public stream:
 
@@ -233,12 +260,18 @@ For agentic verification, use the temporary public stream:
 https://sargetrack.app/verify/{siteEnvironmentId}?key={temporaryVerificationKey}
 ```
 
-The `siteEnvironmentId` is the `env` query parameter in the environment pixel URL. Generate the temporary verification key from the Sarge project page. The verification page shows the latest events and auto-refreshes every few seconds while an agent exercises the target app.
+The `siteEnvironmentId` is the `env` query parameter in the environment pixel URL. In Setup → Install pixel, select Create 30-minute verify link. Edit access or organization-admin access is required. Anyone with the link can view up to 30 recent events until it expires, so share it only with the intended tester or agent. The verification page auto-refreshes while the target app is exercised.
 
 You can also open these project URLs from the portal:
 
 - `https://track.sargetrack.app/healthz` checks the endpoint Worker.
 - `https://track.sargetrack.app/pixel.js?env={siteEnvironmentId}` checks script delivery.
+
+## Privacy and Data Controls
+
+Organization admins configure project-level controls in Settings and workspace defaults in Account. PII redaction is enabled by default, with property blocklists or allowlists and custom redaction keys/patterns. These controls apply to event `properties` at ingestion; they do not retroactively scrub existing records or sanitize every envelope field. Keep secrets and personal information out of URLs, titles, user IDs, attribution values, and payloads.
+
+Settings can queue project deletion; Account can queue workspace deletion. These actions record a deletion request. A deletion processor exists, but no automatic job currently invokes it; an operator must process the request before the associated data and configuration are removed. Read access respects plan retention: Free 7 days, Starter 30 days, Growth 90 days; Scale is custom. Retention filtering does not promise physical deletion of old database rows on a schedule.
 
 ## Agent Install Guidance
 
@@ -256,7 +289,7 @@ Sarge provides a read-only, authenticated MCP endpoint at `https://track.sargetr
 
 | Symptom | Check |
 | --- | --- |
-| No events appear | Confirm the snippet came from the same environment tab you are testing. |
+| No events appear | Confirm the snippet came from the same environment you are testing. |
 | Script 404s | Confirm the pixel URL from the project page opens successfully. |
 | Events reject | Confirm payload properties are JSON-serializable and event names are non-empty. |
 | SPA page views missing | Emit `page.view` on route changes, not just initial page load. |

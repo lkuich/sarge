@@ -1,14 +1,16 @@
 # Sarge
 
-Sarge is a lightweight event pixel and ingestion API for debugging media and product tracking. It records first-party events, observes common third-party pixel calls, and can mark project-scoped test traffic so teams can inspect user flows without polluting real production traffic. The codebase is a TypeScript `pnpm` workspace with a browser pixel, an Express API, Prisma, Postgres, and one root Docker Compose setup for local development.
+Sarge is a lightweight event pixel and ingestion API for debugging media and product tracking. It records first-party events, observes common third-party pixel calls, and can mark project-scoped test traffic so teams can inspect user flows without polluting real production traffic. The codebase is a TypeScript `pnpm` workspace with a browser pixel, a Cloudflare ingestion Worker, an Astro portal, an Express API for local/container use, Prisma, and Postgres. Docker Compose supports local API development.
 
-Projects are split into persisted environments: Production, Staging, and Development. Each environment has its own pixel URL, tracking endpoint identity, event stream, user/session flow view, debug stream, event hosts, webhooks, and public verify URL. AI recommendations currently run for Production; Staging and Development keep the same tracking surfaces but show AI review as disabled.
+Projects are split into persisted environments: Production, Staging, and Development. Each environment has its own pixel URL, tracking identity, events, flows, credentials, webhook configuration, and temporary verification links. The portal has Overview, Sessions, Live events, Diagnostics, Setup, and Settings tabs. Production AI reviews are available on Growth and higher. API export and read-only MCP access are available on every plan. Outbound webhook delivery is not implemented.
 
 ## Repository Map
 
 | Path | Purpose |
 | --- | --- |
-| `apps/api/` | TypeScript Express API for v2 event ingestion |
+| `apps/api/` | TypeScript Express API for v2 ingestion and exports |
+| `apps/worker/` | Hosted Cloudflare ingestion, exports, MCP, and scheduled diagnostics |
+| `www/` | Astro portal, public docs, Clerk organizations, and Stripe billing |
 | `packages/pixel/` | TypeScript browser pixel bundled with `tsup` |
 | `apps/api/prisma/` | Prisma schema and migrations |
 | `.agents/skills/` | Agent skills for installing and operating Sarge |
@@ -55,10 +57,10 @@ The v2 browser API is intentionally small:
     attributionTtlDays: 28
   });
 
-  sarge('track', 'Purchase', {
+  sarge('track', 'purchase.completed', {
     value: 129.99,
     currency: 'USD',
-    orderId: '1234'
+    order_id: '1234'
   });
 </script>
 ```
@@ -109,7 +111,7 @@ Content-Type: application/json
 
 {
   "siteId": "env_123_production",
-  "name": "Purchase",
+  "name": "purchase.completed",
   "occurredAt": "2026-06-19T12:00:00.000Z",
   "sessionId": "sess_123",
   "userId": "user_123",
@@ -123,7 +125,7 @@ Content-Type: application/json
 Compact fallback:
 
 ```http
-GET /v2/e?sid=env_123_production&n=Lead&ts=2026-06-19T12:00:00.000Z&ss=sess_123&u=user_123
+GET /v2/e?sid=env_123_production&n=lead.created&ts=2026-06-19T12:00:00.000Z&ss=sess_123&u=user_123
 ```
 
 Server-side ingestion for trusted backend events:
@@ -170,11 +172,11 @@ For hosted website installation, see `docs/INSTALLATION.md`.
 
 ## Distribution
 
-Sarge has three planned distribution paths:
+The production service uses shared Cloudflare Workers and Neon. Distribution options are:
 
 - self-hosted: customer runs the API/database and hosts the pixel
-- hosted shared: Sarge provisions a custom endpoint and customized pixel on shared infrastructure
-- dedicated hosted: "Contact us" managed infrastructure for teams that need isolation or custom requirements
+- hosted shared: the portal provisions projects and environment-specific pixels on shared infrastructure
+- dedicated hosted: contact us to agree on isolation, deployment, and support requirements
 
 See:
 
@@ -187,6 +189,10 @@ See:
 
 ## Product Direction
 
-Sarge is being repositioned as a cheap, dead-simple event recorder for teams that need to debug tracking implementations. The product direction includes real-time event streams, a third-party pixel watchdog, test-traffic filters, custom script deployment, deterministic AI reviews, and an LLM query layer over structured event data.
+Sarge is being repositioned as a cheap, dead-simple event recorder for teams that need to debug tracking implementations. The current product includes event streams, a third-party pixel watchdog, test-traffic filters, deterministic reviews with AI summaries, and a read-only MCP query interface. Versioned custom script deployment and richer diagnostic-query tools remain future work.
 
 See `docs/STRATEGY.md`.
+
+## Documentation
+
+[Documentation map](docs/README.md) identifies current guides and historical design records. Public guides are indexed by [llms.txt](https://sargetrack.app/llms.txt); regenerate their complete bundle with `pnpm --dir www docs:generate`. Web tests fail if the committed bundle is stale.

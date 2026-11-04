@@ -2,6 +2,8 @@
 
 Dedicated hosted Sarge is a managed "Contact us" option for teams that need stronger infrastructure isolation, custom deployment requirements, or hands-on tracking support.
 
+This document describes a service offering to scope with the customer, not an automatically provisioned product tier. Dedicated regions, SSO, audit logs, compliance commitments, and SLAs require an explicit agreement.
+
 ## Who This Is For
 
 Dedicated hosting is for teams that need one or more of:
@@ -18,7 +20,7 @@ Dedicated hosting is for teams that need one or more of:
 
 Most teams should start with standard hosted Sarge. Dedicated hosting is for organizations with privacy, scale, procurement, or operational requirements that do not fit shared infrastructure.
 
-## What Is Included
+## Scope To Agree Before Provisioning
 
 - dedicated Sarge API deployment
 - dedicated Postgres database, preferably a separate Neon project unless customer requirements point elsewhere
@@ -35,14 +37,13 @@ Example endpoint:
 https://events.customer.com
 ```
 
-Example pixel:
+Example pixel after environment and hostname provisioning:
 
 ```html
-<script src="https://events.customer.com/pixel.js"></script>
 <script>
-  sarge('init');
-  sarge('track', 'PageView');
+  window._sarge = { queue: [["track", "page.view"]] };
 </script>
+<script async src="https://events.customer.com/pixel.js?env={siteEnvironmentId}"></script>
 ```
 
 ## Contact Us Intake

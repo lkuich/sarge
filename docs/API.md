@@ -1,6 +1,6 @@
 # Sarge API
 
-The active API lives in `apps/api/`. It is a TypeScript Express service that validates v2 event payloads and stores them through Prisma/Postgres.
+The hosted API runs in `apps/worker/` on Cloudflare at `https://track.sargetrack.app`, using Neon. `apps/api/` is the Express runtime for local/container deployments, using Prisma/Postgres. Both validate the shared v2 event contract; only the hosted Worker exposes MCP.
 
 ## Runtime
 
@@ -82,7 +82,7 @@ Payload:
 ```json
 {
   "siteId": "env_123_production",
-  "name": "Purchase",
+  "name": "purchase.completed",
   "occurredAt": "2026-06-19T12:00:00.000Z",
   "sessionId": "sess_123",
   "userId": "user_123",
@@ -107,6 +107,8 @@ Responses:
 
 - `202` with `{ "success": true }` for accepted events.
 - `400` with `{ "success": false, "error": "Invalid event payload" }` for malformed payloads.
+- `413` when a JSON body exceeds 64 KiB.
+- `429` when the workspace monthly event budget is exhausted.
 - `500` with `{ "success": false, "error": "Unable to store event" }` for unexpected storage failures.
 
 #### Reserved Test-Traffic Properties
@@ -150,7 +152,7 @@ Query fields:
 Example:
 
 ```http
-GET /v2/e?sid=env_123_production&n=Lead&ts=2026-06-19T12:00:00.000Z&ss=sess_123&u=user_123&p=%7B%22form%22%3A%22contact%22%7D
+GET /v2/e?sid=env_123_production&n=lead.created&ts=2026-06-19T12:00:00.000Z&ss=sess_123&u=user_123&p=%7B%22form%22%3A%22contact%22%7D
 ```
 
 ### Server-Side Event Ingestion
@@ -215,7 +217,7 @@ Send the vendor request/response summary in `properties`. Keep access tokens, ra
       "currency": "USD"
     },
     "upstream": {
-      "endpoint": "https://graph.facebook.com/v20.0/{pixel_id}/events",
+      "endpoint": "https://graph.facebook.com/{api_version}/{pixel_id}/events",
       "status": 200,
       "ok": true,
       "request_id": "fb_req_123"
@@ -284,6 +286,8 @@ curl -G "https://track.sargetrack.app/v2/export/events" \
   --data-urlencode "limit=100"
 ```
 
+Use timestamps inside your plan retention window; older example dates may return no matching events.
+
 Query fields:
 
 | Field | Meaning |
@@ -339,10 +343,16 @@ Responses:
 
 Notes:
 
-- v1 export returns raw stored events only; aggregate analytics endpoints are not included.
+- The export endpoint returns raw stored events only; aggregate analytics endpoints are not included.
 - Export responses respect the workspace plan retention window.
 - Event properties are the values Sarge stored after ingestion-time privacy controls.
-- Create or rotate export tokens from the project credentials panel. The plaintext token is shown once.
+- Organization admins create or rotate export tokens under Setup → Server-side calls → Raw event export API, or in the signed-in API docs. Read access is available on every plan. The plaintext token is shown once.
+
+### MCP (hosted Worker only)
+
+`POST https://track.sargetrack.app/mcp` provides stateless Streamable HTTP with the read-only `list_events` tool. Use an environment API export bearer token with `events:read` scope. See the [complete MCP guide](../www/public/docs/mcp.md) for client configuration, arguments, and errors. Rotating the read token revokes access for both MCP and exports.
+
+Exports and MCP include test/watchdog records unless selected out with supported filters. Inspect `properties.sarge_test` to separate test traffic; there is no test-traffic argument. In export responses, `siteId` is the parent project ID and `siteEnvironmentId` is the environment ID, unlike ingestion's environment-valued `siteId`.
 
 ### Credential Hashes
 
@@ -358,6 +368,7 @@ Set `SiteEnvironment.serverEventSecretHash` for `/v2/server/events` and `SiteEnv
 
 - v2 intentionally does not preserve legacy routes like `/pageView`, `/atc`, or `/purchase`.
 - Dates are ISO 8601 strings at the API boundary.
-- CORS is currently open because the pixel is intended to send events from customer sites.
+- The Node API enables CORS; hosted JSON responses include an allow-origin header. Send credentialed integrations from your backend. MCP rejects foreign Origin headers.
 - Browser pixel ingestion is unauthenticated by design; server-side ingestion, postbacks, and API export require per-environment credentials.
-- Rate limiting, deployment, and destination forwarding are future phases.
+- Monthly workspace event quotas are enforced. General per-IP/per-second throttling and outbound webhook delivery are not implemented.
+- Privacy rules sanitize event properties before storage, not every envelope field. Retention filters restrict reads; no scheduled physical event purge is implemented.

@@ -1112,7 +1112,7 @@ function resolveTrackedSiteDomain(value: string) {
             <ol class="mt-2 list-decimal space-y-1 pl-4 text-muted-foreground">
               <li>Paste the snippet into the site head or as early as possible in the page body.</li>
               <li>Emit `window.sarge("track", "event.name", properties)` for key user actions.</li>
-              <li>Reload the site and confirm events arrive in the debug stream below.</li>
+              <li>Reload the site and confirm events arrive in the Live events tab.</li>
             </ol>
             <a
               class="mt-3 inline-flex items-center text-sm font-medium text-primary hover:underline"
@@ -1736,7 +1736,7 @@ function resolveTrackedSiteDomain(value: string) {
                 </p>
                 <p class="break-all rounded-md border bg-muted p-3 font-mono text-xs">{postbackEndpointTemplate}</p>
                 <p class="text-xs text-muted-foreground">
-                  Replace <code class="font-mono">{"{postbackToken}"}</code> with the token created in Tracking credentials above.
+                  Replace <code class="font-mono">{"{postbackToken}"}</code> with the token created in Server-side calls.
                 </p>
               </div>
             ) : (

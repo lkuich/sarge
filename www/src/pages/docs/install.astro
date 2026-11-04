@@ -2,6 +2,7 @@
 import { ArrowRight, BadgeCheck, Bot, Cable, Eye, Link2, Route, SatelliteDish, ServerCog, ShoppingCart, TerminalSquare, UserRound, Webhook } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import SiteLayout from "@/layouts/SiteLayout.astro";
+import { projectTabs } from "@/lib/project-navigation";
 
 const snippet = `<script>
   window._sarge = { queue: [["track", "page.view"]] };
@@ -71,7 +72,7 @@ const serverVendorEvent = `curl -X POST "https://track.sargetrack.app/v2/server/
       "event_name": "Purchase",
       "payload": { "order_id": "order_123", "value": 129.99, "currency": "USD" },
       "upstream": {
-        "endpoint": "https://graph.facebook.com/v20.0/{pixel_id}/events",
+        "endpoint": "https://graph.facebook.com/{api_version}/{pixel_id}/events",
         "status": 200,
         "ok": true,
         "request_id": "fb_req_123"
@@ -96,7 +97,7 @@ const eventRows = [
 ];
 
 const troubleshooting = [
-  ["No events appear", "Confirm the snippet came from the same environment tab you are testing."],
+  ["No events appear", "Confirm the snippet came from the same environment you are testing."],
   ["Script 404s", "Open the pixel URL from the project page and confirm it loads."],
   ["SPA page views missing", "Emit page.view when the client-side route changes."],
   ["Other pixels are missing", "Load Sarge before the fbq, gtag, or dataLayer call you expect to observe."],
@@ -119,17 +120,32 @@ const troubleshooting = [
 
     <div class="mt-8 grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
       <div class="grid min-w-0 gap-4">
+        <section id="dashboard" class="scroll-mt-24 min-w-0 rounded-lg border bg-card p-4 sm:p-5">
+          <h2 class="text-xl font-semibold">Project dashboard</h2>
+          <p class="mt-2 text-sm leading-6 text-muted-foreground">Select Production, Staging, or Development, then choose a tab. The selected environment stays selected as you navigate.</p>
+          <dl class="mt-4 grid gap-3 text-sm">
+            {projectTabs.map((tab) => (
+              <div class="grid gap-1 sm:grid-cols-[100px_1fr]">
+                <dt class="font-medium">{tab.label}</dt>
+                <dd class="text-muted-foreground">{tab.description}</dd>
+              </div>
+            ))}
+          </dl>
+          <p class="mt-4 text-sm leading-6 text-muted-foreground">Overview counts real traffic, excluding test and watchdog events. Sessions loads 80 matching events at a time; load more before treating a journey as complete. Live events shows the latest 12 events. Diagnostics is available for Production on Growth and higher.</p>
+          <p class="mt-3 text-sm leading-6 text-muted-foreground">Organization admins manage credentials in Setup → Server-side calls and privacy controls in Settings. API export and MCP read access are available on every plan, including Free. Server-event secrets and partner postbacks require Starter or higher.</p>
+        </section>
+
         <section id="hosted-pixel" class="scroll-mt-24 min-w-0 rounded-lg border bg-card p-4 sm:p-5">
           <div class="flex items-center gap-2">
             <TerminalSquare className="size-5 text-primary" />
             <h2 class="text-xl font-semibold">Hosted pixel snippet</h2>
           </div>
           <p class="mt-2 text-sm leading-6 text-muted-foreground">
-            Use the exact snippet from the selected environment tab in the Sarge portal. The browser/API payload field is still called `siteId`, but the value is the selected environment ID.
+            Copy the exact snippet from Setup → Install pixel for the selected environment. The browser/API payload field is still called `siteId`, but the value is the selected environment ID.
           </p>
           <pre class="mt-4 max-w-full overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{snippet}</code></pre>
           <p class="mt-3 text-sm leading-6 text-muted-foreground">
-            Place it in the document head or as early as possible in the page body. The queued `page.view` call is replayed after `pixel.js` loads.
+            Place it in the document head or as early as possible in the page body. The queued `page.view` call is replayed after `pixel.js` loads. Emit the initial page view once, then another on each SPA route change. Call `window.sarge` only after it loads; earlier calls must use the queue shown in the <a class="underline underline-offset-4 hover:text-foreground" href="/docs/install.md">Markdown guide</a>.
           </p>
         </section>
 
@@ -176,7 +192,7 @@ const troubleshooting = [
             <h2 class="text-xl font-semibold">Watch other pixels</h2>
           </div>
           <p class="mt-2 text-sm leading-6 text-muted-foreground">
-            Sarge observes common browser pixel APIs after it loads, preserves the original function, records the call, then forwards the call to the existing provider.
+            Sarge wraps the functions present when it loads and forwards observed calls. Earlier calls or calls made after another script replaces a wrapper may not be captured; verify the actual vendor events.
           </p>
           <div class="mt-4 grid gap-2 text-sm text-muted-foreground sm:grid-cols-3">
             <p class="rounded-md border bg-background p-3"><code>fbq(...)</code><br />meta.pixel.fire</p>
@@ -230,7 +246,7 @@ const troubleshooting = [
           </p>
           <h3 class="mt-5 font-semibold">Latent conversions</h3>
           <p class="mt-2 text-sm leading-6 text-muted-foreground">
-            Sarge defaults to a 28-day attribution window. Later events such as `checkout.started`, `purchase.completed`, or a server-confirmed `affiliate.conversion` can still be tied back to the original affiliate visit until that window expires.
+            Sarge defaults to a 28-day attribution window, checked when the pixel initializes. Later browser events retain that attribution across page loads within the window; a page left open past expiration can continue sending its loaded attribution. For server-confirmed orders or affiliate.conversion callbacks, explicitly send the attribution and matching identifiers from your backend.
           </p>
         </section>
 
@@ -240,7 +256,7 @@ const troubleshooting = [
             <h2 class="text-xl font-semibold">Server-side and postback events</h2>
           </div>
           <p class="mt-2 text-sm leading-6 text-muted-foreground">
-            Use browser events for page and interaction tracking. Use server-side events for trusted backend facts such as paid orders, refunds, fulfilled subscriptions, or webhook confirmations.
+            Use browser events for page and interaction tracking. Use server-side events for trusted backend facts such as paid orders, refunds, fulfilled subscriptions, or webhook confirmations. Organization admins create the credentials in Setup → Server-side calls on Starter and higher.
           </p>
           <pre class="mt-4 max-w-full overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{serverEvent}</code></pre>
           <p class="mt-4 text-sm leading-6 text-muted-foreground">
@@ -279,11 +295,11 @@ const troubleshooting = [
           </div>
           <ol class="mt-4 list-decimal space-y-2 pl-5 text-sm leading-6 text-muted-foreground">
             <li>Open the target site in a browser.</li>
-            <li>Open the Sarge portal and select the matching environment tab.</li>
+            <li>Open the Sarge portal and select the matching environment.</li>
             <li>Trigger the page, product, cart, checkout, and purchase actions you wired.</li>
-            <li>Confirm the events appear in the event stream, user/session flow, and debug stream.</li>
+            <li>Confirm names and payloads in Live events, inspect journeys in Sessions, and review Production findings in Diagnostics.</li>
           </ol>
-          <p class="mt-4 text-sm leading-6 text-muted-foreground">For coding-agent verification, create a temporary public stream URL:</p>
+          <p class="mt-4 text-sm leading-6 text-muted-foreground">For coding-agent verification, an editor or organization admin can select Create 30-minute verify link in Setup → Install pixel. Anyone holding the link can see up to 30 recent events until it expires; share it only with the intended tester or agent:</p>
           <pre class="mt-4 max-w-full overflow-x-auto rounded-md border bg-muted p-4 text-xs leading-6"><code>{verifyUrl}</code></pre>
         </section>
       </div>
@@ -293,10 +309,10 @@ const troubleshooting = [
           <SatelliteDish className="size-5 text-primary" />
           <h2 class="mt-5 font-semibold">Environment model</h2>
           <p class="mt-3 text-sm leading-6 text-muted-foreground">
-            Production, Staging, and Development each have their own pixel URL, event stream, user/session flows, debug stream, event hosts, webhooks, and public verify URL.
+            Production, Staging, and Development each have their own pixel URL, events, session flows, credentials, webhook configuration, and temporary verification links.
           </p>
           <p class="mt-3 text-sm leading-6 text-muted-foreground">
-            AI recommendations currently run for Production only. Staging and Development still collect events and show their own debug data.
+            AI recommendations are available for Production on Growth and higher. Staging and Development still collect events and show their own Live events and Sessions.
           </p>
         </section>
 
@@ -308,6 +324,12 @@ const troubleshooting = [
             <li>Theme head or supported customer-events surface for Shopify and hosted commerce.</li>
             <li>Checkout success or order status surfaces only for `purchase.completed`.</li>
           </ul>
+        </section>
+
+        <section id="data-controls" class="scroll-mt-24 min-w-0 rounded-lg border bg-card p-4 sm:p-5">
+          <h2 class="font-semibold">Privacy and data controls</h2>
+          <p class="mt-3 text-sm leading-6 text-muted-foreground">Organization admins manage project rules in Settings and workspace defaults in Account. PII redaction is on by default and applies to event properties at ingestion. It does not retroactively scrub stored records or redact URLs, titles, user IDs, and attribution fields.</p>
+          <p class="mt-3 text-sm leading-6 text-muted-foreground">Deletion requests are queued and require operator processing; there is no automatic deletion job. Read retention is 7 days on Free, 30 on Starter, 90 on Growth, and custom on Scale. Retention filtering does not promise scheduled physical deletion.</p>
         </section>
 
         <section class="min-w-0 rounded-lg border bg-card p-4 sm:p-5">

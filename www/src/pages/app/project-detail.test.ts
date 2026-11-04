@@ -223,7 +223,7 @@ describe("project detail install panel", () => {
     expect(projectDetail).toContain("createEnvironmentCredential(access, env.DATABASE_URL, selectedEnvironment.id, kind)");
     expect(projectDetail).toContain('intent === "rotate-api-read-token"');
     expect(projectDetail).toContain("Raw event export API");
-    expect(projectDetail).toContain("Tracking credentials");
+    expect(projectDetail).toContain("Server-side calls");
     expect(projectDetail).toContain('href="/docs/api"');
     expect(projectDetail).toContain("Reveal one-time cURL");
     expect(projectDetail).toContain("Copy cURL");
@@ -473,7 +473,7 @@ describe("project detail install panel", () => {
     expect(projectDetail).toContain("{attributionWindowDays} days");
     expect(projectDetail).toContain("affiliate.conversion");
     expect(projectDetail).toContain("postbackEndpointTemplate");
-    expect(projectDetail).toContain('Replace <code class="font-mono">{"{postbackToken}"}</code> with the token created in Tracking credentials above.');
+    expect(projectDetail).toContain('Replace <code class="font-mono">{"{postbackToken}"}</code> with the token created in Server-side calls.');
   });
 
   it("gates paid project detail features by plan entitlements", () => {

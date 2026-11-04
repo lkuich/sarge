@@ -4,9 +4,9 @@ Sarge's AI direction is agent-native debugging: the product should turn tracking
 
 ## Current Baseline
 
-The portal shows an AI review on each project detail screen. Reviews can come from the scheduled Worker pipeline when available, and fall back to deterministic live analysis of recent events before the first scheduled run.
+The portal shows an AI review in the Diagnostics tab for Production on Growth and higher. Reviews can come from the scheduled Worker pipeline when available, and fall back to deterministic live analysis of recent events before the first scheduled run.
 
-Projects have persisted Production, Staging, and Development environments. AI recommendations currently run for Production only. Staging and Development keep their own pixel URLs, event streams, user/session flows, debug streams, event hosts, and webhooks, but the AI review panel is disabled for those environments.
+Projects have persisted Production, Staging, and Development environments. AI recommendations currently run for Production only. Staging and Development keep their own pixel URLs, event streams, user/session flows, Live events, credentials, and webhook configuration, but the AI review panel is disabled for those environments.
 
 The first rules cover:
 
@@ -26,7 +26,7 @@ Each finding includes:
 
 This is intentionally deterministic before it is generative. The LLM layer should explain, prioritize, and propose changes, but it should not invent facts that are not visible in the event stream.
 
-Events marked with `properties.sarge_test === true` are test traffic. Reviews and LLM queries should be able to exclude them by default, include them for implementation debugging, or isolate them when a tester is using page-console impersonation.
+Events marked with `properties.sarge_test === true` are test traffic. The diagnostics rules exclude test traffic from their event analysis. API/MCP results can include test events; callers must inspect this property because `list_events` has no test-traffic filter argument.
 
 ## Scheduled Diagnostic Pipeline
 
@@ -40,10 +40,10 @@ The hosted Worker has a Cloudflare Cron Trigger configured in `apps/worker/wrang
 
 Every scheduled run:
 
-1. Loads active Production environments from Neon.
-2. Reads recent events for each production environment.
+1. Loads up to 50 active Production environments from Neon (the scheduled selector currently does not gate by plan).
+2. Reads up to 200 recent events from the last 60 minutes for each environment by default.
 3. Runs deterministic diagnostics from `@sarge/core`.
-4. Stores a `DiagnosticRun` and related `DiagnosticFinding` rows in Neon.
+4. Replaces the environment’s previous diagnostic run/findings with the new `DiagnosticRun` and `DiagnosticFinding` rows.
 5. Calls Cloudflare Workers AI only when findings exist.
 6. Stores the AI summary on the diagnostic run.
 
@@ -58,10 +58,10 @@ Workers AI is configured through the native binding:
 The default model is set with `AI_SUMMARY_MODEL` and currently uses:
 
 ```text
-@cf/meta/llama-3.1-8b-instruct
+@cf/meta/llama-3.1-8b-instruct-fp8
 ```
 
-Run the new migration before relying on scheduled diagnostics:
+Apply committed migrations before relying on scheduled diagnostics:
 
 ```bash
 pnpm prisma:deploy
@@ -69,7 +69,7 @@ pnpm prisma:deploy
 
 ## Tracked Page Monitoring
 
-Scheduled diagnostics also check a bounded set of Production page URLs that recently emitted Sarge events. Sarge normalizes and deduplicates recent event URLs, checks up to 25 pages per environment by default, and reports failures through the same AI review findings list.
+Scheduled diagnostics also check a bounded set of Production page URLs that recently emitted Sarge events. Sarge normalizes and deduplicates recent event URLs and selects up to 25 pages per environment. A shared budget limits each scheduled run to 10 URL checks by default, with a 5-second request timeout. Failures appear in the AI review findings list.
 
 The monitor flags missing pages (`404` and `410`), server errors (`5xx`), DNS/TLS failures, request timeouts, and redirects to a different host. It does not crawl a site, check every incoming event URL, or require users to configure pinned URLs.
 
@@ -85,13 +85,15 @@ The repo includes a local skill for coding agents:
 
 Use it when installing Sarge into customer apps or sample apps. It tells agents where to place the hosted pixel, which ecommerce events to wire, how to preserve existing Meta/Google pixels, and how to verify events in the portal.
 
-## Next AI Layer
+## MCP and Further AI Work
 
-The next layer should add an authenticated LLM interface that can query project data and generate scoped recommendations on demand.
+The hosted Worker now exposes authenticated, read-only `list_events` at `https://track.sargetrack.app/mcp` through Streamable HTTP. Environment API export tokens work on every plan. See the [MCP guide](../www/public/docs/mcp.md). The tool returns retained raw events; diagnostic-query and project-management tools are not exposed.
+
+Further AI work can build on that event interface.
 
 Recommended shape:
 
-- server-side tool for fetching recent events by project and environment
+- existing `list_events` tool for recent events scoped by the environment credential
 - server-side tool for fetching persisted diagnostic findings for production environments
 - prompt contract that requires citations to event IDs, sessions, and timestamps
 - read-only first release

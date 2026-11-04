@@ -1,322 +1,79 @@
 # Hosted Shared Infrastructure Technical Spec
 
-This spec describes the standard hosted Sarge option: customers deploy with us, receive a custom endpoint, and install a customized pixel. Infrastructure is shared, data is tenant-scoped by workspace/site, and the primary hosted platform is Cloudflare with Neon Postgres.
-
-## Goals
-
-- Provision a new customer workspace in minutes.
-- Give each customer a simple endpoint such as `https://acme.sargetrack.app`.
-- Serve a customized pixel that already knows its endpoint and environment ID.
-- Store events in shared Postgres with strong tenant scoping.
-- Keep pricing aggressive by avoiding per-customer infrastructure by default.
-- Use Cloudflare's domain, CDN, Worker, and platform features as the hosted foundation.
-- Use Neon as the shared Postgres system of record.
-- Leave room for custom domains, edge ingestion, and dedicated hosting later.
-
-## Customer Experience
-
-Provisioning flow:
-
-1. Customer creates a workspace.
-2. Customer creates a site/app.
-3. Sarge assigns a hosted subdomain.
-4. Sarge returns an install snippet.
-5. Customer installs the snippet.
-6. Events appear in the Sarge dashboard/event stream.
-
-Example snippet:
-
-```html
-<script src="https://acme.sargetrack.app/pixel.js"></script>
-<script>
-  sarge('init');
-  sarge('track', 'PageView');
-</script>
-```
-
-The pixel served from `acme.sargetrack.app` is customized with:
-
-- API endpoint: `https://acme.sargetrack.app`
-- environment ID
-- attribution TTL
-- feature flags
-- future watchdog settings
+Current implementation reference, reviewed 2026-11-04. The Prisma schema and runtime source remain authoritative; dated proposals in `docs/superpowers/` record design history.
 
 ## Architecture
 
 ```text
-Customer site
-  -> https://{siteSlug}.sargetrack.app/pixel.js
-  -> https://{siteSlug}.sargetrack.app/v2/events
-  -> Cloudflare Worker
-  -> tenant resolver
-  -> event validation
-  -> Neon Postgres
+Customer site → track.sargetrack.app/pixel.js?env={siteEnvironmentId}
+              → Cloudflare sarge-hosted Worker → Neon Postgres
+Signed-in user → sargetrack.app → Astro sarge-www Worker → Neon Postgres
+                                         ↳ Clerk organizations / Stripe billing
 ```
 
-Shared services:
+The tracking Worker lives in `apps/worker/`; the portal lives in `www/`. Both deploy through GitHub Actions on main. The Express runtime in `apps/api/` supports local/container ingestion and exports, but does not expose MCP. Cloudflare owns hosted routing and TLS; Neon is the source of truth. Hyperdrive is not enabled.
 
-- Cloudflare Worker API
-- Neon Postgres database
-- Cloudflare-managed DNS/wildcard domain
-- pixel serving route
-- workspace/site provisioning service
-- dashboard/event stream service in a later phase
+## Provisioning and tenancy
 
-Initial deployment files:
+The portal creates projects and persisted Production, Staging, and Development environments. The active Clerk organization identifies the workspace. Organization admins manage credentials, webhooks, privacy controls, billing, sharing, and deletion. Project shares provide view/edit access as described in [CLERK_ORGANIZATIONS.md](CLERK_ORGANIZATIONS.md).
 
-- `apps/worker/`
-- `apps/worker/wrangler.jsonc`
-- `.github/workflows/cloudflare-worker.yml`
+Core models are `Workspace`, `Site`, `SiteEnvironment`, `Event`, `ApiToken`, `PublicVerificationToken`, `WebhookEndpoint`, `DiagnosticRun`, and `DiagnosticFinding`. See `apps/api/prisma/schema.prisma` for fields and relationships. Ingestion's `siteId` means the environment ID. Stored/exported `Event.siteId` is the parent project; `Event.siteEnvironmentId` is the environment.
 
-Required platform capability:
+No public `/admin/workspaces` or `/admin/sites` provisioning API is implemented. The portal uses authenticated server-side actions.
 
-- Cloudflare DNS for `sargetrack.app`
-- wildcard routing for `*.sargetrack.app`
-- TLS for hosted subdomains
-- request routing by `Host` header in the Worker
-- Neon Postgres connectivity from Cloudflare, preferably through Hyperdrive when production traffic warrants it
+## Pixel and request routing
 
-## Provider Choices
+The standard snippet queues one `page.view`, then loads the environment-specific pixel from the shared host. `/pixel.js?env={siteEnvironmentId}` returns the bundled pixel with `window.__SARGE_CONFIG__`; it initializes automatically and is cached for 300 seconds. Do not call `init` again after loading it, since initialization resets the session ID.
 
-Use Cloudflare for hosted shared infrastructure:
+On the configured shared host, environment IDs select the pixel or ingest destination. Tenant host routing also resolves `SiteEnvironment.endpointHost`; JSON ingestion rejects a mismatched environment. The compact fallback uses the host-resolved environment. Unknown tenant hosts return 404. Health checks do not require a tenant.
 
-- Workers for API/event ingestion
-- Cloudflare DNS for `sargetrack.app`
-- Cloudflare CDN/cache for `/pixel.js`
-- Cloudflare for SaaS/custom hostnames when customer-owned domains are added
-- Workers for Platforms later if Sarge supports customer-specific or AI-generated script execution
+The portal's customer tracking-subdomain instructions require manual DNS, TLS, and route verification before switching the snippet. Automated custom-hostname provisioning is not implemented.
 
-Use Neon for Postgres:
+## Endpoints and credentials
 
-- shared production Postgres
-- Prisma migrations
-- Neon branches for preview/test environments
-- optional separate Neon projects for dedicated hosted customers
+| Endpoint | Purpose | Authentication |
+| --- | --- | --- |
+| `GET /healthz` | Liveness | None |
+| `GET /pixel.js?env=...` | Hosted environment pixel | Public environment ID |
+| `POST /v2/events`, `GET /v2/e` | Browser ingestion | Public environment ID / tenant host |
+| `POST /v2/server/events` | Backend events | Environment server secret |
+| `GET` or `POST /v2/postback/{environmentId}/{token}` | Partner callbacks | Environment URL token |
+| `GET /v2/export/events` | Raw event pagination | Environment read token |
+| `POST /mcp` | Read-only `list_events` tool | Same environment read token |
 
-Do not use Cloudflare D1 for the core event store in this phase. D1 is SQLite-oriented and would move the product away from the current Prisma/Postgres architecture.
+Export and MCP use the shared host. Server, postback, and read credentials are stored as SHA-256 hashes; read tokens require `events:read` and must not be revoked. Temporary portal verification links expire after 30 minutes and are separate from API credentials. See [API.md](API.md) and the [MCP guide](../www/public/docs/mcp.md).
 
-## Data Model Additions
+## Portal views and loading
 
-Extend the current Prisma schema with:
+Projects use Overview, Sessions, Live events, Diagnostics, Setup, and Settings tabs. URLs preserve the selected environment. The server loads only the data for the selected view; the session-flow client and live-event polling mount only where needed. Metadata-only API access checks avoid loading the whole dashboard on poll requests.
 
-```prisma
-model Workspace {
-  id        String   @id @default(cuid())
-  slug      String   @unique
-  name      String
-  createdAt DateTime @default(now())
-  sites     Site[]
-}
+Overview loads aggregate traffic data. Sessions fetches filtered cursor pages. Live events polls a bounded recent list. Diagnostics loads persisted findings or a bounded live fallback. Setup loads installation details and webhook configuration. Settings loads privacy controls. Index migrations include `(siteEnvironmentId, occurredAt, id)` for event cursor queries.
 
-model Site {
-  id                  String   @id @default(cuid())
-  workspaceId         String
-  slug                String   @unique
-  name                String
-  endpointHost        String   @unique
-  attributionTtlDays  Int      @default(28)
-  pixelEnabled        Boolean  @default(true)
-  createdAt           DateTime @default(now())
+## Data controls and limits
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id])
-  events    Event[]
-}
-```
+- JSON ingestion has a 64 KiB body limit. Browser ingestion is intentionally public; server calls, postbacks, exports, and MCP require their own credentials.
+- Monthly event budgets are enforced per workspace; exceeded budgets return 429. General per-IP/per-second request throttling is not implemented.
+- Property redaction and allow/block lists apply before storage. Envelope fields such as URLs, titles, identifiers, and attribution are not scrubbed by property redaction.
+- Portal/export reads respect configured plan retention. There is no scheduled physical purge of expired event rows.
+- Project/workspace deletion requests are queued. `processPendingDeletionRequests` exists, but no runtime caller or scheduled job invokes it; an operator must process pending requests.
+- Webhook destination configuration exists, but outbound delivery and retries do not.
 
-Update `Event`:
+## Diagnostics
 
-```prisma
-siteId String
-site   Site @relation(fields: [siteId], references: [id])
-```
+The ingestion Worker runs diagnostics every 30 minutes for up to 50 active Production environments. Default samples are 200 recent events over 60 minutes. The scheduled environment selector does not currently gate by plan; portal access to AI reviews requires Growth or higher. Prior findings are replaced on each completed run.
 
-The current hosted schema uses `Workspace` and `Site` as the product concepts, with persisted `SiteEnvironment` rows for Production, Staging, and Development. `Event.siteId` keeps the parent project for grouping, while `Event.siteEnvironmentId` references the environment that owns the pixel, debug stream, flows, webhooks, and public verify URL.
-
-## Request Routing
-
-Tenant resolution rules:
-
-1. Read `Host` header.
-2. Match host to `SiteEnvironment.endpointHost`.
-3. For `/pixel.js`, serve a generated pixel configuration for that environment.
-4. For `/v2/events`, require payload `siteId` to match the resolved environment ID.
-5. For `/v2/e`, ignore any mismatched `sid` if host resolution is present and use the resolved environment ID.
-6. Return `404` for unknown hosts.
-7. Return `403` for known hosts with mismatched environment IDs.
-
-This prevents one customer endpoint from submitting events for another site.
-
-## Pixel Serving
-
-Add route:
-
-```http
-GET /pixel.js
-```
-
-Response:
-
-- JavaScript
-- `content-type: application/javascript`
-- cacheable for a short period, such as 5 minutes
-- includes the current bundled pixel plus a small site config bootstrap
-
-Generated shape:
-
-```js
-window.__SARGE_CONFIG__ = {
-  siteId: "env_123_production",
-  endpoint: "https://acme.sargetrack.app",
-  attributionTtlDays: 28
-};
-```
-
-Then the snippet can call:
-
-```js
-sarge('init');
-```
-
-When no options are passed to `init`, the pixel reads `window.__SARGE_CONFIG__`.
-
-## API Changes
-
-Keep current v2 endpoints:
-
-- `POST /v2/events`
-- `GET /v2/e`
-- `GET /healthz`
-
-Add hosted behavior:
-
-- resolve environment from `Host`
-- reject unknown hosts
-- reject host/environment mismatches
-- include workspace/site/environment IDs in logs
-- prepare for event-stream subscriptions later
-
-Add provisioning endpoints in a protected admin API:
-
-```http
-POST /admin/workspaces
-POST /admin/sites
-GET /admin/sites/:id/snippet
-PATCH /admin/sites/:id
-```
-
-These routes require internal auth before launch.
-
-## Provisioning Flow
-
-Workspace creation:
-
-1. Validate desired workspace slug.
-2. Create `Workspace`.
-3. Create first `Site`.
-4. Assign `endpointHost = "{siteSlug}.sargetrack.app"`.
-5. Return install snippet.
-
-Site creation:
-
-1. Validate site slug uniqueness.
-2. Create `Site`.
-3. Assign hosted endpoint.
-4. Return pixel URL and snippet.
-
-Custom domains later:
-
-1. Customer adds CNAME to hosted target.
-2. Sarge verifies DNS through Cloudflare for SaaS/custom hostname flow.
-3. Cloudflare provisions TLS certificate.
-4. `Site.endpointHost` or a separate `SiteDomain` table maps host to site.
-
-## Security And Isolation
-
-Baseline controls:
-
-- tenant resolution by host
-- environment ID mismatch rejection
-- request body size limits
-- per-environment rate limits
-- CORS allowed for ingestion routes
-- admin routes protected
-- structured logs include workspace/site/environment IDs
-
-Privacy controls to add before public hosted launch:
-
-- configurable retention
-- payload size limits
-- PII redaction rules
-- event property allow/block lists
-- deletion by workspace/site
-
-## Implementation Phases
-
-### Phase 1: Hosted Routing Foundation
-
-- Add `Workspace` and `Site` models.
-- Migrate current `Client` concept to `Site`.
-- Add host-based environment resolver middleware.
-- Add `/pixel.js` route.
-- Let `sarge('init')` read generated config.
-- Add tests for host/environment matching.
-
-### Phase 2: Provisioning
-
-- Add admin provisioning routes.
-- Add slug validation.
-- Generate install snippets.
-- Add seed/dev commands for local hosted-style sites.
-- Document hosted setup.
-
-### Phase 3: Operations
-
-- Add rate limits.
-- Add structured logs.
-- Add event retention job.
-- Add custom domain model.
-- Add Cloudflare for SaaS custom hostname provisioning.
-- Add Hyperdrive for Neon connection pooling/latency if direct Neon connections become a bottleneck.
-- Add dashboard/event stream integration.
-
-## Test Cases
-
-- unknown host returns `404`
-- known host serves `/pixel.js`
-- generated pixel config includes endpoint, environment ID, and TTL
-- `sarge('init')` works with generated config and no explicit options
-- event payload with matching host and environment ID is accepted
-- event payload with mismatched host and environment ID returns `403`
-- compact GET fallback resolves environment from host
-- provisioning creates workspace, site, endpoint host, and snippet
-- duplicate workspace/site slugs are rejected
-
-## Open Deployment Decisions
-
-These should be decided during the deployment phase:
-
-- hosting provider for shared API
-- wildcard DNS provider
-- TLS automation strategy
-- database provider
-- Cloudflare account/zone ownership model
-- Worker deployment pipeline
-- Hyperdrive adoption threshold
-- event retention defaults
-- admin authentication provider
-- billing/metering provider
+Deterministic rules produce findings and Workers AI summarizes nonempty results. The configured model is `@cf/meta/llama-3.1-8b-instruct-fp8`. Tracked-page checks select recent captured URLs, with a 25-URL per-environment ceiling, 10-URL shared run budget, and 5-second timeout by default. This is bounded monitoring, not a crawl or guaranteed coverage of every environment/page on every run. See [AI_FEATURES.md](AI_FEATURES.md).
 
 ## Traffic reporting and flow completeness
 
-The project pulse and workspace overview count all retained, configured-host **real** events in the last 24 hours, excluding events explicitly marked `sarge_test: true` and watchdog events (`meta.pixel.fire`, `google.tag.fire`, `data_layer.push`). Identified user/session counts exclude absent IDs. Previous-period comparisons use the preceding 24 hours. The weekly chart uses UTC calendar days and excludes future-dated events. Event-type breakdowns include every matching type, not only the top four. Workspace event totals cover all project environments; project pulse metrics cover the selected environment.
+The project Overview and workspace overview count all retained, configured-host **real** events in the last 24 hours, excluding events explicitly marked `sarge_test: true` and watchdog events (`meta.pixel.fire`, `google.tag.fire`, `data_layer.push`). Identified user/session counts exclude absent IDs. Previous-period comparisons use the preceding 24 hours. The weekly chart uses UTC calendar days and excludes future-dated events. Event-type breakdowns include every matching type, not only the top four. Workspace event totals cover all project environments; project Overview metrics cover the selected environment.
 
 User and session flows query the selected environment with date, traffic, event-category, search, campaign and affiliate filters **before** pagination. They no longer sample events with `NTILE`. The endpoint `/api/project-events/:environmentId?view=flow` returns exact matching event/group totals and a timestamp/ID cursor. Requests remain workspace-authorized and respect retention and configured-host filtering, including server events without a URL.
 
 The graph loads 80 matching events at a time. **Load more events** appends the next page; loaded counts and matching totals distinguish partial journeys from complete results. A frozen upper date boundary prevents new arrivals from shifting a paging session. Date presets are relative to the current time, rather than the latest sampled event. Events lacking a user/session ID remain visible in a labeled unidentified group. **Export loaded JSON** exports only the loaded graph and includes pagination/completeness metadata. Refresh restarts the query; failed requests show an error instead of falling back to a smaller list.
 
-Flow controls and times use the viewer’s local timezone; debug and public verification timestamps explicitly show UTC, consistently before and after refresh. Focused-group exports are never labeled complete for the full query.
+Flow controls and times use the viewer’s local timezone; Live events and public verification timestamps explicitly show UTC, consistently before and after refresh. Focused-group exports are never labeled complete for the full query.
 
-The debug stream intentionally shows the latest 12 events, public verification shows up to 30, and recent impersonation-user suggestions derive from the latest 80 events **per environment**. These are inspection lists, not traffic totals. AI reviews operate on bounded recent-event samples and are labeled accordingly. Database failures never substitute demo traffic, and the overview does not claim an ingestion failure rate that Sarge does not measure.
+Live events intentionally shows the latest 12 events, public verification shows up to 30, and recent impersonation-user suggestions derive from the latest 80 events **per environment**. These are inspection lists, not traffic totals. AI reviews operate on bounded recent-event samples and are labeled accordingly. Database failures never substitute demo traffic, and the overview does not claim an ingestion failure rate that Sarge does not measure.
 
 A purchase event reports the value supplied by the integration. Sarge cannot infer later installment payments or refunds that the integration does not send; flow completeness does not imply complete payment-ledger revenue.

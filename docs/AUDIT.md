@@ -1,6 +1,8 @@
 # Project Audit
 
-Audit date: 2026-06-19
+Historical audit date: 2026-06-19
+
+This is the original modernization snapshot, not the current capability list. Since this audit, the Cloudflare Worker, Astro dashboard, Clerk organizations, Stripe billing, watchdog capture, privacy controls, API exports, and authenticated read-only MCP have shipped. See [the documentation map](README.md) for current guides.
 
 ## Summary
 
@@ -38,7 +40,7 @@ Current v2 flow:
 - Root Docker Compose now runs API and Postgres together for local development.
 - Unit tests now cover API ingestion and pixel transport/storage behavior.
 
-## Remaining Product/Engineering Gaps
+## Gaps At The Time Of This Audit
 
 - Deployment strategy is intentionally deferred.
 - No dashboard UI exists yet.
@@ -49,7 +51,7 @@ Current v2 flow:
 
 ## Verification Targets
 
-Use these commands as the current baseline:
+These were the verification commands for the audit:
 
 ```bash
 pnpm test

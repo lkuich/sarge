@@ -9,11 +9,11 @@ Sarge is priced as tracking assurance and attribution debugging, not generic pro
 | Free | $0/mo | 1 project, 1 shared user/project, 50k events/month, 7-day retention |
 | Starter | $35/mo | 3 projects, 3 shared users/project, 250k events/month, 30-day retention |
 | Growth | $149/mo | 10 projects, 10 shared users/project, 2M events/month, 90-day retention |
-| Scale | Contact us | unlimited shared users/project, custom volume, dedicated infrastructure, SSO, audit logs, SLA |
+| Scale | Contact us | unlimited configured project/share/event limits; infrastructure, security, and SLA terms by agreement |
 
 ## Launch Discount
 
-The Starter checkout supports Stripe promotion codes. To create the launch code, run this from the `www` package with production Stripe environment variables:
+The Starter checkout supports Stripe promotion codes. To create the launch code, run this from the repository root with production Stripe environment variables:
 
 ```bash
 STRIPE_SECRET_KEY=sk_live_... STRIPE_PRICE_STARTER=price_... pnpm --dir www stripe:create-launchday-discount
@@ -28,7 +28,7 @@ The script creates or reuses:
 
 ## Gate Philosophy
 
-Do not gate the core install path. Users must be able to install Sarge, verify events, see the debug stream, use the public verify page, and understand the default 28-day affiliate attribution window before they feel value.
+Do not gate the core install path. Users must be able to install Sarge, verify events, inspect Live events, use the public verify page, and understand the default 28-day affiliate attribution window before they feel value.
 
 Gate these because they map to business value:
 
@@ -40,7 +40,13 @@ Gate these because they map to business value:
 - webhooks
 - team and project sharing
 - client workspaces
-- exports and API access
+- dashboard exports; raw API exports and MCP read access are available on every plan, including Free
 - configurable attribution windows
 - dedicated infrastructure
 - compliance and security controls
+
+## Implementation status
+
+`www/src/lib/pricing.ts` is the source of truth for portal gates; `packages/core/src/usage-limits.ts` defines enforced event/retention limits. The monthly event budget is workspace-wide. At the limit, ingestion returns 429. Retention restricts reads; it does not imply scheduled physical purging.
+
+Server/postback credentials and webhook configuration start at Starter; Production AI review and configurable attribution start at Growth. Webhook delivery is not implemented. Scale feature names in configuration are commercial capabilities to arrange, not proof that SSO, audit logs, warehouse sync, or a dedicated deployment are automatically provisioned.

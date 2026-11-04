@@ -25,8 +25,9 @@ packages/pixel/dist/
     attributionTtlDays: 28
   });
 
-  sarge('track', 'PageView');
-  sarge('track', 'Purchase', {
+  sarge('track', 'page.view');
+  sarge('track', 'purchase.completed', {
+    order_id: 'order_123',
     value: 129.99,
     currency: 'USD'
   });
@@ -56,8 +57,8 @@ The option is still named `siteId` for payload compatibility, but hosted install
 ## Tracking
 
 ```js
-sarge('track', 'Lead');
-sarge('track', 'Purchase', { value: 129.99, currency: 'USD' });
+sarge('track', 'lead.created');
+sarge('track', 'purchase.completed', { order_id: 'order_123', value: 129.99, currency: 'USD' });
 ```
 
 The legacy call shape is intentionally not preserved:
@@ -125,9 +126,9 @@ Latent conversions are conversions that happen after the initial affiliate click
 }
 ```
 
-When the window expires, new browser events stop carrying the stored affiliate values unless a fresh landing URL sets `sarge_ref` or `sarge_aff` again.
+Expiration is checked during `init`. On the next initialization after expiration, stored attribution is cleared unless fresh URL parameters replace it. A long-lived page can keep sending the attribution loaded at initialization.
 
-For backend-confirmed orders, send `purchase.completed` through `/v2/server/events` with the same `userId`, `order_id`, `value`, and `currency` fields you use in the browser flow. For affiliate networks or partner tools that can only call a URL, create a postback token in the project view and give the partner a URL like:
+For backend-confirmed orders, send `purchase.completed` through `/v2/server/events` with matching `sessionId`/`userId` and explicit `attribution`, plus `order_id`, `value`, and `currency` in properties. Sarge does not automatically look up browser attribution for server events. For affiliate networks or partner tools that can only call a URL, create a postback token under Setup → Server-side calls and give the partner a URL like:
 
 ```text
 https://track.sargetrack.app/v2/postback/{siteEnvironmentId}/{postbackToken}?event=affiliate.conversion&click_id=click_123&order_id=order_123&value=42.50&currency=USD&aff=partner-42
@@ -161,11 +162,11 @@ The pixel sends events in this order:
 2. `fetch('/v2/events', { method: 'POST', keepalive: true })`
 3. image GET fallback to `/v2/e`
 
-This keeps normal events structured while preserving a compact fallback for constrained browser moments.
+These are transport attempts, not delivery acknowledgments: a true sendBeacon result only means the browser queued the request. There is no durable retry queue. Verify receipt in Live events or with a temporary verification link.
 
 ## Watchdog Events
 
-The pixel observes common globals after it loads:
+The pixel wraps the globals present when it loads. Earlier calls and later replacements of the wrappers can escape observation. Supported globals:
 
 - `dataLayer.push(...)` -> `data_layer.push`
 - `gtag(...)` -> `google.tag.fire`
@@ -206,3 +207,7 @@ Backends that call Meta Conversions API, Google Measurement Protocol, or similar
 Use the same `sessionId` and `userId` as the related browser or order event when available. Add `properties.implementation.note` when the AI event reviewer needs project-specific context, such as server-side GTM replacing direct `fbq` or `gtag` calls. Do not include access tokens, raw emails, phone numbers, or other secrets in the Sarge payload.
 
 Future versions may add more globals and known network calls, such as `ttq.track`.
+
+## Hosted integration
+
+Use the environment snippet from Setup → Install pixel and [the hosted install guide](../www/public/docs/install.md). It initializes automatically; do not call `init` again after loading the hosted pixel. Every initialization resets the browser session ID. Initial page views come from the snippet queue; emit additional page views only on route changes.

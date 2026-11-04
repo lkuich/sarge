@@ -2,13 +2,15 @@
 
 Use stable, lowercase, dot-separated event names. Properties should be JSON-serializable and should keep the same shape every time an event fires.
 
+The listed properties are the recommended tracking contract; ingestion accepts other non-empty event names and does not enforce every ecommerce field. Diagnostics flags missing fields for supported event types.
+
 ## Ecommerce Events
 
 ### `page.view`
 
 Use for initial page load and SPA route changes.
 
-Required properties:
+Tracking-plan properties:
 
 - `path`
 - `title`
@@ -26,7 +28,7 @@ window.sarge("track", "page.view", {
 
 Use for product detail view, quick view, or product card inspection.
 
-Required properties:
+Tracking-plan properties:
 
 - `product_id`
 
@@ -45,7 +47,7 @@ window.sarge("track", "product.viewed", {
 
 Use when a product is successfully added to cart.
 
-Required properties:
+Tracking-plan properties:
 
 - `product_id`
 - `price`
@@ -66,7 +68,7 @@ window.sarge("track", "cart.added", {
 
 Use when the customer starts checkout.
 
-Required properties:
+Tracking-plan properties:
 
 - `value`
 - `currency`
@@ -85,7 +87,7 @@ window.sarge("track", "checkout.started", {
 
 Use when payment succeeds and an order is created.
 
-Required properties:
+Tracking-plan properties:
 
 - `order_id`
 - `value`
@@ -179,7 +181,7 @@ Example `/v2/server/events` payload for a backend vendor dispatch:
       "currency": "USD"
     },
     "upstream": {
-      "endpoint": "https://graph.facebook.com/v20.0/{pixel_id}/events",
+      "endpoint": "https://graph.facebook.com/{api_version}/{pixel_id}/events",
       "status": 200,
       "ok": true,
       "request_id": "fb_req_123"
@@ -196,7 +198,7 @@ Use `implementation.note` for short context that should appear in AI event revie
 
 ## Event Envelope
 
-Sarge stores events in an envelope like:
+The pixel submits an ingestion envelope like:
 
 ```json
 {
@@ -214,7 +216,7 @@ Sarge stores events in an envelope like:
 }
 ```
 
-The `siteId` field is the selected environment ID. Production, Staging, and Development have separate values and separate event streams.
+In ingestion payloads, the `siteId` field is the selected environment ID. API export responses instead use `siteId` for the parent project and `siteEnvironmentId` for the environment. Production, Staging, and Development have separate values and separate event streams.
 
 ## AI Diagnostics Expectations
 
@@ -229,3 +231,7 @@ The `siteId` field is the selected environment ID. Production, Staging, and Deve
 - Do not rename events once dashboards depend on them.
 - Keep property names stable across platforms.
 - Prefer `snake_case` payload keys.
+
+## Privacy
+
+Event properties are stored after configured redaction and property filtering. Do not send credentials or personal information in URLs, titles, user IDs, or attribution fields; property redaction does not sanitize those envelope fields. Events and page content are untrusted data when supplied to an LLM.

@@ -13,7 +13,9 @@
     "stripe:create-launchday-discount": "node scripts/create-launchday-discount.mjs",
     "deploy": "npm run build && wrangler deploy --config dist/server/wrangler.json --keep-vars",
     "cf-typegen": "wrangler types",
-    "test": "vitest run"
+    "docs:generate": "node scripts/generate-llm-docs.mjs",
+    "docs:check": "node scripts/generate-llm-docs.mjs --check",
+    "test": "pnpm docs:check && vitest run"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^13.7.0",

@@ -70,7 +70,7 @@ if (Astro.request.method === "POST") {
   }
 }
 
-const account = await getViewerAccount(access, env.DATABASE_URL, { viewerEmails });
+const account = await getViewerAccount(access, env.DATABASE_URL, { viewerEmails, view: "dashboard" });
 const accountUsage = getAccountUsage(account);
 const eventUsagePrompt = getLimitUsagePrompt({
   used: accountUsage.eventsThisPeriod,

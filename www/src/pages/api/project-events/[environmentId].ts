@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import type { APIRoute } from "astro";
-import { getProjectEnvironmentEvents, getProjectEnvironmentEventPage, getViewerAccount } from "@/lib/sarge-demo";
+import { getProjectEnvironmentEvents, getProjectEnvironmentEventPage, getProjectEnvironmentAccess } from "@/lib/sarge-demo";
 import { getWorkspaceAccess } from "@/lib/workspace-auth";
 
 export const prerender = false;
@@ -29,11 +29,7 @@ export const GET: APIRoute = async (Astro) => {
   const endAt = Astro.url.searchParams.get("endAt");
   const currentUser = await Astro.locals.currentUser();
   const viewerEmails = currentUser?.emailAddresses.map((email) => email.emailAddress).filter(Boolean) ?? [];
-  const account = await getViewerAccount(access, env.DATABASE_URL, { viewerEmails });
-  const project = account.projects.find((candidate) =>
-    candidate.environments.some((environment) => environment.id === environmentId),
-  );
-  const selectedEnvironment = project?.environments.find((environment) => environment.id === environmentId);
+  const selectedEnvironment = await getProjectEnvironmentAccess(access, env.DATABASE_URL, environmentId, viewerEmails);
 
   if (!selectedEnvironment) {
     return new Response(JSON.stringify({ error: "Project environment not found" }), {

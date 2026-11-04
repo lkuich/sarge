@@ -165,7 +165,7 @@ model Event {
   siteEnvironment SiteEnvironment @relation(fields: [siteEnvironmentId], references: [id])
 
   @@index([siteId, occurredAt])
-  @@index([siteEnvironmentId, occurredAt])
+  @@index([siteEnvironmentId, occurredAt, id])
   @@index([siteId, source, occurredAt])
   @@index([name, occurredAt])
   @@index([sessionId])

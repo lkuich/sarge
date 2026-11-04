@@ -428,9 +428,9 @@ describe("project detail install panel", () => {
     expect(shareDialog).toContain('href="/app/billing"');
   });
 
-  it("places test impersonation and server-side calls side-by-side above the debug stream", () => {
+  it("keeps test impersonation and server-side calls together in setup", () => {
     const projectDetail = readSource("./projects/[projectId].astro");
-    const toolsRow = projectDetail.indexOf('<div class="grid gap-4 lg:col-span-2 xl:grid-cols-2">');
+    const toolsRow = projectDetail.indexOf('<div class="grid min-w-0 gap-4 lg:col-span-2 xl:grid-cols-2">');
     const impersonationCard = projectDetail.indexOf("data-test-impersonation-card");
     const serverSideCard = projectDetail.indexOf("Server-side calls");
     const debugStreamCard = projectDetail.indexOf("Debug stream");

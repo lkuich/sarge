@@ -228,6 +228,9 @@ export interface CreateProjectInput {
 interface GetViewerAccountOptions {
   viewerEmails?: string[];
   members?: AccountMember[];
+  projectId?: string;
+  environment?: ProjectEnvironment;
+  view?: 'dashboard' | 'overview' | 'sessions' | 'events' | 'diagnostics' | 'setup' | 'settings';
 }
 
 export interface CreateWebhookInput {
@@ -561,10 +564,13 @@ export const getViewerAccount = async (
 
   try {
     const sql = neon(databaseUrl);
-    const workspace = await getViewerWorkspace(sql, access);
-    const sharedProjectShares = await getViewerProjectShares(sql, userId, viewerEmails);
-    const sharedSiteIds = Array.from(new Set(sharedProjectShares.map((share) => share.siteId)));
-    const sharedSites = sharedSiteIds.length > 0 ? ((await sql`
+    const [workspace, sharedProjectShares] = await Promise.all([
+      getViewerWorkspace(sql, access),
+      getViewerProjectShares(sql, userId, viewerEmails),
+    ]);
+    const sharedSiteIds = Array.from(new Set(sharedProjectShares.map((share) => share.siteId)))
+      .filter((siteId) => !options.projectId || siteId === options.projectId);
+    const sharedSitesQuery = sharedSiteIds.length > 0 ? sql`
       SELECT
         s.id,
         s.name,
@@ -575,21 +581,19 @@ export const getViewerAccount = async (
       WHERE s.id = ANY(${sharedSiteIds})
         AND w."clerkOrganizationId" IS DISTINCT FROM ${access.organizationId}
       ORDER BY s."createdAt" ASC
-    `) as SharedSiteSummaryRow[]) : [];
+    ` : Promise.resolve([]);
 
-    if (!workspace && sharedSites.length === 0) return getSetupAccount(role);
-
-    const sites = workspace ? ((await sql`
+    const sitesQuery = workspace ? sql`
       SELECT
         s.id,
         s.name,
         s."customDomain"
       FROM "Site" s
       WHERE s."workspaceId" = ${workspace.id}
+        AND (${options.projectId ?? null}::text IS NULL OR s.id = ${options.projectId ?? null})
       ORDER BY s."createdAt" ASC
-    `) as SiteSummaryRow[]) : [];
-    const allSiteIds = Array.from(new Set([...sites.map((site) => site.id), ...sharedSiteIds]));
-    const workspacePrivacyRows = workspace ? ((await sql`
+    ` : Promise.resolve([]);
+    const workspacePrivacyQuery = workspace ? sql`
       SELECT
         "piiRedactionEnabled",
         "propertyPolicyMode",
@@ -600,9 +604,18 @@ export const getViewerAccount = async (
       FROM "WorkspacePrivacySettings"
       WHERE "workspaceId" = ${workspace.id}
       LIMIT 1
-    `) as PrivacySettingsRow[]) : [];
+    ` : Promise.resolve([]);
+    const [sharedSites, sites, workspacePrivacyRows] = await Promise.all([
+      sharedSitesQuery as Promise<SharedSiteSummaryRow[]>,
+      sitesQuery as Promise<SiteSummaryRow[]>,
+      workspacePrivacyQuery as Promise<PrivacySettingsRow[]>,
+    ]);
+    if (!workspace && sharedSites.length === 0) return getSetupAccount(role);
+    const allSiteIds = [...new Set([...sites, ...sharedSites].map((site) => site.id))];
+    const loadMetrics = options.view === 'overview' || options.view === 'dashboard';
+    const loadEvents = options.view === 'events' || options.view === 'diagnostics' || options.view === 'setup';
     const workspacePrivacySettings = mapPrivacySettings(workspacePrivacyRows.at(0));
-    const sitePrivacyRows = allSiteIds.length > 0 ? ((await sql`
+    const sitePrivacyQuery = allSiteIds.length > 0 && options.view === 'settings' ? sql`
       SELECT
         "siteId",
         "piiRedactionEnabled",
@@ -613,9 +626,8 @@ export const getViewerAccount = async (
         "customRedactionPatterns"
       FROM "SitePrivacySettings"
       WHERE "siteId" = ANY(${allSiteIds})
-    `) as SitePrivacySettingsRow[]) : [];
-    const privacySettingsBySite = new Map(sitePrivacyRows.map((row) => [row.siteId, row]));
-    const siteEnvironments = allSiteIds.length > 0 ? ((await sql`
+    ` : Promise.resolve([]);
+    const environmentsQuery = allSiteIds.length > 0 ? sql`
       SELECT
         se.id,
         se."siteId",
@@ -632,6 +644,13 @@ export const getViewerAccount = async (
             AND api_token.scope = 'events:read'
             AND api_token."revokedAt" IS NULL
         ) AS "apiReadTokenConfigured",
+        NULL::timestamp AS "lastOccurredAt"
+      FROM "SiteEnvironment" se
+      WHERE se."siteId" = ANY(${allSiteIds})
+      ORDER BY se."siteId" ASC, se."createdAt" ASC
+    ` : Promise.resolve([]);
+    const metricsQuery = allSiteIds.length > 0 && loadMetrics ? sql`
+      SELECT se.id,
         COUNT(e.id) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL '24 hours' AND ${sql.unsafe(nonWatchdogEventFilterSql)})::int AS "eventCount24h",
         COUNT(e.id) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL '48 hours' AND e."occurredAt" < NOW() - INTERVAL '24 hours' AND ${sql.unsafe(nonWatchdogEventFilterSql)})::int AS "previousEventCount24h",
         COUNT(DISTINCT NULLIF(e."sessionId", '')) FILTER (WHERE e."occurredAt" >= NOW() - INTERVAL '24 hours' AND ${sql.unsafe(nonWatchdogEventFilterSql)})::int AS "sessionCount24h",
@@ -692,46 +711,50 @@ export const getViewerAccount = async (
             GROUP BY day_bucket
           ) event_trend
         ), '[]'::jsonb) AS "trafficTrend7d",
-        MAX(e."occurredAt") AS "lastOccurredAt"
+        COALESCE(MAX(e."occurredAt"), (
+          SELECT e."occurredAt" FROM "Event" e
+          WHERE e."siteEnvironmentId" = se.id
+            AND e."occurredAt" <= NOW() AT TIME ZONE 'UTC'
+            AND ${sql.unsafe(eventRetentionFilterSql)}
+            AND ${sql.unsafe(configuredHostEventSql('e', 's'))}
+          ORDER BY e."occurredAt" DESC LIMIT 1
+        )) AS "lastOccurredAt"
       FROM "SiteEnvironment" se
       JOIN "Site" s ON s.id = se."siteId"
       JOIN "Workspace" w ON w.id = s."workspaceId"
       LEFT JOIN "Event" e ON e."siteEnvironmentId" = se.id
+        AND e."occurredAt" >= NOW() - INTERVAL '48 hours'
         AND e."occurredAt" <= NOW() AT TIME ZONE 'UTC'
         AND ${sql.unsafe(eventRetentionFilterSql)}
         AND ${sql.unsafe(configuredHostEventSql('e', 's'))}
       WHERE s.id = ANY(${allSiteIds})
+        AND (${options.environment ?? null}::text IS NULL OR se.environment = ${options.environment ?? null})
       GROUP BY se.id, s."customDomain", w."planId"
       ORDER BY se."siteId" ASC, se."createdAt" ASC
-    `) as SiteEnvironmentSummaryRow[]) : [];
+    ` : Promise.resolve([]);
 
-    const events = allSiteIds.length > 0 ? ((await sql`
-      WITH ranked_events AS (SELECT
-        e.id,
-        e."siteId",
-        e."siteEnvironmentId",
-        e.name,
-        e."occurredAt",
-        e."receivedAt",
-        e."sessionId",
-        e."userId",
-        e.url,
-        e.referrer,
-        e.ref,
-        e.affiliate,
-        e.title,
-        e.properties,
-        row_number() OVER (PARTITION BY e."siteEnvironmentId" ORDER BY e."occurredAt" DESC, e.id DESC) AS event_rank
-      FROM "Event" e
-      JOIN "Site" s ON s.id = e."siteId"
+    const eventsQuery = allSiteIds.length > 0 && loadEvents ? sql`
+      SELECT recent.*
+      FROM "SiteEnvironment" se
+      JOIN "Site" s ON s.id = se."siteId"
       JOIN "Workspace" w ON w.id = s."workspaceId"
+      CROSS JOIN LATERAL (
+        SELECT e.id, e."siteId", e."siteEnvironmentId", e.name,
+          e."occurredAt", e."receivedAt", e."sessionId", e."userId",
+          e.url, e.referrer, e.ref, e.affiliate, e.title, e.properties
+        FROM "Event" e
+        WHERE e."siteEnvironmentId" = se.id
+          AND e."occurredAt" <= NOW() AT TIME ZONE 'UTC'
+          AND ${sql.unsafe(eventRetentionFilterSql)}
+          AND ${sql.unsafe(configuredHostEventSql('e', 's'))}
+        ORDER BY e."occurredAt" DESC, e.id DESC
+        LIMIT ${options.view === 'events' ? 12 : 80}
+      ) recent
       WHERE s.id = ANY(${allSiteIds})
-        AND ${sql.unsafe(eventRetentionFilterSql)}
-        AND ${sql.unsafe(configuredHostEventSql('e', 's'))}
-      ) SELECT * FROM ranked_events WHERE event_rank <= 80
-      ORDER BY "occurredAt" DESC, id DESC
-    `) as EventRow[]) : [];
-    const diagnosticRuns = allSiteIds.length > 0 ? ((await sql`
+        AND (${options.environment ?? null}::text IS NULL OR se.environment = ${options.environment ?? null})
+      ORDER BY recent."occurredAt" DESC, recent.id DESC
+    ` : Promise.resolve([]);
+    const diagnosticRunsQuery = allSiteIds.length > 0 && options.view === 'diagnostics' ? sql`
       SELECT DISTINCT ON (dr."siteEnvironmentId")
         dr.id,
         dr."siteId",
@@ -743,8 +766,8 @@ export const getViewerAccount = async (
       JOIN "Site" s ON s.id = dr."siteId"
       WHERE s.id = ANY(${allSiteIds})
       ORDER BY dr."siteEnvironmentId", dr."createdAt" DESC
-    `) as DiagnosticRunRow[]) : [];
-    const diagnosticFindings = allSiteIds.length > 0 ? ((await sql`
+    ` : Promise.resolve([]);
+    const diagnosticFindingsQuery = allSiteIds.length > 0 && options.view === 'diagnostics' ? sql`
       SELECT
         df.id,
         df."runId",
@@ -762,8 +785,8 @@ export const getViewerAccount = async (
       WHERE s.id = ANY(${allSiteIds})
       ORDER BY df."createdAt" DESC
       LIMIT 100
-    `) as DiagnosticFindingRow[]) : [];
-    const projectShares = allSiteIds.length > 0 ? ((await sql`
+    ` : Promise.resolve([]);
+    const projectSharesQuery = allSiteIds.length > 0 && options.projectId ? sql`
       SELECT
         ps.id,
         ps."siteId",
@@ -776,10 +799,8 @@ export const getViewerAccount = async (
       JOIN "Site" s ON s.id = ps."siteId"
       WHERE s.id = ANY(${allSiteIds})
       ORDER BY ps."createdAt" DESC
-    `) as ProjectShareRow[]) : [];
-    let webhookEndpoints: WebhookEndpointRow[] = [];
-    try {
-      webhookEndpoints = allSiteIds.length > 0 ? ((await sql`
+    ` : Promise.resolve([]);
+    const webhookEndpointsQuery = allSiteIds.length > 0 && options.view === 'setup' ? sql`
         SELECT
           wh.id,
           wh."siteId",
@@ -794,10 +815,23 @@ export const getViewerAccount = async (
         WHERE s.id = ANY(${allSiteIds})
         ORDER BY wh."createdAt" DESC
         LIMIT 100
-      `) as WebhookEndpointRow[]) : [];
-    } catch (error) {
-      console.error('Unable to load webhook endpoints', error);
-    }
+      `.catch((error) => {
+        console.error('Unable to load webhook endpoints', error);
+        return [];
+      }) : Promise.resolve([]);
+    const [sitePrivacyRows, environments, metrics, events, diagnosticRuns, diagnosticFindings, projectShares, webhookEndpoints] = await Promise.all([
+      sitePrivacyQuery as Promise<SitePrivacySettingsRow[]>,
+      environmentsQuery as Promise<SiteEnvironmentSummaryRow[]>,
+      metricsQuery as Promise<SiteEnvironmentSummaryRow[]>,
+      eventsQuery as Promise<EventRow[]>,
+      diagnosticRunsQuery as Promise<DiagnosticRunRow[]>,
+      diagnosticFindingsQuery as Promise<DiagnosticFindingRow[]>,
+      projectSharesQuery as Promise<ProjectShareRow[]>,
+      webhookEndpointsQuery as Promise<WebhookEndpointRow[]>,
+    ]);
+    const privacySettingsBySite = new Map(sitePrivacyRows.map((row) => [row.siteId, row]));
+    const metricsByEnvironment = new Map(metrics.map((row) => [row.id, row]));
+    const siteEnvironments = environments.map((environment) => ({ ...environment, ...metricsByEnvironment.get(environment.id) }));
     const latestRunByEnvironment = new Map(diagnosticRuns.map((run) => [run.siteEnvironmentId, run]));
     const findingsByRun = new Map<string, ProjectDiagnostic[]>();
     for (const finding of diagnosticFindings) {
@@ -911,6 +945,39 @@ export const getViewerAccount = async (
     console.error('Unable to load live Sarge account data', error);
     throw new Error('Live traffic data is unavailable. Please retry.');
   }
+};
+
+export const getProjectEnvironmentAccess = async (
+  access: WorkspaceAccess,
+  databaseUrl: string | undefined,
+  environmentId: string,
+  viewerEmails: string[],
+): Promise<{ id: string; canManage: boolean } | null> => {
+  if (!databaseUrl) throw new Error('Live traffic data is unavailable. Please retry.');
+  const sql = neon(databaseUrl);
+  const emails = normalizeEmails(viewerEmails);
+  const rows = await sql`
+    SELECT se.id,
+      CASE WHEN w."clerkOrganizationId" = ${access.organizationId}
+        THEN ${access.role === 'admin'}
+        ELSE EXISTS (
+          SELECT 1 FROM "ProjectShare" ps
+          WHERE ps."siteId" = s.id AND ps.role = 'edit'
+            AND (ps."acceptedUserId" = ${access.userId} OR ps.email = ANY(${emails}))
+        )
+      END AS "canManage"
+    FROM "SiteEnvironment" se
+    JOIN "Site" s ON s.id = se."siteId"
+    JOIN "Workspace" w ON w.id = s."workspaceId"
+    WHERE se.id = ${environmentId}
+      AND (w."clerkOrganizationId" = ${access.organizationId} OR EXISTS (
+        SELECT 1 FROM "ProjectShare" ps
+        WHERE ps."siteId" = s.id
+          AND (ps."acceptedUserId" = ${access.userId} OR ps.email = ANY(${emails}))
+      ))
+    LIMIT 1
+  `;
+  return (rows[0] as { id: string; canManage: boolean } | undefined) ?? null;
 };
 
 export const getPublicEventStream = async (

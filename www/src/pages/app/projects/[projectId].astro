@@ -1,6 +1,6 @@
 ---
 import { env } from "cloudflare:workers";
-import { Activity, Bot, ChevronDown, Copy, Download, ExternalLink, KeyRound, Link2, Plus, Radio, RefreshCw, Search, TerminalSquare, UserRound, Webhook, X } from "lucide-react";
+import { Activity, Bot, ChevronDown, Copy, Download, ExternalLink, KeyRound, Link2, Plus, Radio, RefreshCw, Search, Settings2, TerminalSquare, UserRound, Webhook, X } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import ProjectShareDialog from "@/components/ProjectShareDialog";
 import { SessionFlowExplorer } from "@/components/SessionFlowExplorer";
 import { Separator } from "@/components/ui/separator";
 import AppLayout from "@/layouts/AppLayout.astro";
+import { getProjectTab, projectTabHref, projectTabs } from "@/lib/project-navigation";
 import { canUseFeature } from "@/lib/pricing";
 import {
   canAdministerAccount,
@@ -46,11 +47,18 @@ if (!access) return Astro.redirect(getActiveOrganizationRedirect(Astro.request.u
 const currentUser = await Astro.locals.currentUser();
 const viewerEmails = currentUser?.emailAddresses.map((email) => email.emailAddress).filter(Boolean) ?? [];
 
-const account = await getViewerAccount(access, env.DATABASE_URL, { viewerEmails });
+const activeTab = getProjectTab(Astro.url.searchParams.get("tab"));
+const requestedEnvironment = Astro.url.searchParams.get("environment");
+const environment = projectEnvironmentOptions.find((value) => value === requestedEnvironment) ?? "production";
+const account = await getViewerAccount(access, env.DATABASE_URL, {
+  viewerEmails,
+  projectId: Astro.params.projectId ?? "",
+  environment,
+  view: activeTab,
+});
 const project = getProject(account, Astro.params.projectId ?? "");
 if (!project) return Astro.redirect("/app");
 
-const requestedEnvironment = Astro.url.searchParams.get("environment");
 const selectedEnvironment =
   project.environments.find((environment) => environment.environment === requestedEnvironment) ??
   project.environments.find((environment) => environment.environment === "production") ??
@@ -59,13 +67,12 @@ const selectedEnvironment =
 const selectedEnvironmentLabel = environmentLabels[selectedEnvironment.environment];
 const environmentOptions = projectEnvironmentOptions.map((environment) => ({
   label: environmentLabels[environment],
-  href: environment === "production" ? `/app/projects/${project.siteId}` : `/app/projects/${project.siteId}?environment=${environment}`,
+  href: projectTabHref(project.siteId, environment, activeTab),
   selected: environment === selectedEnvironment.environment,
 }));
-const selectedEnvironmentHref =
-  selectedEnvironment.environment === "production"
-    ? `/app/projects/${project.siteId}`
-    : `/app/projects/${project.siteId}?environment=${selectedEnvironment.environment}`;
+const selectedEnvironmentHref = projectTabHref(project.siteId, selectedEnvironment.environment, activeTab);
+const activeTabDetails = projectTabs.find((tab) => tab.id === activeTab)!;
+const tabIcons = { overview: Activity, sessions: UserRound, events: Radio, diagnostics: Bot, setup: TerminalSquare, settings: Settings2 };
 
 const canShareProject = project.ownership === "owned" && canAdministerAccount(account);
 const canUseAiReview = canUseFeature(account.planId, "aiReview");
@@ -342,7 +349,7 @@ if (Astro.request.method === "POST") {
   }
 }
 
-if (Astro.request.method !== "POST") {
+if (Astro.request.method !== "POST" && activeTab === "setup") {
   const credentialFlash = readCredentialFlash(Astro.cookies.get(credentialFlashCookieName)?.value);
 
   if (credentialFlash) {
@@ -707,15 +714,14 @@ function resolveTrackedSiteDomain(value: string) {
   eyebrow="Project"
   heading={project.name}
   headingLink={customDomainHeadingLink}
-  description="Copy install snippets, check project health, and watch for media/debug events."
   active="overview"
   breadcrumbs={[
     { label: "Overview", href: "/app" },
     { label: project.name },
   ]}
 >
-  <div class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-2">
-    <div class="inline-flex rounded-md bg-muted p-1">
+  <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+    <nav class="inline-flex max-w-full overflow-x-auto rounded-lg border bg-muted/50 p-1" aria-label="Project environment">
       {
         environmentOptions.map((environmentOption) => (
           <a
@@ -732,9 +738,9 @@ function resolveTrackedSiteDomain(value: string) {
           </a>
         ))
       }
-    </div>
+    </nav>
     <div class="flex items-center gap-2">
-      <p class="text-xs text-muted-foreground">Viewing {selectedEnvironmentLabel} for this project.</p>
+      <p class="hidden text-xs text-muted-foreground sm:block">{selectedEnvironmentLabel}</p>
       {canShareProject && (
         <ProjectShareDialog
           projectName={project.name}
@@ -750,6 +756,31 @@ function resolveTrackedSiteDomain(value: string) {
     </div>
   </div>
 
+  <nav class="mb-6 flex gap-1 overflow-x-auto border-b" aria-label="Project sections" data-project-tabs>
+    {projectTabs.map((tab) => {
+      const Icon = tabIcons[tab.id];
+      return (
+        <a
+          href={projectTabHref(project.siteId, selectedEnvironment.environment, tab.id)}
+          aria-current={activeTab === tab.id ? "page" : undefined}
+          class:list={[
+            "inline-flex shrink-0 items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+            activeTab === tab.id
+              ? "border-primary text-foreground"
+              : "border-transparent text-muted-foreground hover:border-border hover:text-foreground",
+          ]}
+        >
+          <Icon className="size-4" />{tab.label}
+        </a>
+      );
+    })}
+  </nav>
+  <div class="mb-5">
+    <h2 class="text-lg font-semibold tracking-tight">{activeTabDetails.label}</h2>
+    <p class="mt-1 text-sm text-muted-foreground">{activeTabDetails.description}</p>
+  </div>
+
+  {activeTab === "overview" && (
   <section class="mb-4 grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(300px,0.9fr)]" data-project-pulse>
     <Card className="min-w-0">
       <CardHeader>
@@ -992,7 +1023,10 @@ function resolveTrackedSiteDomain(value: string) {
     </Card>
   </section>
 
-  <section class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+  )}
+
+  <section class="grid gap-4 lg:grid-cols-2">
+    {activeTab === "setup" && (
       <details
         class="group/install flex flex-col gap-4 overflow-hidden rounded-xl bg-card py-4 text-sm text-card-foreground ring-1 ring-foreground/10 lg:col-span-2"
         data-install-pixel-details
@@ -1124,7 +1158,9 @@ function resolveTrackedSiteDomain(value: string) {
           </div>
         </div>
       </details>
+    )}
 
+    {activeTab === "diagnostics" && (
       <Card className="min-w-0 lg:col-span-2" data-ai-review-card data-dismiss-storage-key={diagnosticDismissalStorageKey}>
         <CardHeader>
           <div class="flex min-w-0 flex-wrap items-start justify-between gap-3">
@@ -1251,7 +1287,10 @@ function resolveTrackedSiteDomain(value: string) {
         </CardContent>
       </Card>
 
-      <Card className="lg:col-span-2">
+    )}
+
+    {activeTab === "sessions" && (
+      <Card className="min-w-0 lg:col-span-2">
         <CardHeader>
           <CardTitle>User and session flows</CardTitle>
         </CardHeader>
@@ -1260,7 +1299,10 @@ function resolveTrackedSiteDomain(value: string) {
         </CardContent>
       </Card>
 
-      <div class="grid gap-4 lg:col-span-2 xl:grid-cols-2">
+    )}
+
+    {activeTab === "setup" && (
+      <div class="grid min-w-0 gap-4 lg:col-span-2 xl:grid-cols-2">
         <Card data-test-impersonation-card>
           <CardHeader>
             <div class="flex items-center justify-between gap-3">
@@ -1529,7 +1571,10 @@ function resolveTrackedSiteDomain(value: string) {
         </Card>
       </div>
 
-      <Card data-live-debug-stream data-events-endpoint={debugStreamEndpoint}>
+    )}
+
+    {activeTab === "events" && (
+      <Card className="min-w-0 lg:col-span-2" data-live-debug-stream data-events-endpoint={debugStreamEndpoint}>
         <CardHeader>
           <div class="flex flex-wrap items-center justify-between gap-3">
             <CardTitle>Debug stream · latest 12 events</CardTitle>
@@ -1623,7 +1668,10 @@ function resolveTrackedSiteDomain(value: string) {
           }
         </CardContent>
       </Card>
-    <aside class="grid content-start gap-4">
+    )}
+
+    {activeTab === "setup" && (
+    <div class="grid min-w-0 content-start gap-4 lg:col-span-2 lg:grid-cols-2">
       <Card data-affiliate-tracking-card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Link2 className="size-4" /> Affiliate tracking</CardTitle>
@@ -1773,11 +1821,12 @@ function resolveTrackedSiteDomain(value: string) {
           </div>
         </CardContent>
       </Card>
-    </aside>
+    </div>
+    )}
   </section>
 
   {
-    canManageProjectData && (
+    activeTab === "settings" && canManageProjectData && (
       <section class="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]" data-project-data-controls>
         <Card>
           <CardHeader>
@@ -1866,6 +1915,12 @@ function resolveTrackedSiteDomain(value: string) {
       </section>
     )
   }
+
+  {activeTab === "settings" && !canManageProjectData && (
+    <div class="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">
+      Only organization admins can manage this project's data controls.
+    </div>
+  )}
 
   <script>
     document.querySelectorAll<HTMLButtonElement>("[data-copy-snippet]").forEach((button) => {
@@ -2206,11 +2261,15 @@ function resolveTrackedSiteDomain(value: string) {
         .map((button) => button.dataset.eventDialog)
         .join(",");
 
+      let refreshing = false;
       const refreshDebugStream = async () => {
+        if (refreshing || document.hidden || stream.querySelector("dialog[open]")) return;
+        refreshing = true;
         try {
           const response = await fetch(endpoint, {
             cache: "no-store",
             headers: { accept: "application/json" },
+            signal: AbortSignal.timeout(15000),
           });
           if (!response.ok) throw new Error(`Debug stream fetch failed: ${response.status}`);
 
@@ -2224,10 +2283,11 @@ function resolveTrackedSiteDomain(value: string) {
           if (status) status.textContent = "Live";
         } catch {
           if (status) status.textContent = "Reconnecting";
+        } finally {
+          refreshing = false;
         }
       };
 
-      refreshDebugStream();
       setInterval(refreshDebugStream, 2000);
     });
   </script>

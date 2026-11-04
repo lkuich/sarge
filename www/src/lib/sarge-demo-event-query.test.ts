@@ -10,7 +10,9 @@ describe("project environment event queries", () => {
     const demoData = readSource("./sarge-demo.ts");
     const eventStreamApi = readSource("../pages/api/project-events/[environmentId].ts");
     expect(demoData).not.toContain("NTILE(");
-    expect(demoData).toContain('PARTITION BY e."siteEnvironmentId"');
+    expect(demoData).toContain('CROSS JOIN LATERAL');
+    expect(demoData).toContain('WHERE e."siteEnvironmentId" = se.id');
+    expect(demoData).not.toContain('row_number() OVER');
     expect(eventStreamApi).toContain("getProjectEnvironmentEventPage");
     expect(eventStreamApi).not.toContain("selectedEnvironment.recentEvents.slice");
     expect(demoData).not.toContain("LIMIT 4");
@@ -35,7 +37,8 @@ describe("project environment event queries", () => {
     expect(markTestApi).toContain("export const POST");
     expect(markTestApi).toContain("markProjectTrafficAsTest");
     expect(markTestApi).toContain('kind === "user" || kind === "session"');
-    expect(markTestApi).toContain("canManageProject(account, project)");
+    expect(markTestApi).toContain("getProjectEnvironmentAccess");
+    expect(markTestApi).toContain("!selectedEnvironment.canManage");
     expect(markTestApi).toContain('import { env } from "cloudflare:workers";');
     expect(markTestApi).toContain("env.DATABASE_URL");
     expect(markTestApi).not.toContain("runtimeEnv.DATABASE_URL");

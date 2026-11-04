@@ -1,8 +1,7 @@
 import { env } from "cloudflare:workers";
 import type { APIRoute } from "astro";
 import {
-  canManageProject,
-  getViewerAccount,
+  getProjectEnvironmentAccess,
   markProjectTrafficAsTest,
   type TestTrafficSubjectKind,
 } from "@/lib/sarge-demo";
@@ -32,17 +31,13 @@ export const POST: APIRoute = async (Astro) => {
 
   const currentUser = await Astro.locals.currentUser();
   const viewerEmails = currentUser?.emailAddresses.map((email) => email.emailAddress).filter(Boolean) ?? [];
-  const account = await getViewerAccount(access, env.DATABASE_URL, { viewerEmails });
-  const project = account.projects.find((candidate) =>
-    candidate.environments.some((environment) => environment.id === environmentId),
-  );
-  const selectedEnvironment = project?.environments.find((environment) => environment.id === environmentId);
+  const selectedEnvironment = await getProjectEnvironmentAccess(access, env.DATABASE_URL, environmentId, viewerEmails);
 
-  if (!project || !selectedEnvironment) {
+  if (!selectedEnvironment) {
     return json({ error: "Project environment not found" }, 404);
   }
 
-  if (!canManageProject(account, project)) {
+  if (!selectedEnvironment.canManage) {
     return json({ error: "Edit access is required to mark test traffic." }, 403);
   }
 

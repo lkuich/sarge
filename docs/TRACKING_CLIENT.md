@@ -162,11 +162,13 @@ The pixel sends events in this order:
 2. `fetch('/v2/events', { method: 'POST', keepalive: true })`
 3. image GET fallback to `/v2/e`
 
-These are transport attempts, not delivery acknowledgments: a true sendBeacon result only means the browser queued the request. There is no durable retry queue. Verify receipt in Live events or with a temporary verification link.
+A rejected or throwing beacon falls through to fetch. Browser JSON ingestion supports cross-origin preflight. Fetch network failures, opaque responses (status 0), and HTTP 5xx responses trigger one image attempt; explicit HTTP 4xx responses, including quota errors, are not retried.
+
+These are transport attempts, not delivery acknowledgments: a true sendBeacon result only means the browser queued the request. A lost response can cause a duplicate when the image fallback retries an accepted event. There is no durable retry queue or exactly-once guarantee. Verify receipt in Live events or with a temporary verification link.
 
 ## Watchdog Events
 
-The pixel wraps the globals present when it loads. Earlier calls and later replacements of the wrappers can escape observation. Supported globals:
+The pixel observes existing functions and later assignments without creating callable placeholders for absent vendors. Wrappers preserve queues, properties, return values, and vendor errors. Script load hooks refresh observation after global function declarations. Calls before installation or before a declaration hook refresh can escape observation, as can protected accessor/read-only globals. Supported globals:
 
 - `dataLayer.push(...)` -> `data_layer.push`
 - `gtag(...)` -> `google.tag.fire`

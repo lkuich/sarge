@@ -72,7 +72,7 @@ const planHighlights: Record<PlanId, string[]> = {
     "30-day retention",
     "Server-side calls",
     "Partner postbacks",
-    "3 webhooks",
+    "API and MCP read access",
   ],
   growth: [
     "10 projects",
@@ -86,27 +86,12 @@ const planHighlights: Record<PlanId, string[]> = {
   scale: [
     "Custom events/month",
     "Unlimited shared users/project",
-    "1-year+ retention",
-    "Dedicated endpoint",
-    "SSO/SAML",
-    "Audit logs",
-    "Warehouse sync",
+    "Retention by agreement",
+    "Deployment requirements by agreement",
+    "API and MCP read access",
   ],
 };
 
-const planNames: Record<PlanId, string> = {
-  free: "Free",
-  starter: "Starter",
-  growth: "Growth",
-  scale: "Scale",
-};
-
-const planPrices: Record<PlanId, string> = {
-  free: "$0",
-  starter: "$19",
-  growth: "$99",
-  scale: "Contact us",
-};
 ---
 
 <AppLayout
@@ -177,10 +162,10 @@ const planPrices: Record<PlanId, string> = {
         <Card className={plan.id === account.planId ? "border-primary" : ""}>
           <CardHeader>
             <div class="flex items-center justify-between gap-2">
-              <CardTitle>{planNames[plan.id]}</CardTitle>
+              <CardTitle>{plan.name}</CardTitle>
               {plan.id === account.planId && <Badge>Current</Badge>}
             </div>
-            <p class="text-3xl font-semibold">{planPrices[plan.id]}</p>
+            <p class="text-3xl font-semibold">{plan.monthlyPriceUsd === null ? "Contact us" : `$${plan.monthlyPriceUsd}`}</p>
             {plan.monthlyPriceUsd !== null && <p class="text-xs text-muted-foreground">per month</p>}
           </CardHeader>
           <CardContent className="grid gap-3 text-sm">

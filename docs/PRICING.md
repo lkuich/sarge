@@ -47,6 +47,6 @@ Gate these because they map to business value:
 
 ## Implementation status
 
-`www/src/lib/pricing.ts` is the source of truth for portal gates; `packages/core/src/usage-limits.ts` defines enforced event/retention limits. The monthly event budget is workspace-wide. At the limit, ingestion returns 429. Retention restricts reads; it does not imply scheduled physical purging.
+`www/src/lib/pricing.ts` is the source of truth for portal gates; `packages/core/src/usage-limits.ts` defines enforced event/retention limits. The monthly event budget is workspace-wide. At the limit, ingestion returns 429. Retention restricts reads. Every 30 minutes, maintenance physically purges up to 5,000 expired Free/Starter/Growth events; backlogs can delay removal. Scale physical cleanup requires an agreed policy.
 
-Server/postback credentials and webhook configuration start at Starter; Production AI review and configurable attribution start at Growth. Webhook delivery is not implemented. Scale feature names in configuration are commercial capabilities to arrange, not proof that SSO, audit logs, warehouse sync, or a dedicated deployment are automatically provisioned.
+Server/postback credentials and webhook configuration start at Starter; Production AI review and configurable attribution start at Growth. Webhook delivery is not implemented. SSO, audit logs, and managed warehouse sync are not available entitlements. Scale event volume, retention, and deployment requirements must be agreed before sale.

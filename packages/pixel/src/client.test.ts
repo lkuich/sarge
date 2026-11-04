@@ -16,7 +16,7 @@ const createMemoryStorage = () => {
 const createBrowser = (overrides: Partial<BrowserLike> = {}) => {
   const storage = createMemoryStorage();
   const sendBeacon = vi.fn((_url: string, _data?: BodyInit | null) => true);
-  const fetch = vi.fn(() => Promise.resolve());
+  const fetch = vi.fn(() => Promise.resolve({ ok: true, status: 202 }));
   const images: string[] = [];
 
   class FakeImage {
@@ -106,7 +106,13 @@ describe("Sarge pixel", () => {
 
   it("observes common third-party pixel calls", async () => {
     vi.resetModules();
+    const fbq = vi.fn();
+    const gtag = vi.fn();
+    const dataLayer: unknown[] = [];
     const { browser, sendBeacon } = createBrowser({
+      fbq,
+      gtag,
+      dataLayer,
       __SARGE_CONFIG__: {
         siteId: "site_hosted",
         endpoint: "https://sarge.example.com",
@@ -120,6 +126,9 @@ describe("Sarge pixel", () => {
     window.fbq!("track", "Purchase", { value: 129.99 });
     window.gtag!("event", "conversion", { send_to: "AW-123" });
     window.dataLayer!.push({ event: "checkout_started", value: 99 });
+
+    expect(fbq).toHaveBeenCalledWith("track", "Purchase", { value: 129.99 });
+    expect(gtag).toHaveBeenCalledWith("event", "conversion", { send_to: "AW-123" });
 
     const payloads = sendBeacon.mock.calls.map(([, body]) => JSON.parse(String(body)));
     expect(payloads).toEqual(
@@ -387,6 +396,66 @@ describe("Sarge pixel", () => {
     expect(url.searchParams.get("sid")).toBe("site_123");
     expect(url.searchParams.get("n")).toBe("Lead");
     expect(url.searchParams.get("p")).toBe(JSON.stringify({ form: "contact" }));
+  });
+
+  it("tries fetch when Beacon refuses or throws, without duplicating successful delivery", async () => {
+    const { browser, fetch, sendBeacon, images } = createBrowser();
+    sendBeacon.mockReturnValueOnce(false).mockImplementationOnce(() => { throw new TypeError("Beacon blocked"); });
+    const client = createSargeClient(browser);
+    client.init({ siteId: "site_123" });
+
+    client.track("first");
+    client.track("second");
+    client.track("third");
+    await Promise.resolve();
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(images).toHaveLength(0);
+  });
+
+  it.each(["rejection", "throw", "server error"])("uses the compact transport after fetch %s", async (failure) => {
+    const { browser, fetch, images } = createBrowser({ navigator: {} });
+    if (failure === "rejection") fetch.mockRejectedValue(new TypeError("Network error"));
+    if (failure === "throw") fetch.mockImplementation(() => { throw new TypeError("Fetch blocked"); });
+    if (failure === "server error") fetch.mockResolvedValue({ ok: false, status: 503 });
+    const client = createSargeClient(browser);
+    client.init({ siteId: "site_123", endpoint: "https://events.example.com" });
+
+    client.track("purchase.completed", { order_id: "order_123", value: 42 });
+    await Promise.resolve();
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(images).toHaveLength(1);
+    const fallback = new URL(images[0]);
+    expect(fallback.origin + fallback.pathname).toBe("https://events.example.com/v2/e");
+    expect(fallback.searchParams.get("sid")).toBe("site_123");
+    expect(fallback.searchParams.get("n")).toBe("purchase.completed");
+    expect(JSON.parse(fallback.searchParams.get("p")!)).toEqual({ order_id: "order_123", value: 42 });
+  });
+
+  it.each([400, 401, 403, 404, 413, 429])("does not retry an explicit %i rejection", async (status) => {
+    const { browser, fetch, images } = createBrowser({ navigator: {} });
+    fetch.mockResolvedValue({ ok: false, status });
+    const client = createSargeClient(browser);
+    client.init({ siteId: "site_123" });
+
+    client.track("page.view");
+    await Promise.resolve();
+
+    expect(images).toHaveLength(0);
+  });
+
+  it("contains failures when all transports are blocked", async () => {
+    const { browser, fetch } = createBrowser({
+      navigator: {},
+      Image: class { src = ""; constructor() { throw new TypeError("Images blocked"); } }
+    });
+    fetch.mockRejectedValue(new TypeError("Network error"));
+    const client = createSargeClient(browser);
+    client.init({ siteId: "site_123" });
+
+    expect(() => client.track("page.view")).not.toThrow();
+    await Promise.resolve();
   });
 
   it("exposes page-console helpers for impersonation", async () => {

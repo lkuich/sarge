@@ -371,4 +371,4 @@ Set `SiteEnvironment.serverEventSecretHash` for `/v2/server/events` and `SiteEnv
 - The Node API enables CORS; hosted JSON responses include an allow-origin header. Send credentialed integrations from your backend. MCP rejects foreign Origin headers.
 - Browser pixel ingestion is unauthenticated by design; server-side ingestion, postbacks, and API export require per-environment credentials.
 - Monthly workspace event quotas are enforced. General per-IP/per-second throttling and outbound webhook delivery are not implemented.
-- Privacy rules sanitize event properties before storage, not every envelope field. Retention filters restrict reads; no scheduled physical event purge is implemented.
+- Privacy rules sanitize event properties before storage, not every envelope field. Retention filters restrict reads; scheduled maintenance purges expired Free/Starter/Growth events in bounded batches every 30 minutes. Physical removal can lag during a backlog; Scale cleanup requires an agreed policy.

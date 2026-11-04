@@ -19,11 +19,7 @@ export type PlanFeature =
   | "configurableAttributionWindow"
   | "clientWorkspaces"
   | "scheduledAiAudits"
-  | "apiExport"
-  | "dedicatedEndpoint"
-  | "sso"
-  | "auditLogs"
-  | "warehouseSync";
+  | "apiExport";
 
 export interface PlanLimits {
   projects: number | null;
@@ -140,7 +136,7 @@ export const planDefinitions: PlanDefinition[] = [
     id: "scale",
     name: "Scale",
     monthlyPriceUsd: null,
-    description: "Custom volume, dedicated infrastructure, security controls, and SLA.",
+    description: "Custom event volume and project limits. Contact us to agree on requirements.",
     limits: {
       projects: null,
       projectShares: null,
@@ -168,10 +164,6 @@ export const planDefinitions: PlanDefinition[] = [
       "configurableAttributionWindow",
       "clientWorkspaces",
       "scheduledAiAudits",
-      "dedicatedEndpoint",
-      "sso",
-      "auditLogs",
-      "warehouseSync",
     ],
   },
 ];

@@ -48,46 +48,87 @@ const install = () => {
 };
 
 const installWatchdogs = (client: ReturnType<typeof createSargeClient>) => {
-  const originalFbq = window.fbq;
-  window.fbq = (...args: unknown[]) => {
-    client.track("meta.pixel.fire", {
-      vendor: "meta",
-      command: typeof args[0] === "string" ? args[0] : undefined,
-      event_name: typeof args[1] === "string" ? args[1] : undefined,
-      payload: args[2]
-    });
-
-    return originalFbq?.(...args);
-  };
-
-  const originalGtag = window.gtag;
-  window.gtag = (...args: unknown[]) => {
-    client.track("google.tag.fire", {
-      vendor: "google",
-      command: typeof args[0] === "string" ? args[0] : undefined,
-      event_name: typeof args[1] === "string" ? args[1] : undefined,
-      payload: args[2]
-    });
-
-    return originalGtag?.(...args);
-  };
-
-  if (!window.dataLayer) {
-    window.dataLayer = [] as unknown[] as DataLayer;
-  }
-
-  const dataLayer = window.dataLayer as DataLayer;
-  const originalPush = dataLayer.push.bind(dataLayer);
-  dataLayer.push = (...items: unknown[]) => {
-    for (const item of items) {
-      client.track("data_layer.push", {
-        vendor: "google",
-        payload: item
+  const wrapCalls = (observe: (args: unknown[]) => void) => {
+    const wrappers = new WeakMap<Function, Function>();
+    let depth = 0;
+    return (value: unknown) => {
+      if (typeof value !== "function") return value;
+      const existing = wrappers.get(value);
+      if (existing) return existing;
+      const wrapped = new Proxy(value, {
+        apply(target, receiver, args) {
+          depth += 1;
+          try {
+            if (depth === 1) {
+              try {
+                observe(args);
+              } catch {
+                // Observation must never prevent the vendor's own call.
+              }
+            }
+            return Reflect.apply(target, receiver, args);
+          } finally {
+            depth -= 1;
+          }
+        }
       });
-    }
-
-    return originalPush(...items);
+      wrappers.set(value, wrapped);
+      wrappers.set(wrapped, wrapped);
+      return wrapped;
+    };
   };
+
+  const wrapFbq = wrapCalls((args) => client.track("meta.pixel.fire", {
+    vendor: "meta",
+    command: typeof args[0] === "string" ? args[0] : undefined,
+    event_name: typeof args[1] === "string" ? args[1] : undefined,
+    payload: args[2]
+  }));
+  const wrapGtag = wrapCalls((args) => client.track("google.tag.fire", {
+    vendor: "google",
+    command: typeof args[0] === "string" ? args[0] : undefined,
+    event_name: typeof args[1] === "string" ? args[1] : undefined,
+    payload: args[2]
+  }));
+  const wrapPush = wrapCalls((items) => {
+    for (const item of items) client.track("data_layer.push", { vendor: "google", payload: item });
+  });
+  const wrapDataLayer = (value: unknown) => {
+    if (Array.isArray(value)) watchProperty(value, "push", wrapPush);
+    return value;
+  };
+  const refresh = () => {
+    watchProperty(window, "fbq", wrapFbq);
+    watchProperty(window, "gtag", wrapGtag);
+    watchProperty(window, "dataLayer", wrapDataLayer);
+    wrapDataLayer(window.dataLayer);
+  };
+
+  refresh();
+  // Script declarations can replace configurable hooks without invoking their setter.
+  window.addEventListener?.("load", refresh, true);
+  window.addEventListener?.("DOMContentLoaded", refresh, { once: true });
+};
+
+const watchProperty = (target: object, key: string, wrap: (value: unknown) => unknown) => {
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(target, key);
+    // shortcut: provider accessors/read-only globals are not observed; add SDK-specific hooks if needed.
+    if (descriptor?.get || descriptor?.set || descriptor?.writable === false) return;
+    if (descriptor?.configurable === false) {
+      Reflect.set(target, key, wrap(Reflect.get(target, key)));
+      return;
+    }
+    let value = wrap(Reflect.get(target, key));
+    Object.defineProperty(target, key, {
+      configurable: true,
+      enumerable: descriptor?.enumerable ?? true,
+      get: () => value,
+      set: (next: unknown) => { value = wrap(next); }
+    });
+  } catch {
+    // Frozen or provider-owned globals must remain usable without a watchdog.
+  }
 };
 
 declare global {

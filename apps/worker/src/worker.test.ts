@@ -5,7 +5,10 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { UsageLimitExceededError, type TrackedPageHealthResult } from "@sarge/core";
 import { createWorkerHandler } from "./index.js";
+import { runScheduledMaintenance } from "./data-maintenance.js";
 import type { EventExportQuery, EventStore, ExportedEvent, StoredDiagnosticRun, StoredEvent, WorkerEnv } from "./types.js";
+
+vi.mock("./data-maintenance.js", () => ({ runScheduledMaintenance: vi.fn().mockResolvedValue(undefined) }));
 
 const sourcePath = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 
@@ -209,6 +212,63 @@ const createExecutionContext = () => {
 };
 
 describe("Cloudflare Worker hosted API", () => {
+  it.each([
+    ["sarge.events", "env_shared_production"],
+    ["acme.sarge.events", "env_123_production"]
+  ])("accepts cross-origin browser preflight and JSON ingestion on %s", async (host, siteId) => {
+    const { store, events } = createMemoryStore();
+    const handler = createWorkerHandler({ store });
+    const endpoint = `https://${host}/v2/events`;
+    const preflight = await handler.fetch(new Request(endpoint, {
+      method: "OPTIONS",
+      headers: {
+        origin: "https://shop.example.com",
+        "access-control-request-method": "POST",
+        "access-control-request-headers": "content-type"
+      }
+    }), createEnv());
+
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("access-control-allow-origin")).toBe("*");
+    expect(preflight.headers.get("access-control-allow-methods")).toBe("POST");
+    expect(preflight.headers.get("access-control-allow-headers")).toBe("Content-Type");
+    expect(preflight.headers.has("access-control-allow-credentials")).toBe(false);
+    expect(events).toHaveLength(0);
+
+    const response = await handler.fetch(new Request(endpoint, {
+      method: "POST",
+      headers: { origin: "https://shop.example.com", "content-type": "application/json" },
+      body: JSON.stringify({ siteId, name: "page.view", occurredAt: "2026-06-19T12:00:00.000Z", sessionId: "session_123", userId: "user_123" })
+    }), createEnv());
+    expect(response.status).toBe(202);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    expect(events).toHaveLength(1);
+  });
+
+  it.each([
+    ["https://unknown.sarge.events/v2/events", "POST", "content-type", 404],
+    ["https://sarge.events/v2/events", "DELETE", "content-type", 405],
+    ["https://sarge.events/v2/events", "POST", "content-type, authorization", 403],
+    ["https://sarge.events/v2/server/events", "POST", "content-type", 404],
+    ["https://sarge.events/v2/export/events", "GET", "authorization", 404],
+    ["https://sarge.events/mcp", "POST", "authorization", 403]
+  ])("does not grant browser preflight access to %s %s %s", async (endpoint, method, headers, status) => {
+    const { store, events } = createMemoryStore();
+    const response = await createWorkerHandler({ store }).fetch(new Request(endpoint, {
+      method: "OPTIONS",
+      headers: {
+        origin: "https://shop.example.com",
+        "access-control-request-method": method,
+        "access-control-request-headers": headers
+      }
+    }), createEnv());
+
+    expect(response.status).toBe(status);
+    expect(response.headers.has("access-control-allow-methods")).toBe(false);
+    expect(response.headers.has("access-control-allow-headers")).toBe(false);
+    expect(events).toHaveLength(0);
+  });
+
   it("returns health status", async () => {
     const { store } = createMemoryStore();
     const handler = createWorkerHandler({ store });
@@ -710,6 +770,17 @@ describe("Cloudflare Worker hosted API", () => {
     expect(response.status).toBe(404);
   });
 
+  it("still runs diagnostics when scheduled maintenance fails", async () => {
+    const { ctx, promises } = createExecutionContext();
+    const { store } = createMemoryStore();
+    const listSites = vi.spyOn(store, "listActiveSitesForDiagnostics");
+    vi.mocked(runScheduledMaintenance).mockRejectedValueOnce(new Error("maintenance unavailable"));
+
+    await createWorkerHandler({ store }).scheduled(createScheduledController(), createEnv(), ctx);
+    await expect(Promise.all(promises)).rejects.toThrow("maintenance unavailable");
+    expect(listSites).toHaveBeenCalledOnce();
+  });
+
   it("runs scheduled diagnostics and stores an AI summary for findings", async () => {
     const { ctx, promises } = createExecutionContext();
     const { diagnosticEvents, diagnosticRuns, store } = createMemoryStore();
@@ -750,6 +821,7 @@ describe("Cloudflare Worker hosted API", () => {
     }), ctx);
     await Promise.all(promises);
 
+    expect(runScheduledMaintenance).toHaveBeenCalledWith("postgresql://example");
     expect(aiCalls).toHaveLength(1);
     expect(JSON.stringify(aiCalls[0])).toContain("Return concise Markdown");
     expect(JSON.stringify(aiCalls[0])).toContain("at most 80 words");

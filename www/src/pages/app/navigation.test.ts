@@ -203,9 +203,10 @@ describe("app navigation routes", () => {
     expect(billing).toContain('name="intent" value="checkout-plan"');
     expect(billing).toContain('name="intent" value="billing-portal"');
     expect(billing).toContain('name="planId"');
-    expect(billing).toContain("Free");
-    expect(billing).toContain("$19");
-    expect(billing).toContain("$99");
+    expect(billing).toContain("{plan.name}");
+    expect(billing).toContain("plan.monthlyPriceUsd");
+    expect(billing).not.toContain("$19");
+    expect(billing).not.toContain("$99");
     expect(billing).toContain("Contact us");
     expect(billing).not.toContain("Enterprise");
     expect(billing).toContain("50k events/month");
@@ -218,13 +219,14 @@ describe("app navigation routes", () => {
     expect(billing).toContain("Basic affiliate attribution");
     expect(billing).toContain("Server-side calls");
     expect(billing).toContain("Partner postbacks");
-    expect(billing).toContain("3 webhooks");
+    expect(billing).toContain("API and MCP read access");
+    expect(billing).not.toContain("3 webhooks");
     expect(billing).toContain("AI review");
     expect(billing).toContain("Tracked page monitoring");
     expect(billing).toContain("Exports and alerts");
-    expect(billing).toContain("SSO/SAML");
-    expect(billing).toContain("Audit logs");
-    expect(billing).toContain("Warehouse sync");
+    expect(billing).not.toContain("SSO/SAML");
+    expect(billing).not.toContain("Audit logs");
+    expect(billing).not.toContain("Warehouse sync");
   });
 
   it("adds notification preferences with durable email settings and dedupe", () => {

@@ -47,7 +47,7 @@ describe("pricing plan definitions", () => {
         eventsPerMonth: null,
         retentionDays: null,
       },
-      features: expect.arrayContaining(["clientWorkspaces", "scheduledAiAudits", "apiExport", "sso", "auditLogs"]),
+      features: expect.arrayContaining(["clientWorkspaces", "scheduledAiAudits", "apiExport"]),
     });
   });
 

@@ -11,6 +11,7 @@ import {
 } from "@sarge/core";
 import { ZodError } from "zod";
 import { runScheduledDiagnostics, type PageHealthChecker } from "./diagnostic-runner.js";
+import { runScheduledMaintenance } from "./data-maintenance.js";
 import { NeonEventStore } from "./neon-event-store.js";
 import { createPixelResponse } from "./pixel-response.js";
 import type { EventStore, SiteRecord, WorkerEnv } from "./types.js";
@@ -27,9 +28,15 @@ export const createWorkerHandler = (options: WorkerHandlerOptions = {}) => ({
   },
   async scheduled(controller: ScheduledController, env: WorkerEnv, ctx: ExecutionContext): Promise<void> {
     const store = options.store ?? new NeonEventStore(env.DATABASE_URL);
-    ctx.waitUntil(runScheduledDiagnostics(store, env, controller.scheduledTime, {
-      pageHealthChecker: options.pageHealthChecker
-    }));
+    ctx.waitUntil((async () => {
+      try {
+        await runScheduledMaintenance(env.DATABASE_URL);
+      } finally {
+        await runScheduledDiagnostics(store, env, controller.scheduledTime, {
+          pageHealthChecker: options.pageHealthChecker
+        });
+      }
+    })());
   }
 });
 
@@ -68,6 +75,10 @@ const handleRequest = async (request: Request, _env: WorkerEnv, store: EventStor
     return handleSharedJsonEvent(request, store);
   }
 
+  if (isSharedHost && url.pathname === "/v2/events" && request.method === "OPTIONS") {
+    return handleBrowserPreflight(request);
+  }
+
   if (isSharedHost && url.pathname === "/v2/server/events" && request.method === "POST") {
     return handleServerEvent(request, store);
   }
@@ -102,6 +113,10 @@ const handleRequest = async (request: Request, _env: WorkerEnv, store: EventStor
     return handleJsonEvent(request, store, site);
   }
 
+  if (url.pathname === "/v2/events" && request.method === "OPTIONS") {
+    return handleBrowserPreflight(request);
+  }
+
   if (url.pathname === "/v2/server/events" && request.method === "POST") {
     return handleServerEvent(request, store, site);
   }
@@ -120,6 +135,27 @@ const handleRequest = async (request: Request, _env: WorkerEnv, store: EventStor
   }
 
   return json({ success: false, error: "Not found" }, 404);
+};
+
+const handleBrowserPreflight = (request: Request) => {
+  if (request.headers.get("access-control-request-method") !== "POST") {
+    return json({ success: false, error: "Method not allowed" }, 405);
+  }
+  const requestedHeaders = request.headers.get("access-control-request-headers") ?? "";
+  if (requestedHeaders.split(",").some((header) => header.trim() && header.trim().toLowerCase() !== "content-type")) {
+    return json({ success: false, error: "Header not allowed" }, 403);
+  }
+
+  return new Response(null, {
+    status: 204,
+    headers: {
+      "access-control-allow-origin": "*",
+      "access-control-allow-methods": "POST",
+      "access-control-allow-headers": "Content-Type",
+      "access-control-max-age": "86400",
+      "vary": "Access-Control-Request-Method, Access-Control-Request-Headers"
+    }
+  });
 };
 
 const handleJsonEvent = async (request: Request, store: EventStore, site: SiteRecord) => {

@@ -193,11 +193,6 @@ export type CreateDeletionRequestResult =
   | { success: true; request: DeletionRequestSummary }
   | { success: false; error: string };
 
-export type ProcessDeletionRequestsResult = {
-  processed: number;
-  failed: number;
-};
-
 export interface DeletionRequestSummary {
   id: string;
   scope: 'workspace' | 'site';
@@ -1676,6 +1671,16 @@ export const createDeletionRequest = async (
     const workspace = await getViewerWorkspace(sql, access);
     if (!workspace) return { success: false, error: 'Workspace was not found.' };
 
+    if (input.scope === 'workspace') {
+      const subscriptions = await sql`
+        SELECT id FROM "Workspace"
+        WHERE id = ${workspace.id} AND "stripeSubscriptionId" IS NOT NULL AND "billingStatus" <> 'canceled'
+      `;
+      if (subscriptions.length > 0) {
+        return { success: false, error: 'Cancel the paid subscription before deleting this workspace.' };
+      }
+    }
+
     const targetSite = input.scope === 'site'
       ? await getOrganizationSiteById(sql, access, input.targetSiteId ?? '')
       : null;
@@ -1708,89 +1713,6 @@ export const createDeletionRequest = async (
     console.error('Unable to create deletion request', error);
     return { success: false, error: 'Deletion request could not be created.' };
   }
-};
-
-export const processPendingDeletionRequests = async (
-  databaseUrl: string | undefined,
-  limit = 10,
-): Promise<ProcessDeletionRequestsResult> => {
-  if (!databaseUrl) return { processed: 0, failed: 0 };
-
-  const sql = neon(databaseUrl);
-  const requests = (await sql`
-    SELECT id, scope, status, "targetWorkspaceId", "targetSiteId", "createdAt"
-    FROM "DeletionRequest"
-    WHERE status = 'pending'
-    ORDER BY "createdAt" ASC
-    LIMIT ${limit}
-  `) as DeletionRequestRow[];
-
-  let processed = 0;
-  let failed = 0;
-
-  for (const request of requests) {
-    try {
-      await sql`UPDATE "DeletionRequest" SET status = 'processing', "startedAt" = NOW(), "updatedAt" = NOW() WHERE id = ${request.id}`;
-      if (request.scope === 'site' && request.targetSiteId) {
-        await deleteSiteData(sql, request.targetSiteId);
-      } else if (request.scope === 'workspace' && request.targetWorkspaceId) {
-        await deleteWorkspaceData(sql, request.targetWorkspaceId);
-      } else {
-        throw new Error('Deletion request target is missing.');
-      }
-      await sql`UPDATE "DeletionRequest" SET status = 'completed', "completedAt" = NOW(), "updatedAt" = NOW() WHERE id = ${request.id}`;
-      processed += 1;
-    } catch (error) {
-      failed += 1;
-      await sql`
-        UPDATE "DeletionRequest"
-        SET status = 'failed', error = ${error instanceof Error ? error.message : 'Deletion failed'}, "updatedAt" = NOW()
-        WHERE id = ${request.id}
-      `;
-    }
-  }
-
-  return { processed, failed };
-};
-
-const deleteSiteData = async (sql: SqlClient, siteId: string) => {
-  const environmentRows = (await sql`
-    SELECT id
-    FROM "SiteEnvironment"
-    WHERE "siteId" = ${siteId}
-  `) as { id: string }[];
-  const environmentIds = environmentRows.map((row) => row.id);
-
-  if (environmentIds.length > 0) {
-    await sql`DELETE FROM "PublicVerificationToken" WHERE "siteEnvironmentId" = ANY(${environmentIds})`;
-    await sql`DELETE FROM "NotificationDelivery" WHERE "siteEnvironmentId" = ANY(${environmentIds})`;
-  }
-
-  await sql`DELETE FROM "NotificationDelivery" WHERE "siteId" = ${siteId}`;
-  await sql`DELETE FROM "DiagnosticFinding" WHERE "siteId" = ${siteId}`;
-  await sql`DELETE FROM "DiagnosticRun" WHERE "siteId" = ${siteId}`;
-  await sql`DELETE FROM "WebhookEndpoint" WHERE "siteId" = ${siteId}`;
-  await sql`DELETE FROM "Event" WHERE "siteId" = ${siteId}`;
-  await sql`DELETE FROM "ProjectShare" WHERE "siteId" = ${siteId}`;
-  await sql`DELETE FROM "SitePrivacySettings" WHERE "siteId" = ${siteId}`;
-  await sql`DELETE FROM "Site" WHERE id = ${siteId}`;
-};
-
-const deleteWorkspaceData = async (sql: SqlClient, workspaceId: string) => {
-  const sites = (await sql`
-    SELECT id
-    FROM "Site"
-    WHERE "workspaceId" = ${workspaceId}
-  `) as { id: string }[];
-
-  for (const site of sites) {
-    await deleteSiteData(sql, site.id);
-  }
-
-  await sql`DELETE FROM "NotificationPreference" WHERE "workspaceId" = ${workspaceId}`;
-  await sql`DELETE FROM "NotificationDelivery" WHERE "workspaceId" = ${workspaceId}`;
-  await sql`DELETE FROM "WorkspacePrivacySettings" WHERE "workspaceId" = ${workspaceId}`;
-  await sql`DELETE FROM "Workspace" WHERE id = ${workspaceId}`;
 };
 
 const mapDeletionRequest = (row: DeletionRequestRow): DeletionRequestSummary => ({

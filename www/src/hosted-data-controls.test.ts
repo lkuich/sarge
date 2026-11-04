@@ -29,7 +29,10 @@ describe("hosted data controls", () => {
     expect(demoData).toContain("saveWorkspacePrivacySettings");
     expect(demoData).toContain("saveSitePrivacySettings");
     expect(demoData).toContain("createDeletionRequest");
-    expect(demoData).toContain("processPendingDeletionRequests");
+    expect(demoData).not.toContain("processPendingDeletionRequests");
+    const maintenance = readSource("../../apps/worker/src/data-maintenance.ts");
+    expect(maintenance).toContain("runScheduledMaintenance");
+    expect(maintenance).toContain("FOR UPDATE SKIP LOCKED");
   });
 
   it("removes self-hosting from public launch docs and navigation", () => {

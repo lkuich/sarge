@@ -10,7 +10,7 @@ vi.mock('@neondatabase/serverless', () => ({
   }, { unsafe: (sql: string) => ({ sql }) }),
 }));
 
-import { getProjectEnvironmentAccess, getViewerAccount, type WorkspaceAccess } from './sarge-demo';
+import { createDeletionRequest, getProjectEnvironmentAccess, getViewerAccount, type WorkspaceAccess } from './sarge-demo';
 
 const access: WorkspaceAccess = { userId: 'user_1', organizationId: 'org_1', role: 'admin' };
 const projectId = 'site_1';
@@ -113,5 +113,46 @@ describe('event environment authorization', () => {
     database.query.mockRejectedValueOnce(new Error('offline'));
     await expect(getProjectEnvironmentAccess(access, 'postgres://test', environment.id, [])).rejects.toThrow('offline');
     await expect(getProjectEnvironmentAccess(access, undefined, environment.id, [])).rejects.toThrow('unavailable');
+  });
+});
+
+describe('deletion request authorization and billing', () => {
+  const deletion = { id: 'delete_1', scope: 'workspace', status: 'pending', targetWorkspaceId: 'workspace_1', targetSiteId: null, createdAt: new Date() };
+
+  it('rejects non-admin deletion before reading the database', async () => {
+    await expect(createDeletionRequest({ ...access, role: 'member' }, 'postgres://test', { scope: 'workspace', confirmation: 'DELETE' }))
+      .resolves.toMatchObject({ success: false });
+    expect(database.query).not.toHaveBeenCalled();
+  });
+
+  it('requires cancellation before queuing workspace deletion', async () => {
+    database.query.mockResolvedValueOnce([{ id: 'workspace_1' }]).mockResolvedValueOnce([{ id: 'workspace_1' }]);
+    await expect(createDeletionRequest(access, 'postgres://test', { scope: 'workspace', confirmation: 'DELETE' }))
+      .resolves.toEqual({ success: false, error: 'Cancel the paid subscription before deleting this workspace.' });
+    expect(queries()).toContain('"stripeSubscriptionId" IS NOT NULL');
+    expect(queries()).toContain('"billingStatus" <> \'canceled\'');
+    expect(queries()).not.toContain('INSERT INTO "DeletionRequest"');
+  });
+
+  it('queues a workspace when no uncanceled subscription exists', async () => {
+    database.query.mockResolvedValueOnce([{ id: 'workspace_1' }]).mockResolvedValueOnce([]).mockResolvedValueOnce([deletion]);
+    await expect(createDeletionRequest(access, 'postgres://test', { scope: 'workspace', confirmation: 'DELETE' }))
+      .resolves.toMatchObject({ success: true, request: { status: 'pending' } });
+  });
+
+  it('allows paid-workspace site deletion only for a project in the active organization', async () => {
+    database.query.mockResolvedValueOnce([{ id: 'workspace_1' }]).mockResolvedValueOnce([{ id: projectId }])
+      .mockResolvedValueOnce([{ ...deletion, scope: 'site', targetSiteId: projectId }]);
+    await expect(createDeletionRequest(access, 'postgres://test', { scope: 'site', targetSiteId: projectId, confirmation: 'DELETE' }))
+      .resolves.toMatchObject({ success: true, request: { targetSiteId: projectId } });
+    expect(queries()).not.toContain('"stripeSubscriptionId"');
+    expect(database.query.mock.calls[1][0]).toContain('WHERE w."clerkOrganizationId" = ?');
+  });
+
+  it('does not queue an inaccessible project', async () => {
+    database.query.mockResolvedValueOnce([{ id: 'workspace_1' }]).mockResolvedValueOnce([]);
+    await expect(createDeletionRequest(access, 'postgres://test', { scope: 'site', targetSiteId: 'other-site', confirmation: 'DELETE' }))
+      .resolves.toMatchObject({ success: false });
+    expect(queries()).not.toContain('INSERT INTO "DeletionRequest"');
   });
 });

@@ -150,7 +150,7 @@ const formatSettingsList = (values: string[]) => values.join(", ");
         <Card>
           <CardHeader>
             <CardTitle>Request workspace deletion</CardTitle>
-            <p class="text-sm text-muted-foreground">Queues deletion of workspace projects, events, diagnostics, webhooks, notifications, and settings.</p>
+            <p class="text-sm text-muted-foreground">Permanently deletes workspace projects, events, diagnostics, webhooks, notifications, and settings through scheduled processing. Cancel any paid subscription and wait for cancellation to take effect before requesting deletion.</p>
           </CardHeader>
           <CardContent className="grid gap-4">
             {deletionRequestError && (

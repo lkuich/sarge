@@ -172,8 +172,11 @@ POST https://track.sargetrack.app/mcp
 - Setup provides custom tracking-subdomain instructions and a downloadable pixel. Customer DNS, TLS, and routing verification remain manual; automated custom-hostname provisioning is not implemented.
 - Cloudflare Hyperdrive is documented as a future Neon connectivity optimization, not enabled yet.
 - The Worker expects the current Prisma schema in `apps/api/prisma/schema.prisma`.
-- Outbound webhook delivery and scheduled physical retention purging are not implemented.
+- Outbound webhook delivery is not implemented.
+- The existing 30-minute Worker cron runs deletion/retention maintenance before diagnostics. Each run handles up to ten 5,000-event deletion batches and purges up to 5,000 expired Free/Starter/Growth events. Scale cleanup is excluded pending an agreed policy. Monitor the `Data maintenance completed` log counts and failed `DeletionRequest` rows; large backlogs require multiple runs. Workspace deletion requires a canceled Stripe subscription.
 - Event cursor queries use the concurrent `(siteEnvironmentId, occurredAt, id)` index added in November 2026. Apply the committed migrations before deploying dependent changes.
+
+For maintenance SQL verification, create an empty loopback PostgreSQL database named `sarge_maintenance_test...`, apply the Prisma migrations, and run `SARGE_MAINTENANCE_TEST_DATABASE_URL=postgresql://.../sarge_maintenance_test... node scripts/verify-data-maintenance.mjs` with Node 24+. The script exercises the real maintenance queries against local Postgres, including rollback, tenant isolation, concurrent claims, ingestion locks, and retention bounds. It refuses non-local or populated databases and leaves its fixture data for inspection; use a fresh database for another run.
 
 ## Historical traffic reporting verification (2026-10-27)
 

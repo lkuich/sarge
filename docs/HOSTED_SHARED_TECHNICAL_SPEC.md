@@ -54,8 +54,8 @@ Overview loads aggregate traffic data. Sessions fetches filtered cursor pages. L
 - JSON ingestion has a 64 KiB body limit. Browser ingestion is intentionally public; server calls, postbacks, exports, and MCP require their own credentials.
 - Monthly event budgets are enforced per workspace; exceeded budgets return 429. General per-IP/per-second request throttling is not implemented.
 - Property redaction and allow/block lists apply before storage. Envelope fields such as URLs, titles, identifiers, and attribution are not scrubbed by property redaction.
-- Portal/export reads respect configured plan retention. There is no scheduled physical purge of expired event rows.
-- Project/workspace deletion requests are queued. `processPendingDeletionRequests` exists, but no runtime caller or scheduled job invokes it; an operator must process pending requests.
+- Portal/export reads respect configured plan retention. Every 30 minutes, `runScheduledMaintenance` physically purges up to 5,000 expired events on Free, Starter, and Growth. Scale and unknown plans are excluded; custom retention requires an agreed policy. Backlogs can delay physical removal.
+- The same job processes project/workspace deletion requests in up to ten batches of 5,000 events per run. It atomically claims requests, fences stale workers, and cleans metadata transactionally after events are gone. Interrupted claims are recoverable after 15 minutes; failures retry after 30 minutes. Active Stripe subscriptions block workspace deletion until cancellation takes effect. Diagnostics run after maintenance, including when maintenance fails.
 - Webhook destination configuration exists, but outbound delivery and retries do not.
 
 ## Diagnostics

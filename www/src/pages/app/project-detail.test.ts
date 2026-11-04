@@ -484,7 +484,8 @@ describe("project detail install panel", () => {
     expect(projectDetail).toContain('canUseFeature(account.planId, "serverEvents")');
     expect(projectDetail).toContain('canUseFeature(account.planId, "postbacks")');
     expect(projectDetail).toContain("AI review is available on Growth and higher");
-    expect(projectDetail).toContain("Webhooks are available on Starter and higher");
+    expect(projectDetail).toContain("Webhook configuration is available on Starter and higher");
+    expect(projectDetail).toContain("Outbound delivery is not available");
     expect(projectDetail).toContain("Server-side calls are available on Starter and higher");
   });
 

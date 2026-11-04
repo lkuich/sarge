@@ -27,7 +27,7 @@ export interface BrowserLike {
   fbq?: (...args: unknown[]) => unknown;
   gtag?: (...args: unknown[]) => unknown;
   dataLayer?: unknown[] & { push: (...items: unknown[]) => number };
-  fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<unknown>;
+  fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Pick<Response, "ok" | "status">>;
   Image: new () => { src: string };
   crypto: {
     randomUUID(): string;

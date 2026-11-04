@@ -192,7 +192,7 @@ const troubleshooting = [
             <h2 class="text-xl font-semibold">Watch other pixels</h2>
           </div>
           <p class="mt-2 text-sm leading-6 text-muted-foreground">
-            Sarge wraps the functions present when it loads and forwards observed calls. Earlier calls or calls made after another script replaces a wrapper may not be captured; verify the actual vendor events.
+            Sarge observes vendor functions present at installation or assigned later while preserving their queues and behavior. Missing vendor globals stay undefined so normal bootstrap scripts can run. Earlier calls, protected globals, and calls during script declarations before hooks refresh may escape observation; verify the actual vendor events.
           </p>
           <div class="mt-4 grid gap-2 text-sm text-muted-foreground sm:grid-cols-3">
             <p class="rounded-md border bg-background p-3"><code>fbq(...)</code><br />meta.pixel.fire</p>
@@ -284,7 +284,7 @@ const troubleshooting = [
             <li>Select Create webhook and copy the signing secret into secure storage. It is shown only once.</li>
           </ol>
           <p class="mt-4 text-sm leading-6 text-muted-foreground">
-            Outbound event delivery is not implemented yet. Saving a destination stores its configuration; an active status does not confirm delivery. Use the <a class="underline underline-offset-4 hover:text-foreground" href="/docs/api">read-only export API</a> to retrieve events from your backend today.
+            Outbound event delivery is not implemented yet. Saving a destination stores its configuration; the configured status does not confirm delivery. Use the <a class="underline underline-offset-4 hover:text-foreground" href="/docs/api">read-only export API</a> to retrieve events from your backend today.
           </p>
         </section>
 
@@ -329,7 +329,7 @@ const troubleshooting = [
         <section id="data-controls" class="scroll-mt-24 min-w-0 rounded-lg border bg-card p-4 sm:p-5">
           <h2 class="font-semibold">Privacy and data controls</h2>
           <p class="mt-3 text-sm leading-6 text-muted-foreground">Organization admins manage project rules in Settings and workspace defaults in Account. PII redaction is on by default and applies to event properties at ingestion. It does not retroactively scrub stored records or redact URLs, titles, user IDs, and attribution fields.</p>
-          <p class="mt-3 text-sm leading-6 text-muted-foreground">Deletion requests are queued and require operator processing; there is no automatic deletion job. Read retention is 7 days on Free, 30 on Starter, 90 on Growth, and custom on Scale. Retention filtering does not promise scheduled physical deletion.</p>
+          <p class="mt-3 text-sm leading-6 text-muted-foreground">Deletion requests are processed every 30 minutes in bounded batches; large requests can span multiple runs. Finish cancellation of a workspace’s Stripe subscription before deleting it. Read retention is 7 days on Free, 30 on Starter, 90 on Growth, and custom on Scale. Expired events on Free, Starter, and Growth are physically purged in batches of up to 5,000 per run, so a backlog can delay removal. Scale cleanup requires an agreed policy.</p>
         </section>
 
         <section class="min-w-0 rounded-lg border bg-card p-4 sm:p-5">

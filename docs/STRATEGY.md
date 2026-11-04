@@ -15,7 +15,7 @@ Sarge is a lightweight event recorder for teams that need to prove what fired, w
 - Test-traffic impersonation and filters.
 - Production deterministic diagnostics, bounded page monitoring, and AI summaries.
 - Clerk organization access, external project shares, Stripe billing, and plan quotas.
-- Property privacy controls and queued deletion requests.
+- Property privacy controls, scheduled deletion processing, and bounded physical retention cleanup on Free, Starter, and Growth.
 - Raw event exports and authenticated read-only MCP on every plan.
 
 The core value is tracking verification and evidence, not a complete payment ledger or generic analytics platform. The LLM consumes event evidence; it does not establish facts by itself.
@@ -27,9 +27,9 @@ The core value is tracking verification and evidence, not a complete payment led
 - Versioned custom scripts and an editor/deployment workflow.
 - MCP diagnostic-query tools and richer evidence-linked recommendations beyond `list_events`.
 - Automated customer-domain provisioning, dedicated-environment operations, and negotiated enterprise controls.
-- General request throttling and scheduled physical retention purging.
+- General request throttling and agreed custom retention cleanup for Scale.
 
-These are proposals, not available capabilities. A Scale plan feature flag alone does not provision SSO, audit logs, warehouse sync, or a dedicated deployment.
+These are proposals, not available capabilities. SSO, audit logs, and managed warehouse sync are not current plan entitlements. Dedicated deployment requirements must be agreed before provisioning.
 
 ## Monetization and Distribution
 

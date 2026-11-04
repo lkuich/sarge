@@ -115,7 +115,7 @@ gtag(...)           -> google.tag.fire
 dataLayer.push(...) -> data_layer.push
 ```
 
-Load Sarge before the interactions you need to debug. Sarge wraps the functions present when it loads and forwards observed calls. Calls made before Sarge loads, or after another script replaces a wrapper, may not be captured. Verify the actual vendor calls after installation.
+Load Sarge before the interactions you need to debug. Sarge observes `fbq`, `gtag`, and `dataLayer.push` when present or assigned later, preserving vendor queues, properties, and return values. It leaves missing vendor globals undefined so their normal bootstrap scripts can run. Calls before Sarge loads, protected accessor/read-only globals, and calls during script declarations before hooks refresh may escape observation. Verify the actual vendor calls after installation.
 
 If your backend calls Meta Conversions API, Google Measurement Protocol, or another vendor API directly, report that upstream call through `/v2/server/events` with the matching watchdog event name. Include the upstream status code in `properties.upstream`:
 
@@ -244,7 +244,7 @@ Webhook destinations belong to the selected project environment. Organization ad
 3. Optionally enter event names separated by commas or newlines, such as `purchase.completed`. Leave filters blank to select all events.
 4. Select Create webhook and copy the signing secret into secure storage. It is shown only once.
 
-Outbound event delivery is not implemented yet. Saving a destination stores its configuration; an active status does not confirm delivery. Use the [read-only export API](https://sargetrack.app/docs/api.md) to retrieve events from your backend today.
+Outbound event delivery is not implemented yet. Saving a destination stores its configuration; the configured status does not confirm delivery. Use the [read-only export API](https://sargetrack.app/docs/api.md) to retrieve events from your backend today.
 
 ## Verify Installation
 
@@ -271,7 +271,7 @@ You can also open these project URLs from the portal:
 
 Organization admins configure project-level controls in Settings and workspace defaults in Account. PII redaction is enabled by default, with property blocklists or allowlists and custom redaction keys/patterns. These controls apply to event `properties` at ingestion; they do not retroactively scrub existing records or sanitize every envelope field. Keep secrets and personal information out of URLs, titles, user IDs, attribution values, and payloads.
 
-Settings can queue project deletion; Account can queue workspace deletion. These actions record a deletion request. A deletion processor exists, but no automatic job currently invokes it; an operator must process the request before the associated data and configuration are removed. Read access respects plan retention: Free 7 days, Starter 30 days, Growth 90 days; Scale is custom. Retention filtering does not promise physical deletion of old database rows on a schedule.
+Settings queues project deletion; Account queues workspace deletion. The ingestion Worker processes requests every 30 minutes in bounded batches, so large requests can span multiple runs. Cleanup removes the associated events and configuration; failed or interrupted work is retried. A workspace with a Stripe subscription must finish cancellation before deletion. Read retention is Free 7 days, Starter 30 days, Growth 90 days; Scale is custom. Expired Free, Starter, and Growth events are physically purged in batches of up to 5,000 each run; a backlog can delay physical removal beyond the read window. Scale retention and physical cleanup require an agreed policy.
 
 ## Agent Install Guidance
 

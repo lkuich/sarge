@@ -133,25 +133,42 @@ export const createSargeClient = (browser: BrowserLike): SargeClient => {
   const sendPayload = (endpoint: string, payload: EventPayload) => {
     const url = `${endpoint}/v2/events`;
     const body = JSON.stringify(payload);
+    // shortcut: a lost response can duplicate one event; add idempotency before durable retries.
+    const sendImage = () => {
+      try {
+        const image = new browser.Image();
+        image.src = buildCompactUrl(endpoint, payload);
+      } catch {
+        // Tracking must not interrupt the page when every transport is blocked.
+      }
+    };
 
-    if (browser.navigator.sendBeacon?.(url, body)) {
-      return;
+    try {
+      if (browser.navigator.sendBeacon?.(url, body)) return;
+    } catch {
+      // Some browsers throw instead of returning false when Beacon is blocked.
     }
 
     if (browser.fetch) {
-      void browser.fetch(url, {
-        method: "POST",
-        body,
-        headers: {
-          "content-type": "application/json"
-        },
-        keepalive: true
-      });
-      return;
+      try {
+        void browser.fetch(url, {
+          method: "POST",
+          body,
+          headers: {
+            "content-type": "application/json"
+          },
+          keepalive: true
+        }).then((response) => {
+          // Do not retry rejected payloads or exhausted quotas through another endpoint.
+          if (!response.ok && (response.status === 0 || response.status >= 500)) sendImage();
+        }, sendImage);
+        return;
+      } catch {
+        // Continue with the compact transport when fetch throws synchronously.
+      }
     }
 
-    const image = new browser.Image();
-    image.src = buildCompactUrl(endpoint, payload);
+    sendImage();
   };
 
   const ensureProjectUserId = (siteId: string) => {

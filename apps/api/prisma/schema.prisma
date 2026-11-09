@@ -30,6 +30,20 @@ model Workspace {
   privacySettings         WorkspacePrivacySettings?
   notificationPreferences NotificationPreference[]
   notificationDeliveries  NotificationDelivery[]
+  managementTokens        ManagementToken[]
+}
+
+model ManagementToken {
+  id              String    @id @default(cuid())
+  workspaceId     String
+  createdByUserId  String
+  tokenHash       String    @unique
+  createdAt       DateTime  @default(now())
+  revokedAt       DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
 }
 
 model WorkspacePrivacySettings {

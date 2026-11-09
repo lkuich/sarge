@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import AppLayout from "@/layouts/AppLayout.astro";
 import { createDeletionRequest, getViewerAccount, saveWorkspacePrivacySettings } from "@/lib/sarge-demo";
+import { createManagementToken, listManagementTokens, revokeManagementToken } from "@/lib/management-tokens";
 import {
   getActiveOrganizationRedirect,
   getWorkspaceAccess,
@@ -39,10 +40,25 @@ let privacySettingsError = "";
 let privacySettingsSuccess = "";
 let deletionRequestError = "";
 let deletionRequestSuccess = "";
+let managementToken = "";
+let managementTokenError = "";
 
 if (Astro.request.method === "POST") {
   const formData = await Astro.request.formData();
   const intent = String(formData.get("intent") ?? "");
+
+  if (intent === "create-management-token" || intent === "revoke-management-token") {
+    if (Astro.request.headers.get("origin") !== Astro.url.origin) return new Response("Forbidden origin", { status: 403 });
+    try {
+      if (intent === "create-management-token") managementToken = await createManagementToken(access, env.DATABASE_URL);
+      else {
+        const result = await revokeManagementToken(access, env.DATABASE_URL, String(formData.get("tokenId") ?? ""));
+        if (!result.success) managementTokenError = "Token not found or already revoked.";
+      }
+    } catch {
+      managementTokenError = "MCP token could not be updated. Only organization admins can manage tokens.";
+    }
+  }
 
   if (intent === "save-workspace-privacy-settings") {
     const result = await saveWorkspacePrivacySettings(access, env.DATABASE_URL, {
@@ -77,6 +93,8 @@ if (Astro.request.method === "POST") {
 
 const workspaceSettings = account.privacySettings;
 const canManageWorkspaceData = account.role === "admin" && account.workspaceSetupComplete && account.id !== "shared";
+const managementTokens = canManageWorkspaceData ? await listManagementTokens(access, env.DATABASE_URL) : [];
+Astro.response.headers.set("Cache-Control", "no-store");
 const formatSettingsList = (values: string[]) => values.join(", ");
 ---
 
@@ -88,6 +106,26 @@ const formatSettingsList = (values: string[]) => values.join(", ");
   active="account"
   breadcrumbs={[{ label: "Account" }]}
 >
+  {canManageWorkspaceData && (
+    <Card className="mb-4">
+      <CardHeader>
+        <CardTitle>MCP management access</CardTitle>
+        <p class="text-sm text-muted-foreground">Connect an agent to manage this workspace. Tokens can create projects, rotate credentials, share access, and request permanent data deletion. Existing environment read tokens stay read-only.</p>
+      </CardHeader>
+      <CardContent className="grid gap-4">
+        <p class="text-sm">Endpoint: <code>https://track.sargetrack.app/mcp</code> · <a class="underline" href="/docs/mcp.md">Setup and tools</a></p>
+        {managementTokenError && <Alert variant="destructive"><AlertTitle>Token update failed</AlertTitle><AlertDescription>{managementTokenError}</AlertDescription></Alert>}
+        {managementToken && <div class="grid gap-2"><Label htmlFor="managementToken">Copy this token now. It will not be shown again.</Label><Input id="managementToken" value={managementToken} readOnly autoComplete="off" spellCheck={false} /></div>}
+        <form method="post"><input type="hidden" name="intent" value="create-management-token" /><Button type="submit">Create management token</Button></form>
+        <ul class="grid gap-2">
+          {managementTokens.map((token) => <li class="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-sm">
+            <span><code>{token.id}</code> · {new Date(token.createdAt).toISOString()} · {token.createdByUserId}</span>
+            <form method="post"><input type="hidden" name="intent" value="revoke-management-token" /><input type="hidden" name="tokenId" value={token.id} /><Button type="submit" variant="outline">Revoke</Button></form>
+          </li>)}
+        </ul>
+      </CardContent>
+    </Card>
+  )}
   {
     canManageWorkspaceData && (
       <section class="mb-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]" data-workspace-data-controls>

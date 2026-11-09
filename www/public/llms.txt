@@ -9,7 +9,7 @@ Use these Markdown documents when helping someone install or debug Sarge. Prefer
 - [Install Sarge](https://sargetrack.app/docs/install.md): Dashboard tabs, pixel install, SPA events, impersonation, affiliate attribution, server calls, webhook configuration, privacy, and verification.
 - [Event Reference](https://sargetrack.app/docs/events.md): Event names, tracking-plan properties, example payloads, watchdog events, and naming rules.
 - [API Export](https://sargetrack.app/docs/api.md): Environment-scoped read tokens, filters, cursor pagination, retention, and error responses.
-- [MCP Connection](https://sargetrack.app/docs/mcp.md): Remote Streamable HTTP setup, bearer tokens, the read-only list_events tool, and troubleshooting.
+- [MCP Connection](https://sargetrack.app/docs/mcp.md): Remote Streamable HTTP setup, environment read tokens, workspace management tokens, tools, deployment and troubleshooting.
 
 ## Full Context
 
@@ -38,7 +38,7 @@ For test flows, use `impersonate("customer_123")` in the page console to make ev
 
 An editor or organization admin can create a temporary public verification stream at `/verify/{siteEnvironmentId}?key={temporaryVerificationKey}` from Setup → Install pixel. The `siteEnvironmentId` is the `env` query parameter in the pixel URL. The temporary verification key expires after 30 minutes. The page auto-refreshes and shows up to 30 recent events; anyone holding the link can see them, so share it only with the intended tester or agent.
 
-Sarge provides a read-only, authenticated MCP endpoint at `https://track.sargetrack.app/mcp` using environment-scoped API export bearer tokens on every plan, including Free. See [MCP connection instructions](https://sargetrack.app/docs/mcp.md). No npm package is required; do not run `npx sarge@latest` or install `@sarge/mcp`.
+Sarge provides an authenticated MCP endpoint at `https://track.sargetrack.app/mcp`. Environment API export tokens expose only read-only event queries on every plan, including Free. Separate workspace management tokens, created by admins under Account, expose project creation, installation snippets, event and diagnostic inspection, credentials, project sharing, webhooks, privacy/deletion controls, notifications, billing links, and token revocation. Management tokens are checked against current Clerk admin membership on every request. Initial workspace/legal setup, organization members, and payments stay in the dashboard or provider interfaces. See [MCP connection instructions](https://sargetrack.app/docs/mcp.md). No npm package is required; do not run `npx sarge@latest` or install `@sarge/mcp`.
 
 ## Credentials and Limits
 

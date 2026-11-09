@@ -17,6 +17,9 @@
   "ai": {
     "binding": "AI"
   },
+  "services": [
+    { "binding": "MANAGEMENT_MCP", "service": "sarge-www" }
+  ],
   "triggers": {
     "crons": [
       "*/30 * * * *"

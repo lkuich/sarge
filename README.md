@@ -189,7 +189,7 @@ See:
 
 ## Product Direction
 
-Sarge is being repositioned as a cheap, dead-simple event recorder for teams that need to debug tracking implementations. The current product includes event streams, a third-party pixel watchdog, test-traffic filters, deterministic reviews with AI summaries, and a read-only MCP query interface. Versioned custom script deployment and richer diagnostic-query tools remain future work.
+Sarge is being repositioned as a cheap, dead-simple event recorder for teams that need to debug tracking implementations. The current product includes event streams, a third-party pixel watchdog, test-traffic filters, deterministic reviews with AI summaries, and MCP event queries and workspace management. Environment export tokens remain read-only; separate revocable workspace tokens enable management tools. See [MCP setup and deployment](www/public/docs/mcp.md). Versioned custom script deployment remains future work.
 
 See `docs/STRATEGY.md`.
 

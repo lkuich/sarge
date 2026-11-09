@@ -4,7 +4,7 @@ import { z } from "zod";
 import { encodeExportCursor, InvalidExportQueryError, parseExportQuery } from "./export-query.js";
 import type { EventStore } from "./types.js";
 
-export const handleMcpRequest = async (request: Request, store: EventStore): Promise<Response> => {
+export const handleMcpRequest = async (request: Request, store: EventStore, management?: { fetch(request: Request): Promise<Response> }): Promise<Response> => {
   const origin = request.headers.get("origin");
   if (origin !== null && origin !== new URL(request.url).origin) {
     return new Response("Forbidden origin", { status: 403 });
@@ -13,6 +13,16 @@ export const handleMcpRequest = async (request: Request, store: EventStore): Pro
   const server = new McpServer({ name: "sarge", version: "0.1.0" });
   try {
     const token = /^Bearer\s+(.+)$/i.exec(request.headers.get("authorization") ?? "")?.[1]?.trim();
+    if (token?.startsWith("sarge_manage_")) {
+      if (!management) return new Response("Management MCP is unavailable", { status: 503, headers: { "Cache-Control": "no-store" } });
+      const forwarded = new Request("https://sargetrack.app/api/mcp", request);
+      forwarded.headers.delete("origin");
+      forwarded.headers.delete("cookie");
+      const upstream = await management.fetch(forwarded);
+      const response = new Response(upstream.body, upstream);
+      response.headers.set("Cache-Control", "no-store");
+      return response;
+    }
     const readToken = token ? await store.findReadToken(token) : null;
     if (!readToken) {
       return new Response("Invalid credentials", {

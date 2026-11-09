@@ -6,6 +6,7 @@ export interface AiBinding {
 
 export interface WorkerEnv {
   DATABASE_URL: string;
+  MANAGEMENT_MCP?: { fetch(request: Request): Promise<Response> };
   SARGE_BASE_DOMAIN?: string;
   DEFAULT_ATTRIBUTION_TTL_DAYS?: string;
   DIAGNOSTIC_EVENT_LOOKBACK_MINUTES?: string;

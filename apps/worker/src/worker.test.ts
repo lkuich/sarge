@@ -709,6 +709,31 @@ describe("Cloudflare Worker hosted API", () => {
       expect(failure.status).toBe(500);
       expect(await failure.text()).not.toContain("secret");
     });
+
+    it("routes only management credentials to the portal binding without browser cookies", async () => {
+      const { store } = createMemoryStore();
+      const read = vi.spyOn(store, "findReadToken");
+      const handler = createWorkerHandler({ store });
+      const management = { fetch: vi.fn(async (_request: Request) => new Response('{"result":{"tools":[]}}', { headers: { "content-type": "application/json" } })) };
+      const env = { ...createEnv(), MANAGEMENT_MCP: management };
+      const body = { jsonrpc: "2.0", id: 1, method: "tools/list" };
+      const response = await handler.fetch(rpcRequest(body, { authorization: "Bearer sarge_manage_test", cookie: "private-cookie", origin: "https://sarge.events" }), env);
+      expect(response.status).toBe(200);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      const forwarded = management.fetch.mock.calls[0][0] as Request;
+      expect(forwarded.url).toBe("https://sargetrack.app/api/mcp");
+      expect(forwarded.headers.get("authorization")).toBe("Bearer sarge_manage_test");
+      expect(forwarded.headers.has("cookie")).toBe(false);
+      expect(forwarded.headers.has("origin")).toBe(false);
+      expect(await forwarded.json()).toEqual(body);
+      expect(read).not.toHaveBeenCalled();
+      expect((await handler.fetch(rpcRequest(body, { authorization: "Bearer sarge_manage_test", origin: "https://evil.example" }), env)).status).toBe(403);
+      expect(management.fetch).toHaveBeenCalledTimes(1);
+      expect((await handler.fetch(rpcRequest(body, { authorization: "Bearer sarge_manage_test" }), createEnv())).status).toBe(503);
+      await handler.fetch(rpcRequest(body), env);
+      expect(read).toHaveBeenCalledWith("sarge_read_valid");
+      expect(management.fetch).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("rejects shared-host export calls without a read token", async () => {

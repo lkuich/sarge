@@ -50,7 +50,7 @@ const handleRequest = async (request: Request, _env: WorkerEnv, store: EventStor
   }
 
   if (isSharedHost && url.pathname === "/mcp") {
-    return handleMcpRequest(request, store);
+    return handleMcpRequest(request, store, _env.MANAGEMENT_MCP);
   }
 
   if (isSharedHost && url.pathname === "/pixel.js" && request.method === "GET") {

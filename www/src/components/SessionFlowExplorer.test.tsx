@@ -74,6 +74,22 @@ afterEach(() => {
 });
 
 describe("SessionFlowExplorer event filters", () => {
+  it("treats explicitly marked link clicks as conversions instead of custom events", () => {
+    render(<SessionFlowExplorer events={[
+      { ...event("github-goal", "github.click", "links", 0), properties: { conversion: true } },
+      { ...event("railway-goal", "railway.click", "links", 1), properties: { conversion: true } },
+      { ...event("unmarked-link", "github.click", "links", 2), properties: { conversion: "true" } },
+    ]} />);
+    act(() => { buttonNamed("Custom")?.click(); });
+    expect(container?.querySelector('[data-flow-node="event:github-goal"]')).not.toBeNull();
+    expect(container?.querySelector('[data-flow-node="event:railway-goal"]')).not.toBeNull();
+    expect(container?.querySelector('[data-flow-node="event:unmarked-link"]')).toBeNull();
+    expect(container?.querySelector('[data-flow-node="event:github-goal"]')?.getAttribute('data-flow-style')).toContain('--color-success');
+    act(() => { buttonNamed("Conversion")?.click(); });
+    expect(container?.querySelector('[data-flow-node="event:github-goal"]')).toBeNull();
+    expect(container?.querySelector('[data-flow-node="event:railway-goal"]')).toBeNull();
+  });
+
   it("defaults event category filters to selected without watchdog events", () => {
     render(<SessionFlowExplorer events={events} />);
 

@@ -837,7 +837,7 @@ const buildFlowElements = (groups: FlowGroup[], mode: FlowMode): { nodes: FlowNo
             width: nodeWidth,
             borderColor: isTestEvent
               ? testTrafficBorderColor
-              : isConversionEvent(event.name)
+              : isConversionEvent(event)
                 ? "color-mix(in oklch, var(--color-success) 48%, transparent)"
                 : isWatchdogEvent(event.name)
                   ? "color-mix(in oklch, var(--color-chart-2) 55%, transparent)"
@@ -853,15 +853,15 @@ const buildFlowElements = (groups: FlowGroup[], mode: FlowMode): { nodes: FlowNo
           source: previousNodeId,
           target: nodeId,
           type: "smoothstep",
-          animated: isConversionEvent(event.name),
+          animated: isConversionEvent(event),
           markerEnd: { type: MarkerType.ArrowClosed, color: isTestEvent ? "var(--color-destructive)" : undefined },
           style: {
             stroke: isTestEvent
               ? "var(--color-destructive)"
-              : isConversionEvent(event.name)
+              : isConversionEvent(event)
                 ? "var(--color-success)"
                 : "var(--color-primary)",
-            strokeWidth: isTestEvent || isConversionEvent(event.name) ? 2.5 : 1.8,
+            strokeWidth: isTestEvent || isConversionEvent(event) ? 2.5 : 1.8,
           },
         });
 
@@ -945,7 +945,7 @@ const buildFlowExportPayload = ({
     pageSegments: segmentEventsByPageView(group.events).map((segment) => segment.map((event) => event.id)),
     events: group.events.map((event) => ({
       ...event,
-      category: getEventFilter(event.name),
+      category: getEventFilter(event),
       isTestTraffic: isTestTraffic(event),
     })),
   })),
@@ -1052,7 +1052,7 @@ const filterGroups = (
   return groups
     .map((group) => {
       const matchingEvents = group.events.filter((event) => {
-        const matchesFilter = selectedFilters.has(getEventFilter(event.name));
+        const matchesFilter = selectedFilters.has(getEventFilter(event));
         if (!matchesFilter) return false;
         const attribution = getSargeAttribution(event);
         if (normalizedRefFilter && !matchesTextFilter(attribution.ref, normalizedRefFilter)) return false;
@@ -1313,14 +1313,16 @@ const getUrlSearchParams = (value?: string) => {
 const isWatchdogEvent = (name: string) =>
   name === "meta.pixel.fire" || name === "google.tag.fire" || name === "data_layer.push";
 
-const isConversionEvent = (name: string) => name.includes("purchase") || name.includes("checkout");
+const isConversionEvent = ({ name, properties }: FlowEvent) =>
+  !isWatchdogEvent(name) && (properties.conversion === true || name.includes("purchase") || name.includes("checkout"));
 
 const testTrafficBorderColor = "color-mix(in oklch, var(--color-destructive) 72%, transparent)";
 const testTrafficBackground = "color-mix(in oklch, var(--color-destructive) 14%, var(--color-card))";
 const testTrafficShadow = "0 0 0 1px color-mix(in oklch, var(--color-destructive) 18%, transparent)";
 
-const getEventFilter = (name: string): EventFilter => {
-  if (isConversionEvent(name)) return "conversion";
+const getEventFilter = (event: FlowEvent): EventFilter => {
+  const { name } = event;
+  if (isConversionEvent(event)) return "conversion";
   if (isWatchdogEvent(name)) return "watchdog";
   if (name === "page.view") return "page";
   return "custom";

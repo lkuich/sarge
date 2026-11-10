@@ -65,7 +65,7 @@ export const selectTrackedPageCandidates = (
     if (!url) continue;
 
     const existing = byUrl.get(url);
-    const conversionLike = isConversionLikeEvent(event.name);
+    const conversionLike = event.properties?.conversion === true || isConversionLikeEvent(event.name);
     if (!existing) {
       byUrl.set(url, {
         url,

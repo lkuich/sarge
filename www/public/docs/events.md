@@ -4,6 +4,19 @@ Use stable, lowercase, dot-separated event names. Properties should be JSON-seri
 
 The listed properties are the recommended tracking contract; ingestion accepts other non-empty event names and does not enforce every ecommerce field. Diagnostics flags missing fields for supported event types.
 
+## Mark a custom event as a conversion
+
+Set the boolean property `conversion: true` on a goal event. Sarge's session/user flows and category filters classify it as a conversion without changing its name. For example:
+
+```js
+window.sarge("track", "github.click", {
+  conversion: true,
+  link_url: "https://github.com/lkuich/storypane"
+});
+```
+
+The same flag works for `railway.click` or other custom goals. The string `"true"` does not count. Purchase/checkout events retain their automatic classification, watchdog events retain their watchdog category, and test conversions stay excluded from real-traffic totals.
+
 ## Ecommerce Events
 
 ### `page.view`

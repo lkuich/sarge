@@ -29,7 +29,7 @@ export function buildFlowEventQuery(query: FlowEventQuery, environmentId: string
   if (query.categories) {
     if (query.categories.some(c => !['conversion', 'watchdog', 'page', 'custom'].includes(c))) throw new Error('Invalid event category');
     filters.push(`(CASE WHEN e.name IN ('meta.pixel.fire', 'google.tag.fire', 'data_layer.push') THEN 'watchdog'
-      WHEN e.name LIKE '%purchase%' OR e.name LIKE '%checkout%' THEN 'conversion'
+      WHEN e.properties->'conversion' = 'true'::jsonb OR e.name LIKE '%purchase%' OR e.name LIKE '%checkout%' THEN 'conversion'
       WHEN e.name = 'page.view' THEN 'page' ELSE 'custom' END) = ANY(${bind(query.categories)}::text[])`);
   }
   for (const [key, urlKey] of [['ref', 'sarge_ref'], ['affiliate', 'sarge_aff']] as const) {

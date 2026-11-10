@@ -22,6 +22,15 @@ const event = (
 });
 
 describe("tracked page monitoring", () => {
+  it("prioritizes pages with explicitly marked conversions", () => {
+    const candidates = selectTrackedPageCandidates([
+      event("page.view", { url: "https://example.com/ordinary" }),
+      event("github.click", { url: "https://example.com/goal", properties: { conversion: true } }),
+      event("railway.click", { url: "https://example.com/custom", properties: { conversion: "true" } }),
+    ], { limit: 1 });
+    expect(candidates).toMatchObject([{ url: "https://example.com/goal", conversionLike: true }]);
+  });
+
   it("normalizes and deduplicates recently tracked page URLs", () => {
     const candidates = selectTrackedPageCandidates([
       event("page.view", { url: "https://shop.example.com/products/flask?utm_source=ad&sarge_ref=abc#details" }),

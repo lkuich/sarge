@@ -395,10 +395,9 @@ const pixelUrl = selectedEnvironment.pixelUrl;
 const customDomain = project.customDomain;
 const trackingDomain = resolveSargeTrackingDomain(customDomain);
 const trackedSiteDomain = resolveTrackedSiteDomain(customDomain);
-const displayedTrackingDomain = trackingDomain;
 const customDomainHeadingLink = {
-  label: customDomain,
-  href: `https://${displayedTrackingDomain}`,
+  label: trackedSiteDomain,
+  href: `https://${trackedSiteDomain}`,
 };
 const customDomainPixelUrl = `https://${trackingDomain}/pixel.js?env=${encodeURIComponent(selectedEnvironment.id)}`;
 const customDomainPixelDownloadUrl = buildCustomPixelDownloadUrl(pixelUrl, trackingDomain);

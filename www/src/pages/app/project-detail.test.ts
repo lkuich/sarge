@@ -23,7 +23,6 @@ describe("project detail install panel", () => {
     expect(projectDetail).toContain("const trackingDomain = resolveSargeTrackingDomain(customDomain);");
     expect(projectDetail).toContain("const customDomainPixelDownloadUrl = buildCustomPixelDownloadUrl(pixelUrl, trackingDomain);");
     expect(projectDetail).toContain("const customDomain = project.customDomain;");
-    expect(projectDetail).toContain("const displayedTrackingDomain = trackingDomain;");
     expect(projectDetail).toContain("const customDomainPixelUrl = `https://${trackingDomain}/pixel.js?env=${encodeURIComponent(selectedEnvironment.id)}`;");
     expect(projectDetail).toContain("data-custom-domain-guidance");
     expect(projectDetail).toContain("Sarge tracking subdomain");
@@ -44,13 +43,13 @@ describe("project detail install panel", () => {
     expect(schema).not.toContain("slug                  String");
   });
 
-  it("links the custom domain from the project title", () => {
+  it("links the tracked website from the project title", () => {
     const projectDetail = readSource("./projects/[projectId].astro");
     const appLayout = readSource("../../layouts/AppLayout.astro");
 
     expect(projectDetail).toContain("const customDomainHeadingLink = {");
-    expect(projectDetail).toContain("label: customDomain,");
-    expect(projectDetail).toContain("href: `https://${displayedTrackingDomain}`,");
+    expect(projectDetail).toContain("label: trackedSiteDomain,");
+    expect(projectDetail).toContain("href: `https://${trackedSiteDomain}`,");
     expect(projectDetail).toContain("headingLink={customDomainHeadingLink}");
     expect(appLayout).toContain("headingLink?: HeadingLink;");
     expect(appLayout).toContain("{headingLink && (");
@@ -97,7 +96,7 @@ describe("project detail install panel", () => {
   it("keeps slug-derived scoped hosts out of the install details card", () => {
     const projectDetail = readSource("./projects/[projectId].astro");
 
-    expect(projectDetail).toContain("{displayedTrackingDomain}");
+    expect(projectDetail).toContain("CNAME {trackingDomain} -&gt; {hostedEndpointHost}");
     expect(projectDetail).not.toContain("<p class=\"font-mono\">{selectedEnvironment.endpointHost}</p>");
   });
 

@@ -22,10 +22,9 @@ describe("project environment event queries", () => {
   it("filters event traffic and manual AI reviews to the configured project host", () => {
     const demoData = readSource("./sarge-demo.ts");
 
-    expect(demoData).toContain("configuredHostSql");
     expect(demoData).toContain("configuredHostEventSql");
-    expect(demoData).toContain("configuredHostEventMixSql");
-    expect(demoData).toContain("configuredHostEventTrendSql");
+    expect(demoData).toContain("configuredHostEventSql('e_mix', 's')");
+    expect(demoData).toContain("configuredHostEventSql('e_trend', 's')");
     expect(demoData).toContain('WHERE e."siteEnvironmentId" = ${siteEnvironment.id}');
     expect(demoData).toContain("configuredHostEventSql('e', 's')");
   });

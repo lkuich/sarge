@@ -36,6 +36,7 @@ export {
 
 export {
   eventMatchesConfiguredHost,
+  configuredHostEventSql,
   normalizeConfiguredEventHost,
   type EventHostMatchInput
 } from "./event-host-filter.js";

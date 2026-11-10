@@ -3,6 +3,7 @@ import {
   buildPlanEventLimitSqlCase,
   buildPlanRetentionFilterSql,
   sha256Hex,
+  configuredHostEventSql,
   UsageLimitExceededError,
   type EventPayload,
   type PrivacySettings
@@ -20,13 +21,6 @@ import type {
 
 const planEventLimitSqlCase = buildPlanEventLimitSqlCase('w."planId"');
 const planRetentionFilterSql = buildPlanRetentionFilterSql('e."occurredAt"', 'w."planId"');
-const configuredHostSql = (siteAlias: string) => `regexp_replace(lower(${siteAlias}."customDomain"), '^www\\.', '')`;
-const capturedEventHostSql = (eventAlias: string) => (
-  `NULLIF(regexp_replace(regexp_replace(coalesce(substring(lower(${eventAlias}.url) from '^[a-z][a-z0-9+.-]*://([^/?#]+)'), substring(lower(${eventAlias}.referrer) from '^[a-z][a-z0-9+.-]*://([^/?#]+)')), '^www\\.', ''), ':\\d+$', ''), '')`
-);
-const configuredHostEventSql = (eventAlias: string, siteAlias: string) => (
-  `(${capturedEventHostSql(eventAlias)} IS NULL OR ${capturedEventHostSql(eventAlias)} = ${configuredHostSql(siteAlias)})`
-);
 
 export class NeonEventStore implements EventStore {
   private readonly sql: ReturnType<typeof neon>;

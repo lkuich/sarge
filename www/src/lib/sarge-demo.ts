@@ -5,6 +5,7 @@ import {
   buildTrackedPageFinding,
   defaultPrivacySettings,
   eventMatchesConfiguredHost,
+  configuredHostEventSql,
   selectTrackedPageCandidates,
   type DiagnosticEvent,
   type DiagnosticFinding,
@@ -322,15 +323,6 @@ const eventTrendRetentionFilterSql = buildPlanRetentionFilterSql('e_trend."occur
 const nonWatchdogEventFilterSql = realTrafficEventSql('e');
 const nonWatchdogEventMixFilterSql = realTrafficEventSql('e_mix');
 const nonWatchdogEventTrendFilterSql = realTrafficEventSql('e_trend');
-const configuredHostSql = (siteAlias: string) => `regexp_replace(lower(${siteAlias}."customDomain"), '^www\\.', '')`;
-const capturedEventHostSql = (eventAlias: string) => (
-  `NULLIF(regexp_replace(regexp_replace(coalesce(substring(lower(${eventAlias}.url) from '^[a-z][a-z0-9+.-]*://([^/?#]+)'), substring(lower(${eventAlias}.referrer) from '^[a-z][a-z0-9+.-]*://([^/?#]+)')), '^www\\.', ''), ':\\d+$', ''), '')`
-);
-const configuredHostEventSql = (eventAlias: string, siteAlias: string) => (
-  `(${capturedEventHostSql(eventAlias)} IS NULL OR ${capturedEventHostSql(eventAlias)} = ${configuredHostSql(siteAlias)})`
-);
-const configuredHostEventMixSql = (eventAlias: string, siteAlias: string) => configuredHostEventSql(eventAlias, siteAlias);
-const configuredHostEventTrendSql = (eventAlias: string, siteAlias: string) => configuredHostEventSql(eventAlias, siteAlias);
 
 export { eventMatchesConfiguredHost };
 
@@ -669,7 +661,7 @@ export const getViewerAccount = async (
             FROM "Event" e_mix
             WHERE e_mix."siteEnvironmentId" = se.id
               AND e_mix."occurredAt" >= NOW() - INTERVAL '48 hours'
-              AND ${sql.unsafe(configuredHostEventMixSql('e_mix', 's'))}
+              AND ${sql.unsafe(configuredHostEventSql('e_mix', 's'))}
               AND e_mix."occurredAt" <= NOW() AT TIME ZONE 'UTC'
               AND ${sql.unsafe(nonWatchdogEventMixFilterSql)}
               AND ${sql.unsafe(eventMixRetentionFilterSql)}
@@ -699,7 +691,7 @@ export const getViewerAccount = async (
             LEFT JOIN "Event" e_trend ON e_trend."siteEnvironmentId" = se.id
               AND e_trend."occurredAt" >= day_bucket
               AND e_trend."occurredAt" < day_bucket + INTERVAL '1 day'
-              AND ${sql.unsafe(configuredHostEventTrendSql('e_trend', 's'))}
+              AND ${sql.unsafe(configuredHostEventSql('e_trend', 's'))}
               AND e_trend."occurredAt" <= NOW() AT TIME ZONE 'UTC'
               AND ${sql.unsafe(nonWatchdogEventTrendFilterSql)}
               AND ${sql.unsafe(eventTrendRetentionFilterSql)}

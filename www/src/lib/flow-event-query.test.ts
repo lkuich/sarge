@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { buildFlowEventQuery, realTrafficEventSql } from './flow-event-query';
+import { buildFlowEventQuery, parseEventNameFilter, realTrafficEventSql } from './flow-event-query';
 
 describe('flow query', () => {
+  it('matches any event name with bound, case-insensitive literal substrings before pagination', () => {
+    const query = buildFlowEventQuery({ limit: 80, eventNames: " Checkout, O'Reilly%, checkout, , ", traffic: 'real', search: 'buyer' }, 'env', 'true');
+    expect(query.sql).toContain('(strpos(lower(e.name), $3) > 0 OR strpos(lower(e.name), $4) > 0)');
+    expect(query.sql).not.toContain("O'Reilly");
+    expect(query.params).toEqual(['env', 'buyer', 'checkout', "o'reilly%", 81]);
+    expect(query.sql.indexOf('strpos(lower(e.name)')).toBeLessThan(query.sql.indexOf('), page AS'));
+    expect(parseEventNameFilter(' Checkout, PURCHASE, checkout, , ')).toEqual(['checkout', 'purchase']);
+    expect(parseEventNameFilter(' , ')).toEqual([]);
+    expect(buildFlowEventQuery({ limit: 80, eventNames: ' , ' }, 'env', 'true').sql).not.toContain('strpos(lower(e.name)');
+  });
   it('filters before totals and pagination, with bound search values and stable ordering', () => {
     const query = buildFlowEventQuery({ limit: 80, traffic: 'real', categories: ['conversion'], search: "O'Reilly%", startAt: '2026-10-24T00:00:00Z', endAt: '2026-10-28T00:00:00Z' }, 'env_customer', 'true');
     expect(query.sql).toContain('count(*)::int FROM matching');

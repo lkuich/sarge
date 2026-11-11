@@ -6,9 +6,13 @@ export interface FlowEventQuery {
   traffic?: string | null;
   categories?: string[];
   search?: string | null;
+  eventNames?: string | null;
   ref?: string | null;
   affiliate?: string | null;
 }
+
+export const parseEventNameFilter = (value: string) =>
+  [...new Set(value.split(',').map(name => name.trim().toLowerCase()).filter(Boolean))];
 
 export function buildFlowEventQuery(query: FlowEventQuery, environmentId: string, scope: string) {
   const params: unknown[] = [environmentId];
@@ -40,6 +44,10 @@ export function buildFlowEventQuery(query: FlowEventQuery, environmentId: string
   if (query.search?.trim()) {
     filters.push(`strpos(lower(concat_ws(' ', e.name, e."sessionId", e."userId", e.url, e.referrer, e.title,
       e.ref, e.affiliate, 'sarge_ref:' || e.ref, 'sarge_aff:' || e.affiliate)), ${bind(query.search.trim().toLowerCase())}) > 0`);
+  }
+  const eventNames = parseEventNameFilter(query.eventNames ?? '');
+  if (eventNames.length) {
+    filters.push(`(${eventNames.map(name => `strpos(lower(e.name), ${bind(name)}) > 0`).join(' OR ')})`);
   }
   let cursorFilter = 'true';
   if (query.cursor) {

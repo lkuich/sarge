@@ -2835,6 +2835,11 @@ export const normalizeSiteDomain = (value: string) => {
 
 export const buildSargeTrackingDomain = (siteDomain: string) => `sarge.${siteDomain}`;
 
+export function resolveTrackedSiteDomain(value: string) {
+  const hostname = value.toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/^www\./, "");
+  return hostname.startsWith("sarge.") ? hostname.slice("sarge.".length) : hostname;
+}
+
 const parseEventNames = (value: string) =>
   Array.from(
     new Set(

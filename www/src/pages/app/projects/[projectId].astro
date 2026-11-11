@@ -29,6 +29,7 @@ import {
   hostedEndpointHost,
   projectEnvironmentOptions,
   removeProjectShare,
+  resolveTrackedSiteDomain,
   refreshProjectAiReview,
   saveSitePrivacySettings,
   shareProject,
@@ -701,10 +702,6 @@ function resolveSargeTrackingDomain(value: string) {
   return hostname.startsWith("sarge.") ? hostname : `sarge.${hostname}`;
 }
 
-function resolveTrackedSiteDomain(value: string) {
-  const hostname = value.toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/^www\./, "");
-  return hostname.startsWith("sarge.") ? hostname.slice("sarge.".length) : hostname;
-}
 ---
 
 <AppLayout

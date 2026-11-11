@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   Background,
   BackgroundVariant,
@@ -14,6 +14,7 @@ import { Download, GitBranch, Radio, RefreshCw, Search, UserRound, UsersRound, X
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { parseEventNameFilter } from "@/lib/flow-event-query";
 import { cn } from "@/lib/utils";
 
 type FlowMode = "session" | "user";
@@ -77,6 +78,8 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const eventNameFilterId = useId();
+  const [eventNameFilter, setEventNameFilter] = useState("");
   const [sargeRefFilter, setSargeRefFilter] = useState("");
   const [sargeAffFilter, setSargeAffFilter] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -101,8 +104,8 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
   );
   const groups = useMemo(() => buildGroups(timeFilteredEvents, mode), [mode, timeFilteredEvents]);
   const filteredGroups = useMemo(
-    () => remote ? groups : filterGroups(groups, query, selectedEventFilters, { ref: sargeRefFilter, affiliate: sargeAffFilter }),
-    [groups, query, selectedEventFilters, sargeAffFilter, sargeRefFilter],
+    () => remote ? groups : filterGroups(groups, query, selectedEventFilters, { ref: sargeRefFilter, affiliate: sargeAffFilter }, eventNameFilter),
+    [groups, query, selectedEventFilters, sargeAffFilter, sargeRefFilter, eventNameFilter],
   );
   const visibleGroups = useMemo(() => {
     if (selectedGroupId) return filteredGroups.filter((group) => group.id === selectedGroupId);
@@ -126,6 +129,7 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
         generatedAt,
         mode,
         query,
+        eventNameFilter,
         selectedEventFilters,
         sargeRefFilter,
         sargeAffFilter,
@@ -174,7 +178,7 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
       setIsRefreshing(false);
     }
   };
-  const remoteKey = JSON.stringify([startAt, endAt, trafficFilter, selectedEventFilters, query, sargeRefFilter, sargeAffFilter, snapshotEnd, refreshVersion]);
+  const remoteKey = JSON.stringify([startAt, endAt, trafficFilter, selectedEventFilters, query, eventNameFilter, sargeRefFilter, sargeAffFilter, snapshotEnd, refreshVersion]);
   const loadRemotePage = async (cursor?: string, signal?: AbortSignal) => {
     const id = ++requestId.current;
     setIsRefreshing(true);
@@ -185,6 +189,7 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
     url.searchParams.set("traffic", trafficFilter);
     url.searchParams.set("categories", selectedEventFilters.join(","));
     url.searchParams.set("search", query);
+    url.searchParams.set("eventNames", eventNameFilter);
     url.searchParams.set("ref", sargeRefFilter);
     url.searchParams.set("affiliate", sargeAffFilter);
     if (cursor) url.searchParams.set("cursor", cursor);
@@ -423,7 +428,38 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
             ))}
           </div>
         </div>
-        <div className="grid gap-2 md:grid-cols-[minmax(160px,220px)_minmax(160px,220px)_auto] md:items-end">
+        <div className="grid gap-2 md:grid-cols-[minmax(220px,1fr)_minmax(160px,220px)_minmax(160px,220px)_auto] md:items-end">
+          <div className="grid gap-1 text-xs text-muted-foreground">
+            <label htmlFor={eventNameFilterId}>Event names (OR)</label>
+            <div className="relative">
+              <Input
+                id={eventNameFilterId}
+                aria-describedby={`${eventNameFilterId}-hint`}
+                className="pr-8"
+                value={eventNameFilter}
+                placeholder="checkout, purchase"
+                onChange={(event) => {
+                  setEventNameFilter(event.target.value);
+                  setSelectedGroupId(null);
+                  setSelectedEventId(null);
+                }}
+              />
+              {eventNameFilter && (
+                <button
+                  className="absolute right-2 top-1/2 inline-flex size-5 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                  type="button"
+                  aria-label="Clear event names"
+                  onClick={() => {
+                    setEventNameFilter("");
+                    setSelectedGroupId(null);
+                    setSelectedEventId(null);
+                  }}
+                >
+                  <X className="size-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
           <label className="grid gap-1 text-xs text-muted-foreground">
             Ref/Campaign
             <Input
@@ -465,6 +501,7 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
               Clear sarge params
             </Button>
           )}
+          <p id={`${eventNameFilterId}-hint`} className="text-xs text-muted-foreground md:col-span-full">Separate event names with commas to match any. Partial names work too; case is ignored.</p>
         </div>
         <div className="grid gap-2 lg:grid-cols-[auto_minmax(180px,220px)_minmax(180px,220px)_auto] lg:items-end">
           <div className="flex flex-wrap gap-1">
@@ -877,6 +914,7 @@ const buildFlowExportPayload = ({
   generatedAt,
   mode,
   query,
+  eventNameFilter,
   selectedEventFilters,
   sargeRefFilter,
   sargeAffFilter,
@@ -897,6 +935,7 @@ const buildFlowExportPayload = ({
   generatedAt: string;
   mode: FlowMode;
   query: string;
+  eventNameFilter: string;
   selectedEventFilters: EventFilter[];
   sargeRefFilter: string;
   sargeAffFilter: string;
@@ -920,6 +959,7 @@ const buildFlowExportPayload = ({
   mode,
   filters: {
     query,
+    eventNames: parseEventNameFilter(eventNameFilter),
     sargeRef: sargeRefFilter,
     sargeAff: sargeAffFilter,
     traffic: trafficFilter,
@@ -1043,17 +1083,20 @@ const filterGroups = (
   query: string,
   selectedEventFilters: EventFilter[],
   sargeFilters: { ref: string; affiliate: string },
+  eventNameFilter: string,
 ) => {
   const normalizedQuery = query.trim().toLowerCase();
   const normalizedRefFilter = sargeFilters.ref.trim().toLowerCase();
   const normalizedAffiliateFilter = sargeFilters.affiliate.trim().toLowerCase();
   const selectedFilters = new Set(selectedEventFilters);
+  const eventNames = parseEventNameFilter(eventNameFilter);
 
   return groups
     .map((group) => {
       const matchingEvents = group.events.filter((event) => {
         const matchesFilter = selectedFilters.has(getEventFilter(event));
         if (!matchesFilter) return false;
+        if (eventNames.length && !eventNames.some(name => event.name.toLowerCase().includes(name))) return false;
         const attribution = getSargeAttribution(event);
         if (normalizedRefFilter && !matchesTextFilter(attribution.ref, normalizedRefFilter)) return false;
         if (normalizedAffiliateFilter && !matchesTextFilter(attribution.affiliate, normalizedAffiliateFilter)) {

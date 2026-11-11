@@ -74,6 +74,29 @@ afterEach(() => {
 });
 
 describe("SessionFlowExplorer event filters", () => {
+  it("matches any event name, combines with other filters, and can clear the names", () => {
+    render(<SessionFlowExplorer events={events} />);
+    const input = container!.querySelector<HTMLInputElement>('input[placeholder="checkout, purchase"]')!;
+    act(() => {
+      setInputValue(input, ' CHECKOUT, purchase, checkout, , ');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(container?.querySelector('[data-flow-node="event:complete-conversion"]')).not.toBeNull();
+    expect(container?.querySelector('[data-flow-node="event:missing-custom-conversion"]')).not.toBeNull();
+    expect(container?.querySelector('[data-flow-node="event:complete-page"]')).toBeNull();
+    expect(container?.querySelector('[data-flow-node="event:complete-custom"]')).toBeNull();
+    expect(container?.textContent).toContain('2 loaded users');
+    act(() => { buttonNamed('Session')?.click(); });
+    expect(container?.querySelector('[data-flow-node="event:complete-conversion"]')).not.toBeNull();
+    expect(container?.querySelector('[data-flow-node="event:missing-custom-conversion"]')).not.toBeNull();
+    act(() => { buttonNamed('Conversion')?.click(); });
+    expect(container?.querySelector('[data-flow-node="event:complete-conversion"]')).toBeNull();
+    expect(container?.querySelector('[data-flow-node="event:missing-custom-conversion"]')).toBeNull();
+    act(() => { container?.querySelector<HTMLButtonElement>('[aria-label="Clear event names"]')?.click(); });
+    expect(input.value).toBe('');
+    expect(container?.querySelector('[data-flow-node="event:complete-page"]')).not.toBeNull();
+  });
+
   it("treats explicitly marked link clicks as conversions instead of custom events", () => {
     render(<SessionFlowExplorer events={[
       { ...event("github-goal", "github.click", "links", 0), properties: { conversion: true } },
@@ -336,6 +359,12 @@ describe("SessionFlowExplorer event filters", () => {
     render(<SessionFlowExplorer events={events} />);
 
     act(() => {
+      const input = container!.querySelector<HTMLInputElement>('input[placeholder="checkout, purchase"]')!;
+      setInputValue(input, 'PAGE, checkout, purchase, discount');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    act(() => {
       buttonNamed("Export loaded JSON")?.click();
     });
 
@@ -349,6 +378,7 @@ describe("SessionFlowExplorer event filters", () => {
     expect(payload.mode).toBe("user");
     expect(payload.filters.traffic).toBe("real");
     expect(payload.filters.eventCategories).toEqual(["conversion", "page", "custom"]);
+    expect(payload.filters.eventNames).toEqual(['page', 'checkout', 'purchase', 'discount']);
     expect(payload.visibleGroups).toHaveLength(3);
     expect(payload.visibleGroups[0].events[0]).toMatchObject({
       id: "page-only",
@@ -606,6 +636,35 @@ function sparseTrafficEvents(sessionId: string, testTraffic = false) {
 }
 
 describe('complete remote flow browsing', () => {
+  it('refetches event name filters and preserves them while paging and clearing', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({
+      events: [event('purchase-1', 'purchase.completed', 'buyer-1', 0)],
+      totalEvents: 2, totalUsers: 2, totalSessions: 2, nextCursor: '["2026-06-25T00:00:00Z","purchase-1"]',
+    }) });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      render(<SessionFlowExplorer events={[]} refreshEndpoint="/api/project-events/env_123?limit=80&view=flow" />);
+      await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+      const input = container!.querySelector<HTMLInputElement>('input[placeholder="checkout, purchase"]')!;
+      act(() => {
+        setInputValue(input, 'checkout, purchase');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+      expect(new URL(fetchMock.mock.calls[1][0], 'https://sarge.test').searchParams.get('eventNames')).toBe('checkout, purchase');
+      await act(async () => { buttonNamed('Load more events')?.click(); });
+      const nextUrl = new URL(fetchMock.mock.calls[2][0], 'https://sarge.test');
+      expect(nextUrl.searchParams.get('eventNames')).toBe('checkout, purchase');
+      expect(nextUrl.searchParams.has('cursor')).toBe(true);
+      act(() => { container?.querySelector<HTMLButtonElement>('[aria-label="Clear event names"]')?.click(); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+      const clearedUrl = new URL(fetchMock.mock.calls[3][0], 'https://sarge.test');
+      expect(clearedUrl.searchParams.get('eventNames')).toBe('');
+      expect(clearedUrl.searchParams.has('cursor')).toBe(false);
+    } finally { vi.useRealTimers(); }
+  });
+
   it('loads filtered results, keeps exact totals, and appends the next page', async () => {
     vi.useFakeTimers();
     const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({

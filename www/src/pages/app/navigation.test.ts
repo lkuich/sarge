@@ -76,6 +76,13 @@ describe("app navigation routes", () => {
     expect(overview).not.toContain("<Table>");
   });
 
+  it("shows the tracked website on owned and shared project cards", () => {
+    const overview = readSource("./index.astro");
+
+    expect(overview.match(/\{resolveTrackedSiteDomain\(project\.customDomain\)\}/g)).toHaveLength(2);
+    expect(overview).not.toContain("{project.customDomain}");
+  });
+
   it("routes project flows back to overview instead of the removed index", () => {
     const newProject = readSource("./projects/new.astro");
     const projectDetail = readSource("./projects/[projectId].astro");

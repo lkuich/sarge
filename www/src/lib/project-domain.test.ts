@@ -1,7 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { buildSargeTrackingDomain, eventMatchesConfiguredHost, normalizeSiteDomain } from "./sarge-demo";
+import { buildSargeTrackingDomain, eventMatchesConfiguredHost, normalizeSiteDomain, resolveTrackedSiteDomain } from "./sarge-demo";
 
 describe("project site domains", () => {
+  it.each([
+    ["sarge.storypane.dev", "storypane.dev"],
+    ["thebotoxcourse.com", "thebotoxcourse.com"],
+    ["sarge.shop.example.com", "shop.example.com"],
+    ["https://WWW.SARGE.Example.COM/path", "example.com"],
+    ["sargetrack.app", "sargetrack.app"],
+  ])("displays the tracked website for %s", (configuredDomain, siteDomain) => {
+    expect(resolveTrackedSiteDomain(configuredDomain)).toBe(siteDomain);
+  });
+
   it("normalizes the tracked site domain entered during project setup", () => {
     expect(normalizeSiteDomain(" HTTPS://WWW.Example.COM/products?utm=abc ")).toBe("example.com");
     expect(normalizeSiteDomain("shop.example.com")).toBe("shop.example.com");

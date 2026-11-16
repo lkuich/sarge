@@ -80,6 +80,7 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
   const [query, setQuery] = useState("");
   const eventNameFilterId = useId();
   const [eventNameFilter, setEventNameFilter] = useState<string[]>([]);
+  const [showEntireJourney, setShowEntireJourney] = useState(false);
   const [observedEventNames, setObservedEventNames] = useState<string[]>([]);
   const availableEventNames = [...new Set([...observedEventNames, ...liveEvents.map(event => event.name), ...eventNameFilter])].sort();
   const toggleEventName = (name: string) => {
@@ -111,8 +112,8 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
   );
   const groups = useMemo(() => buildGroups(timeFilteredEvents, mode), [mode, timeFilteredEvents]);
   const filteredGroups = useMemo(
-    () => remote ? groups : filterGroups(groups, query, selectedEventFilters, { ref: sargeRefFilter, affiliate: sargeAffFilter }, eventNameFilter),
-    [groups, query, selectedEventFilters, sargeAffFilter, sargeRefFilter, eventNameFilter],
+    () => remote ? groups : filterGroups(groups, query, selectedEventFilters, { ref: sargeRefFilter, affiliate: sargeAffFilter }, eventNameFilter, showEntireJourney),
+    [groups, query, selectedEventFilters, sargeAffFilter, sargeRefFilter, eventNameFilter, showEntireJourney],
   );
   const visibleGroups = useMemo(() => {
     if (selectedGroupId) return filteredGroups.filter((group) => group.id === selectedGroupId);
@@ -137,6 +138,7 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
         mode,
         query,
         eventNameFilter,
+        showEntireJourney,
         selectedEventFilters,
         sargeRefFilter,
         sargeAffFilter,
@@ -185,7 +187,7 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
       setIsRefreshing(false);
     }
   };
-  const remoteKey = JSON.stringify([startAt, endAt, trafficFilter, selectedEventFilters, query, eventNameFilter, sargeRefFilter, sargeAffFilter, snapshotEnd, refreshVersion]);
+  const remoteKey = JSON.stringify([startAt, endAt, trafficFilter, selectedEventFilters, query, eventNameFilter, sargeRefFilter, sargeAffFilter, snapshotEnd, refreshVersion, showEntireJourney ? mode : null]);
   const loadRemotePage = async (cursor?: string, signal?: AbortSignal) => {
     const id = ++requestId.current;
     setIsRefreshing(true);
@@ -198,6 +200,8 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
     url.searchParams.set("search", query);
     url.searchParams.delete("eventNames");
     eventNameFilter.forEach(name => url.searchParams.append("eventNames", name));
+    if (showEntireJourney) url.searchParams.set("journey", mode);
+    else url.searchParams.delete("journey");
     url.searchParams.set("ref", sargeRefFilter);
     url.searchParams.set("affiliate", sargeAffFilter);
     if (cursor) url.searchParams.set("cursor", cursor);
@@ -523,6 +527,25 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
             )}
             <p id={`${eventNameFilterId}-hint`} className="text-xs text-muted-foreground">Matches any selected event name.</p>
           </div>
+        </div>
+        <div className="grid gap-1">
+          <label className="flex items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              className="size-4 accent-primary"
+              checked={showEntireJourney}
+              aria-describedby={`${eventNameFilterId}-journey-hint`}
+              onChange={(event) => {
+                setShowEntireJourney(event.target.checked);
+                setSelectedGroupId(null);
+                setSelectedEventId(null);
+              }}
+            />
+            Show entire journey
+          </label>
+          <p id={`${eventNameFilterId}-journey-hint`} className="text-xs text-muted-foreground">
+            Show all events for {mode === "user" ? "users" : "sessions"} with an event matching the filters, within the selected time range and traffic type.
+          </p>
         </div>
         <div className="grid gap-2 lg:grid-cols-[auto_minmax(180px,220px)_minmax(180px,220px)_auto] lg:items-end">
           <div className="flex flex-wrap gap-1">
@@ -936,6 +959,7 @@ const buildFlowExportPayload = ({
   mode,
   query,
   eventNameFilter,
+  showEntireJourney,
   selectedEventFilters,
   sargeRefFilter,
   sargeAffFilter,
@@ -957,6 +981,7 @@ const buildFlowExportPayload = ({
   mode: FlowMode;
   query: string;
   eventNameFilter: string[];
+  showEntireJourney: boolean;
   selectedEventFilters: EventFilter[];
   sargeRefFilter: string;
   sargeAffFilter: string;
@@ -981,6 +1006,7 @@ const buildFlowExportPayload = ({
   filters: {
     query,
     eventNames: eventNameFilter,
+    showEntireJourney,
     sargeRef: sargeRefFilter,
     sargeAff: sargeAffFilter,
     traffic: trafficFilter,
@@ -1105,6 +1131,7 @@ const filterGroups = (
   selectedEventFilters: EventFilter[],
   sargeFilters: { ref: string; affiliate: string },
   eventNameFilter: string[],
+  showEntireJourney: boolean,
 ) => {
   const normalizedQuery = query.trim().toLowerCase();
   const normalizedRefFilter = sargeFilters.ref.trim().toLowerCase();
@@ -1141,6 +1168,7 @@ const filterGroups = (
           .some((value) => String(value).toLowerCase().includes(normalizedQuery));
       });
 
+      if (showEntireJourney && matchingEvents.length) return group;
       return {
         ...group,
         events: matchingEvents,

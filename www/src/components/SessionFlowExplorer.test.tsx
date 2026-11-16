@@ -74,6 +74,32 @@ afterEach(() => {
 });
 
 describe("SessionFlowExplorer event filters", () => {
+  it("shows whole matching journeys by user or session while respecting traffic and time", () => {
+    render(<SessionFlowExplorer events={[
+      event('buyer-page', 'page.view', 'buyer', 0),
+      event('buyer-purchase', 'purchase.completed', 'buyer', 1),
+      event('buyer-watchdog', 'meta.pixel.fire', 'buyer', 2),
+      { ...event('other-session', 'page.view', 'other-session', 3), userId: 'user-buyer' },
+      { ...event('test-page', 'page.view', 'buyer', 4), properties: { sarge_test: true } },
+      event('old-page', 'page.view', 'buyer', -90),
+      event('nonbuyer-page', 'page.view', 'nonbuyer', 5),
+    ]} />);
+    selectEventNames('purchase.completed');
+    const visibleEventIds = () => Array.from(container!.querySelectorAll('[data-flow-node^="event:"]'))
+      .map(node => node.getAttribute('data-flow-node'));
+    expect(visibleEventIds()).toEqual(['event:buyer-purchase']);
+    const checkbox = container!.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    expect(checkbox.checked).toBe(false);
+    act(() => { checkbox.click(); });
+    expect(visibleEventIds()).toEqual(['event:buyer-page', 'event:buyer-purchase', 'event:buyer-watchdog', 'event:other-session']);
+    act(() => { buttonNamed('Session')!.click(); });
+    expect(visibleEventIds()).toEqual(['event:buyer-page', 'event:buyer-purchase', 'event:buyer-watchdog']);
+    act(() => { checkbox.click(); });
+    expect(visibleEventIds()).toEqual(['event:buyer-purchase']);
+    act(() => { checkbox.click(); buttonNamed('Conversion')!.click(); });
+    expect(visibleEventIds()).toEqual([]);
+  });
+
   it("selects observed names with OR matching, removes chips, and combines with other filters", () => {
     render(<SessionFlowExplorer events={events} />);
     selectEventNames('checkout.started', 'purchase.completed');
@@ -342,7 +368,7 @@ describe("SessionFlowExplorer event filters", () => {
     expect(container?.querySelector('[data-flow-edge="user:shared-user->group:session-a"]')).not.toBeNull();
   });
 
-  it("downloads the visible flow data as JSON for debugging", async () => {
+  it.each([false, true])("downloads the visible flow data with entire journey set to %s", async (showEntireJourney) => {
     const click = vi.fn();
     const append = vi.spyOn(document.body, "appendChild");
     const remove = vi.spyOn(document.body, "removeChild");
@@ -359,6 +385,7 @@ describe("SessionFlowExplorer event filters", () => {
     render(<SessionFlowExplorer events={events} />);
 
     selectEventNames('page.view', 'checkout.started', 'purchase.completed', 'discount.applied');
+    if (showEntireJourney) act(() => { container!.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click(); });
 
     act(() => {
       buttonNamed("Export loaded JSON")?.click();
@@ -375,6 +402,8 @@ describe("SessionFlowExplorer event filters", () => {
     expect(payload.filters.traffic).toBe("real");
     expect(payload.filters.eventCategories).toEqual(["conversion", "page", "custom"]);
     expect(payload.filters.eventNames).toEqual(['page.view', 'checkout.started', 'purchase.completed', 'discount.applied']);
+    expect(payload.filters.showEntireJourney).toBe(showEntireJourney);
+    expect(payload.graph.nodes.some((node: { id: string }) => node.id === "event:complete-watchdog")).toBe(showEntireJourney);
     expect(payload.visibleGroups).toHaveLength(3);
     expect(payload.visibleGroups[0].events[0]).toMatchObject({
       id: "page-only",
@@ -644,6 +673,38 @@ function sparseTrafficEvents(sessionId: string, testTraffic = false) {
 }
 
 describe('complete remote flow browsing', () => {
+  it('refetches whole journeys when toggled or regrouped and preserves the mode while paging', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({
+      events: [event('purchase', 'purchase.completed', 'buyer', 1), event('page', 'page.view', 'buyer', 0)],
+      eventNames: ['purchase.completed', 'page.view'],
+      totalEvents: 3, totalUsers: 1, totalSessions: 1, nextCursor: '["2026-06-20T12:00:00Z","page"]',
+    }) });
+    vi.stubGlobal('fetch', fetchMock);
+    const lastParams = () => new URL(fetchMock.mock.calls.at(-1)![0], 'https://sarge.test').searchParams;
+    try {
+      render(<SessionFlowExplorer events={[]} refreshEndpoint="/api/project-events/env_123?limit=80&view=flow" />);
+      await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+      selectEventNames('purchase.completed');
+      act(() => { container!.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click(); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+      expect(lastParams().get('journey')).toBe('user');
+      expect(lastParams().getAll('eventNames')).toEqual(['purchase.completed']);
+      expect(container?.querySelector('[data-flow-node="event:page"]')).not.toBeNull();
+      await act(async () => { buttonNamed('Load more events')!.click(); });
+      expect(lastParams().get('journey')).toBe('user');
+      expect(lastParams().has('cursor')).toBe(true);
+      act(() => { buttonNamed('Session')!.click(); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+      expect(lastParams().get('journey')).toBe('session');
+      expect(lastParams().has('cursor')).toBe(false);
+      act(() => { container!.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click(); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+      expect(lastParams().has('journey')).toBe(false);
+      expect(lastParams().getAll('eventNames')).toEqual(['purchase.completed']);
+    } finally { vi.useRealTimers(); }
+  });
+
   it('refetches event name filters and preserves them while paging and clearing', async () => {
     vi.useFakeTimers();
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({

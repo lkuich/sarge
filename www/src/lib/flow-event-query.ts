@@ -7,11 +7,13 @@ export interface FlowEventQuery {
   categories?: string[];
   search?: string | null;
   eventNames?: string[];
+  journey?: string | null;
   ref?: string | null;
   affiliate?: string | null;
 }
 
 export function buildFlowEventQuery(query: FlowEventQuery, environmentId: string, scope: string) {
+  if (query.journey != null && !['user', 'session'].includes(query.journey)) throw new Error('Invalid journey mode');
   const params: unknown[] = [environmentId];
   const bind = (value: unknown) => { params.push(value); return `$${params.length}`; };
   const filters = ['e."siteEnvironmentId" = $1', scope];
@@ -27,6 +29,7 @@ export function buildFlowEventQuery(query: FlowEventQuery, environmentId: string
   const test = `coalesce(e.properties->'sarge_test' = 'true'::jsonb, false)`;
   if (query.traffic === 'real') filters.push(`NOT (${test})`);
   if (query.traffic === 'test') filters.push(test);
+  const journeyFilters = [...filters];
   if (query.categories) {
     if (query.categories.some(c => !['conversion', 'watchdog', 'page', 'custom'].includes(c))) throw new Error('Invalid event category');
     filters.push(`(CASE WHEN e.name IN ('meta.pixel.fire', 'google.tag.fire', 'data_layer.push') THEN 'watchdog'
@@ -51,11 +54,16 @@ export function buildFlowEventQuery(query: FlowEventQuery, environmentId: string
     cursorFilter = `("occurredAt", id) < ((${bind(cursor[0])}::timestamptz AT TIME ZONE 'UTC'), ${bind(cursor[1])})`;
   }
   const limit = Math.min(Math.max(Number.isFinite(query.limit) ? query.limit : 80, 1), 500);
+  const source = 'FROM "Event" e JOIN "Site" s ON s.id = e."siteId" JOIN "Workspace" w ON w.id = s."workspaceId"';
+  const groupKey = query.journey === 'session' ? `coalesce(NULLIF(e."sessionId", ''), '(no session ID)')` : `coalesce(NULLIF(e."userId", ''), '(no user ID)')`;
   return {
     limit, params,
-    sql: `WITH matching AS (
-      SELECT e.* FROM "Event" e JOIN "Site" s ON s.id = e."siteId" JOIN "Workspace" w ON w.id = s."workspaceId"
-      WHERE ${filters.join(' AND ')}
+    sql: `WITH ${query.journey ? `qualified AS (
+      SELECT e.* ${source} WHERE ${filters.join(' AND ')}
+    ),` : ''} matching AS (
+      SELECT e.* ${source}
+      WHERE ${(query.journey ? journeyFilters : filters).join(' AND ')}
+      ${query.journey ? `AND ${groupKey} IN (SELECT ${groupKey} FROM qualified e)` : ''}
     ), page AS (
       SELECT * FROM matching WHERE ${cursorFilter} ORDER BY "occurredAt" DESC, id DESC LIMIT ${bind(limit + 1)}
     ) SELECT

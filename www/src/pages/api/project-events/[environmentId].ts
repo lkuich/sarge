@@ -46,6 +46,7 @@ export const GET: APIRoute = async (Astro) => {
         categories: params.has("categories") ? params.get("categories")!.split(",").filter(Boolean) : undefined,
         search: params.get("search"), ref: params.get("ref"), affiliate: params.get("affiliate"),
         eventNames: params.getAll("eventNames"),
+        journey: params.get("journey"),
       });
       return Response.json(result, { headers: { "Cache-Control": "no-store" } });
     } catch (error) {

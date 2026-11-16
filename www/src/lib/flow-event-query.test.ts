@@ -2,6 +2,32 @@ import { describe, expect, it } from 'vitest';
 import { buildFlowEventQuery, realTrafficEventSql } from './flow-event-query';
 
 describe('flow query', () => {
+  it.each(['user', 'session'])('expands matching %s journeys before totals and pagination while preserving scope', (journey) => {
+    const query = buildFlowEventQuery({
+      limit: 1, journey, eventNames: ['purchase.completed'], categories: ['conversion'],
+      search: 'buyer', ref: 'campaign', traffic: 'real', startAt: '2026-11-10T00:00:00Z',
+      cursor: JSON.stringify(['2026-11-11T00:00:00Z', 'purchase']),
+    }, 'env', 'retention_and_host_scope');
+    const qualified = query.sql.slice(0, query.sql.indexOf(' matching AS'));
+    const expanded = query.sql.slice(query.sql.indexOf(' matching AS'), query.sql.indexOf('), page AS'));
+    for (const section of [qualified, expanded]) {
+      expect(section).toContain('e."siteEnvironmentId" = $1 AND retention_and_host_scope');
+      expect(section).toContain('e."occurredAt" >=');
+      expect(section).toContain("NOT (coalesce(e.properties->'sarge_test'");
+      expect(section).not.toContain('LIMIT');
+      expect(section).not.toContain('("occurredAt", id) <');
+    }
+    expect(qualified).toContain('e.name = ANY(');
+    expect(qualified).toContain('strpos');
+    expect(qualified).toContain('CASE WHEN');
+    expect(expanded).not.toContain('e.name = ANY(');
+    expect(expanded).not.toContain('strpos');
+    expect(expanded).not.toContain('CASE WHEN');
+    const key = `coalesce(NULLIF(e."${journey}Id", ''), '(no ${journey} ID)')`;
+    expect(expanded).toContain(`${key} IN (SELECT ${key} FROM qualified e)`);
+    expect(query.sql).toContain('count(*)::int FROM matching');
+    expect(query.params.at(-1)).toBe(2);
+  });
   it('matches any selected name exactly using a bound array before pagination', () => {
     const query = buildFlowEventQuery({ limit: 80, eventNames: ['Checkout', "Order, O'Reilly%"], traffic: 'real', search: 'buyer' }, 'env', 'true');
     expect(query.sql).toContain('e.name = ANY($3::text[])');
@@ -36,7 +62,7 @@ describe('flow query', () => {
     expect(query.params).toEqual(['env_customer', '2026-10-25T00:00:00Z', 'event_b', 3]);
   });
   it('rejects invalid boundaries, cursors and filter values', () => {
-    for (const input of [{ startAt: 'bad' }, { startAt: '2026-10-28', endAt: '2026-10-24' }, { cursor: '{}' }, { categories: ['bogus'] }, { traffic: 'bogus' }]) {
+    for (const input of [{ startAt: 'bad' }, { startAt: '2026-10-28', endAt: '2026-10-24' }, { cursor: '{}' }, { categories: ['bogus'] }, { traffic: 'bogus' }, { journey: 'bogus' }, { journey: '' }]) {
       expect(() => buildFlowEventQuery({ limit: 80, ...input }, 'env', 'true')).toThrow();
     }
   });

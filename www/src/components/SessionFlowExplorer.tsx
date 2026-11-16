@@ -9,12 +9,12 @@ import {
   type Edge,
   type Node,
 } from "@xyflow/react";
-import { Download, GitBranch, Radio, RefreshCw, Search, UserRound, UsersRound, X } from "lucide-react";
+import { ChevronDown, Download, GitBranch, Radio, RefreshCw, Search, UserRound, UsersRound, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { parseEventNameFilter } from "@/lib/flow-event-query";
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
 type FlowMode = "session" | "user";
@@ -79,7 +79,14 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const eventNameFilterId = useId();
-  const [eventNameFilter, setEventNameFilter] = useState("");
+  const [eventNameFilter, setEventNameFilter] = useState<string[]>([]);
+  const [observedEventNames, setObservedEventNames] = useState<string[]>([]);
+  const availableEventNames = [...new Set([...observedEventNames, ...liveEvents.map(event => event.name), ...eventNameFilter])].sort();
+  const toggleEventName = (name: string) => {
+    setEventNameFilter(current => current.includes(name) ? current.filter(value => value !== name) : [...current, name]);
+    setSelectedGroupId(null);
+    setSelectedEventId(null);
+  };
   const [sargeRefFilter, setSargeRefFilter] = useState("");
   const [sargeAffFilter, setSargeAffFilter] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -189,7 +196,8 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
     url.searchParams.set("traffic", trafficFilter);
     url.searchParams.set("categories", selectedEventFilters.join(","));
     url.searchParams.set("search", query);
-    url.searchParams.set("eventNames", eventNameFilter);
+    url.searchParams.delete("eventNames");
+    eventNameFilter.forEach(name => url.searchParams.append("eventNames", name));
     url.searchParams.set("ref", sargeRefFilter);
     url.searchParams.set("affiliate", sargeAffFilter);
     if (cursor) url.searchParams.set("cursor", cursor);
@@ -200,6 +208,7 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
       if (id !== requestId.current || signal?.aborted) return;
       setLiveEvents(current => cursor ? [...current, ...payload.events.filter((event: FlowEvent) => !current.some(item => item.id === event.id))] : payload.events);
       setPageInfo(payload);
+      setObservedEventNames(payload.eventNames ?? []);
     } catch (error) {
       if (id === requestId.current && !signal?.aborted) setLoadError(error instanceof Error ? error.message : "Unable to load events");
     } finally {
@@ -430,35 +439,30 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
         </div>
         <div className="grid gap-2 md:grid-cols-[minmax(220px,1fr)_minmax(160px,220px)_minmax(160px,220px)_auto] md:items-end">
           <div className="grid gap-1 text-xs text-muted-foreground">
-            <label htmlFor={eventNameFilterId}>Event names (OR)</label>
-            <div className="relative">
-              <Input
-                id={eventNameFilterId}
+            <span id={eventNameFilterId}>Event names (OR)</span>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={<Button variant="outline" className="w-full justify-between" />}
+                aria-labelledby={eventNameFilterId}
                 aria-describedby={`${eventNameFilterId}-hint`}
-                className="pr-8"
-                value={eventNameFilter}
-                placeholder="checkout, purchase"
-                onChange={(event) => {
-                  setEventNameFilter(event.target.value);
-                  setSelectedGroupId(null);
-                  setSelectedEventId(null);
-                }}
-              />
-              {eventNameFilter && (
-                <button
-                  className="absolute right-2 top-1/2 inline-flex size-5 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-                  type="button"
-                  aria-label="Clear event names"
-                  onClick={() => {
-                    setEventNameFilter("");
-                    setSelectedGroupId(null);
-                    setSelectedEventId(null);
-                  }}
-                >
-                  <X className="size-3.5" />
-                </button>
-              )}
-            </div>
+              >
+                {eventNameFilter.length ? `${eventNameFilter.length} selected` : "All event names"}
+                <ChevronDown className="size-3.5" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="max-h-64 min-w-64">
+                {availableEventNames.map(name => (
+                  <DropdownMenuCheckboxItem
+                    key={name}
+                    checked={eventNameFilter.includes(name)}
+                    closeOnClick={false}
+                    onCheckedChange={() => toggleEventName(name)}
+                  >
+                    {name}
+                  </DropdownMenuCheckboxItem>
+                ))}
+                {!availableEventNames.length && <p className="px-2 py-1 text-xs text-muted-foreground">No event names seen yet</p>}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
           <label className="grid gap-1 text-xs text-muted-foreground">
             Ref/Campaign
@@ -501,7 +505,24 @@ export function SessionFlowExplorer({ events, refreshEndpoint, markTestEndpoint,
               Clear sarge params
             </Button>
           )}
-          <p id={`${eventNameFilterId}-hint`} className="text-xs text-muted-foreground md:col-span-full">Separate event names with commas to match any. Partial names work too; case is ignored.</p>
+          <div className="flex flex-wrap items-center gap-1 md:col-span-full">
+            {eventNameFilter.map(name => (
+              <Badge key={name} variant="secondary" className="h-7 max-w-full gap-1 pr-1">
+                <span className="truncate">{name}</span>
+                <button type="button" className="inline-flex size-5 shrink-0 items-center justify-center rounded-full hover:bg-muted" aria-label={`Remove ${name}`} onClick={() => toggleEventName(name)}>
+                  <X className="size-3" />
+                </button>
+              </Badge>
+            ))}
+            {eventNameFilter.length > 0 && (
+              <Button variant="ghost" size="sm" type="button" onClick={() => {
+                setEventNameFilter([]);
+                setSelectedGroupId(null);
+                setSelectedEventId(null);
+              }}>Clear event names</Button>
+            )}
+            <p id={`${eventNameFilterId}-hint`} className="text-xs text-muted-foreground">Matches any selected event name.</p>
+          </div>
         </div>
         <div className="grid gap-2 lg:grid-cols-[auto_minmax(180px,220px)_minmax(180px,220px)_auto] lg:items-end">
           <div className="flex flex-wrap gap-1">
@@ -935,7 +956,7 @@ const buildFlowExportPayload = ({
   generatedAt: string;
   mode: FlowMode;
   query: string;
-  eventNameFilter: string;
+  eventNameFilter: string[];
   selectedEventFilters: EventFilter[];
   sargeRefFilter: string;
   sargeAffFilter: string;
@@ -959,7 +980,7 @@ const buildFlowExportPayload = ({
   mode,
   filters: {
     query,
-    eventNames: parseEventNameFilter(eventNameFilter),
+    eventNames: eventNameFilter,
     sargeRef: sargeRefFilter,
     sargeAff: sargeAffFilter,
     traffic: trafficFilter,
@@ -1083,20 +1104,19 @@ const filterGroups = (
   query: string,
   selectedEventFilters: EventFilter[],
   sargeFilters: { ref: string; affiliate: string },
-  eventNameFilter: string,
+  eventNameFilter: string[],
 ) => {
   const normalizedQuery = query.trim().toLowerCase();
   const normalizedRefFilter = sargeFilters.ref.trim().toLowerCase();
   const normalizedAffiliateFilter = sargeFilters.affiliate.trim().toLowerCase();
   const selectedFilters = new Set(selectedEventFilters);
-  const eventNames = parseEventNameFilter(eventNameFilter);
 
   return groups
     .map((group) => {
       const matchingEvents = group.events.filter((event) => {
         const matchesFilter = selectedFilters.has(getEventFilter(event));
         if (!matchesFilter) return false;
-        if (eventNames.length && !eventNames.some(name => event.name.toLowerCase().includes(name))) return false;
+        if (eventNameFilter.length && !eventNameFilter.includes(event.name)) return false;
         const attribution = getSargeAttribution(event);
         if (normalizedRefFilter && !matchesTextFilter(attribution.ref, normalizedRefFilter)) return false;
         if (normalizedAffiliateFilter && !matchesTextFilter(attribution.affiliate, normalizedAffiliateFilter)) {

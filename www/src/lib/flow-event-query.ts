@@ -6,13 +6,10 @@ export interface FlowEventQuery {
   traffic?: string | null;
   categories?: string[];
   search?: string | null;
-  eventNames?: string | null;
+  eventNames?: string[];
   ref?: string | null;
   affiliate?: string | null;
 }
-
-export const parseEventNameFilter = (value: string) =>
-  [...new Set(value.split(',').map(name => name.trim().toLowerCase()).filter(Boolean))];
 
 export function buildFlowEventQuery(query: FlowEventQuery, environmentId: string, scope: string) {
   const params: unknown[] = [environmentId];
@@ -45,10 +42,7 @@ export function buildFlowEventQuery(query: FlowEventQuery, environmentId: string
     filters.push(`strpos(lower(concat_ws(' ', e.name, e."sessionId", e."userId", e.url, e.referrer, e.title,
       e.ref, e.affiliate, 'sarge_ref:' || e.ref, 'sarge_aff:' || e.affiliate)), ${bind(query.search.trim().toLowerCase())}) > 0`);
   }
-  const eventNames = parseEventNameFilter(query.eventNames ?? '');
-  if (eventNames.length) {
-    filters.push(`(${eventNames.map(name => `strpos(lower(e.name), ${bind(name)}) > 0`).join(' OR ')})`);
-  }
+  if (query.eventNames?.length) filters.push(`e.name = ANY(${bind(query.eventNames)}::text[])`);
   let cursorFilter = 'true';
   if (query.cursor) {
     let cursor: unknown;
@@ -65,6 +59,10 @@ export function buildFlowEventQuery(query: FlowEventQuery, environmentId: string
     ), page AS (
       SELECT * FROM matching WHERE ${cursorFilter} ORDER BY "occurredAt" DESC, id DESC LIMIT ${bind(limit + 1)}
     ) SELECT
+      coalesce((SELECT jsonb_agg(name ORDER BY name) FROM (
+        SELECT DISTINCT e.name FROM "Event" e JOIN "Site" s ON s.id = e."siteId" JOIN "Workspace" w ON w.id = s."workspaceId"
+        WHERE e."siteEnvironmentId" = $1 AND ${scope}
+      ) observed), '[]'::jsonb) AS "eventNames",
       (SELECT count(*)::int FROM matching) AS "totalEvents",
       (SELECT count(DISTINCT coalesce(NULLIF("userId", ''), '(no user ID)'))::int FROM matching) AS "totalUsers",
       (SELECT count(DISTINCT coalesce(NULLIF("sessionId", ''), '(no session ID)'))::int FROM matching) AS "totalSessions",

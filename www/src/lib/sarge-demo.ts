@@ -1091,7 +1091,7 @@ export const getProjectEnvironmentEventPage = async (databaseUrl: string | undef
   }));
   const last = events.at(-1);
   return {
-    events, totalEvents: result.totalEvents, totalUsers: result.totalUsers, totalSessions: result.totalSessions,
+    events, eventNames: result.eventNames, totalEvents: result.totalEvents, totalUsers: result.totalUsers, totalSessions: result.totalSessions,
     nextCursor: rows.length > compiled.limit && last ? JSON.stringify([last.occurredAt, last.id]) : null,
   };
 };

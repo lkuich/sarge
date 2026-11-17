@@ -454,6 +454,11 @@ const isPixelActive = pixelInstallStatus === "active";
 const diagnosticDismissalStorageKey = `sarge:dismissed-diagnostics:${project.siteId}:${selectedEnvironment.id}`;
 const criticalFindings = diagnostics.filter((finding) => finding.severity === "critical").length;
 const warningFindings = diagnostics.filter((finding) => finding.severity === "warning").length;
+const checkSeverityColors: Record<string, string> = {
+  critical: "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300",
+  warning: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  info: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300",
+};
 const diagnosticRunLabel = selectedEnvironment.diagnosticRunAt ? new Date(selectedEnvironment.diagnosticRunAt).toLocaleString("en-US", { timeZone: "UTC", timeZoneName: "short" }) : "Pending first scheduled run";
 const eventTypeMix = selectedEnvironment.eventMix24h;
 const eventVolumeDelta = buildMetricDelta(selectedEnvironment.eventCount24h, selectedEnvironment.previousEventCount24h);
@@ -1207,13 +1212,18 @@ function resolveSargeTrackingDomain(value: string) {
           </div>
         </CardHeader>
         <CardContent className="grid min-w-0 gap-3">
-          <details class="min-w-0 rounded-md border p-4" open>
+          <details class="min-w-0 rounded-md border p-4">
             <summary class="cursor-pointer text-sm font-medium">Deterministic checks · {diagnosticChecks.length} rules</summary>
             <p class="mt-2 text-xs leading-5 text-muted-foreground">Event checks use up to 200 recent events from the last 60 minutes and exclude marked test traffic. Page checks inspect eligible tracked URLs within a bounded request budget; not every page is checked. An empty sample produces no event findings. A rule listed here is not a passing test result.</p>
             <div class="mt-3 grid gap-3 sm:grid-cols-2">
               {diagnosticChecks.map(check => (
                 <div class="rounded-md border bg-background p-3">
-                  <div class="flex flex-wrap items-center justify-between gap-2"><p class="text-xs font-medium">{check.name}</p><Badge variant="outline">{check.severity}</Badge></div>
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <p class="text-xs font-medium">{check.name}</p>
+                    <div class="flex gap-1">
+                      {check.severity.split(" / ").map(severity => <Badge variant="outline" className={checkSeverityColors[severity]}>{severity}</Badge>)}
+                    </div>
+                  </div>
                   <p class="mt-2 text-xs leading-5 text-muted-foreground">{check.condition}</p>
                 </div>
               ))}

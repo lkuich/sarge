@@ -2,6 +2,8 @@ import { buildFlowEventQuery, realTrafficEventSql, type FlowEventQuery } from '.
 import { neon } from '@neondatabase/serverless';
 import {
   analyzeEvents,
+  createOpenAiSummaryProvider,
+  summarizeDiagnosticFindings,
   buildTrackedPageFinding,
   defaultPrivacySettings,
   eventMatchesConfiguredHost,
@@ -288,12 +290,8 @@ export type CreatePublicVerificationLinkResult =
   | { success: true; url: string; expiresAt: Date }
   | { success: false; error: string };
 
-export interface AiReviewBinding {
-  run(model: string, input: unknown): Promise<unknown>;
-}
-
 export interface RefreshProjectAiReviewOptions {
-  ai?: AiReviewBinding;
+  openAiApiKey?: string;
   aiSummaryModel?: string;
 }
 
@@ -304,7 +302,6 @@ export type RefreshProjectAiReviewResult =
 export const hostedEndpointHost = 'track.sargetrack.app';
 export const CURRENT_LEGAL_VERSION = "2026-06-25";
 export const CURRENT_PRIVACY_VERSION = "2026-06-25";
-const DEFAULT_AI_SUMMARY_MODEL = '@cf/meta/llama-3.1-8b-instruct-fp8';
 const DEFAULT_DIAGNOSTIC_EVENT_LIMIT = 200;
 const DEFAULT_DIAGNOSTIC_LOOKBACK_MINUTES = 60;
 const DEFAULT_PAGE_HEALTH_URL_LIMIT = 10;
@@ -1242,9 +1239,9 @@ export const refreshProjectAiReview = async (
     const eventFindings = diagnosticEvents.length > 0 ? analyzeEvents(diagnosticEvents).map(toStoredProjectDiagnostic) : [];
     const pageFindings = diagnosticEvents.length > 0 ? await buildManualTrackedPageFindings(diagnosticEvents) : [];
     const findings = [...eventFindings, ...pageFindings];
-    const aiSummary = findings.length > 0
-      ? await summarizeProjectAiReview(options.ai, options.aiSummaryModel, siteEnvironment, findings)
-      : null;
+    const aiSummary = await summarizeDiagnosticFindings(
+      findings, createOpenAiSummaryProvider(options.openAiApiKey, options.aiSummaryModel),
+    );
     const runId = crypto.randomUUID();
     const completedAt = new Date();
 
@@ -2613,67 +2610,6 @@ const isManualPageHealthTimeout = (error: unknown) => {
     return (error as { name?: string }).name === 'AbortError';
   }
   return false;
-};
-
-const summarizeProjectAiReview = async (
-  ai: AiReviewBinding | undefined,
-  model: string | undefined,
-  site: Pick<SiteEnvironmentSummaryRow, 'id' | 'endpointHost'>,
-  findings: ProjectDiagnostic[],
-) => {
-  if (!ai) return null;
-
-  try {
-    const response = await ai.run(model || DEFAULT_AI_SUMMARY_MODEL, {
-      messages: [
-        {
-          role: 'system',
-          content:
-            'You summarize Sarge tracking diagnostics for a technical marketer or engineer. Return concise Markdown, at most 80 words total. Use 2-4 bullets, cite only supplied evidence, avoid a Summary heading, and end with the most useful agentic coding prompt.',
-        },
-        {
-          role: 'user',
-          content: JSON.stringify({
-            site: {
-              id: site.id,
-              endpointHost: site.endpointHost,
-            },
-            findings: findings.map((finding) => ({
-              ruleId: finding.id,
-              severity: finding.severity,
-              title: finding.title,
-              summary: finding.summary,
-              evidence: finding.evidence,
-              recommendation: finding.recommendation,
-              agentPrompt: finding.agentPrompt,
-            })),
-          }),
-        },
-      ],
-    });
-
-    return readAiReviewText(response);
-  } catch (error) {
-    console.error('Unable to summarize refreshed project AI review', error);
-    return null;
-  }
-};
-
-const readAiReviewText = (response: unknown) => {
-  if (typeof response === 'string') return response;
-  if (!response || typeof response !== 'object') return null;
-
-  const responseRecord = response as Record<string, unknown>;
-  if (typeof responseRecord.response === 'string') return responseRecord.response;
-  if (typeof responseRecord.result === 'string') return responseRecord.result;
-
-  const result = responseRecord.result;
-  if (result && typeof result === 'object') {
-    const resultRecord = result as Record<string, unknown>;
-    if (typeof resultRecord.response === 'string') return resultRecord.response;
-  }
-
-  return null;
 };
 
 const readSargeAttributionFromUrl = (value: string | null) => {

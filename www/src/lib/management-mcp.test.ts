@@ -16,7 +16,7 @@ vi.mock("./notifications");
 const principal: ManagementPrincipal = {
   access: { userId: "user_admin", organizationId: "org_1", role: "admin" }, workspaceId: "wrk_1", email: "admin@example.com",
 };
-const env = { DATABASE_URL: "postgresql://test", AI_SUMMARY_MODEL: "test-model" };
+const env = { DATABASE_URL: "postgresql://test", OPENAI_SUMMARY_MODEL: "test-model", OPENAI_API_KEY: "test-key" };
 const authenticate = vi.fn(async () => principal as ManagementPrincipal | null);
 const rpc = (method: string, params?: unknown) => ({ jsonrpc: "2.0", id: 1, method, params });
 const request = (body: unknown, headers: Record<string, string> = {}) => new Request("https://sargetrack.app/api/mcp", {
@@ -88,6 +88,14 @@ describe("management MCP", () => {
     const result = await call(name, args);
     expect(result).toMatchObject({ isError: true, structuredContent: { error: "Plan limit reached" } });
     expect(sarge[service]).toHaveBeenCalledWith(...expected);
+  });
+
+  it("passes server-side summary credentials through the diagnostic refresh entry point", async () => {
+    vi.mocked(sarge.refreshProjectAiReview).mockResolvedValue({ success: true, findingCount: 1 });
+    await call("refresh_diagnostics", { environmentId: "env_1" });
+    expect(sarge.refreshProjectAiReview).toHaveBeenCalledWith(principal.access, env.DATABASE_URL, "env_1", {
+      openAiApiKey: env.OPENAI_API_KEY, aiSummaryModel: env.OPENAI_SUMMARY_MODEL,
+    });
   });
 
   it("creates billing links and saves only the token owner's notification preferences", async () => {

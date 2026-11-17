@@ -70,3 +70,10 @@ export {
   type WorkspaceUsageDecision,
   type WorkspaceUsageState
 } from "./usage-limits.js";
+
+export {
+  createOpenAiSummaryProvider,
+  summarizeDiagnosticFindings,
+  type DiagnosticSummaryProvider,
+  type DiagnosticSummaryRequest
+} from "./diagnostic-summary.js";

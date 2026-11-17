@@ -43,29 +43,54 @@ Every scheduled run:
 1. Loads up to 50 active Production environments from Neon (the scheduled selector currently does not gate by plan).
 2. Reads up to 200 recent events from the last 60 minutes for each environment by default.
 3. Runs deterministic diagnostics from `@sarge/core`.
-4. Replaces the environment’s previous diagnostic run/findings with the new `DiagnosticRun` and `DiagnosticFinding` rows.
-5. Calls Cloudflare Workers AI only when findings exist.
-6. Stores the AI summary on the diagnostic run.
+4. Calls OpenAI only when findings exist and `OPENAI_API_KEY` is configured.
+5. Replaces the environment’s previous diagnostic run/findings with the new `DiagnosticRun` and `DiagnosticFinding` rows, including the optional AI summary.
 
-Workers AI is configured through the native binding:
+The portal's **Refresh insights** action and management MCP `refresh_diagnostics` use the same summarizer. Both paths retain their existing event selection, deterministic rules, severity, findings, evidence, recommendations, and copyable agent prompts. The shared implementation is `packages/core/src/diagnostic-summary.ts`, with a small `DiagnosticSummaryProvider` function interface and a direct OpenAI Responses API adapter using platform `fetch`.
 
-```jsonc
-"ai": {
-  "binding": "AI"
-}
-```
+### OpenAI configuration and deployment
 
-The default model is set with `AI_SUMMARY_MODEL` and currently uses:
+- **`OPENAI_API_KEY`**: server-side secret on **both** `sarge-hosted` (scheduled diagnostics) and `sarge-www` (manual portal/MCP refresh). Never use a `PUBLIC_` prefix, embed the value in source/config, or pass it to browser components.
+- **`OPENAI_SUMMARY_MODEL`**: optional non-secret model ID, default `gpt-6-luna`, configured in both Wrangler files. The old `AI_SUMMARY_MODEL` is ignored. Using a new variable avoids retaining the retired Llama ID when the portal deploys with `keep_vars`.
+- The [GPT-6 Luna documentation](https://developers.openai.com/api/docs/models/gpt-6-luna) describes an inexpensive model for focused, high-volume tasks. The adapter uses `reasoning.effort: "none"` and a 300-token output ceiling for the existing short summary. Any override must support the Responses API and these parameters.
 
-```text
-@cf/meta/llama-3.1-8b-instruct-fp8
-```
+On 2026-11-16, the supplied API key successfully retrieved `gpt-6-luna` and generated a synthetic diagnostic summary through the shared adapter. For a new API project/key, verify `gpt-6-luna` access with the intended API project's key (`GET https://api.openai.com/v1/models/gpt-6-luna`) and a synthetic summary request. If unavailable, set `OPENAI_SUMMARY_MODEL` to an inexpensive compatible GPT model that the project can access. There is no automatic model switching or paid retry loop.
 
-Apply committed migrations before relying on scheduled diagnostics:
+Local development: put `OPENAI_API_KEY` in an ignored `.dev.vars` file beside each worker's Wrangler config (`apps/worker/.dev.vars` and `www/.dev.vars`). These files and environment-specific variants are gitignored. Never commit a real key.
 
-```bash
-pnpm prisma:deploy
-```
+Operator rollout steps (these commands change live secrets/deployments):
+
+1. Verify model access and set the secret separately on each worker using Cloudflare's dashboard or interactive Wrangler prompts:
+
+   ```bash
+   pnpm --dir apps/worker exec wrangler secret put OPENAI_API_KEY --name sarge-hosted
+   pnpm --dir www exec wrangler secret put OPENAI_API_KEY --name sarge-www
+   ```
+
+   Paste the key only into the secret prompt, not into a shell command or committed file. Wrangler secret changes can deploy a worker version; coordinate this with the rollout. See [Cloudflare secrets](https://developers.cloudflare.com/workers/configuration/secrets/).
+
+2. Review `OPENAI_SUMMARY_MODEL` in both Wrangler configs. For later changes on the portal, also update the live variable explicitly because `keep_vars` preserves existing values.
+3. Run tests/builds, then deploy **both** workers using the existing commands:
+
+   ```bash
+   pnpm --filter @sarge/worker run deploy
+   pnpm --dir www run deploy
+   ```
+
+   No new database migration is required. Existing installations still need the previously committed diagnostic schema migrations.
+4. Verify a manual refresh and a scheduled run. The unused Workers AI bindings have been removed from both configurations. Any old live `AI_SUMMARY_MODEL` variable can be removed during this operator rollout; no code reads it.
+
+### Failure behavior and privacy
+
+The unchanged summary instruction requests concise Markdown, at most 80 words, 2–4 bullets, supplied evidence only, no Summary heading, and a useful agentic coding prompt at the end. The provider has a **10-second timeout**, covering fetch and response-body parsing, and makes one request without retries. Missing/blank keys, denied or unavailable models, rate limits, other API/network failures, invalid JSON, malformed/empty/refused responses, and incomplete responses all produce `aiSummary: null`. The run still completes with the original deterministic text and findings. The portal already hides the optional summary when null and displays those findings. Logs never include provider response bodies, keys, prompts, or raw exceptions.
+
+Only a redacted copy of diagnostic findings is sent. No event payloads, site/environment IDs, endpoint hosts, user IDs, raw session/order IDs, page URLs (including paths/query strings), or free-form implementation notes are needed by this summary request. Evidence retains diagnostic facts such as duplicate counts, HTTP status, and observed event counts. URLs become `[tracked page]`; original evidence, exact URLs, and full agent prompts remain stored and visible in Sarge. This makes the AI overview less specific about individual pages/sessions and omits customer implementation context, so use the deterministic findings for exact investigation details. Redaction follows the current deterministic finding templates; changes to those templates must extend the privacy tests before sending new customer-derived fields.
+
+The request uses `store: false` and has no tools or conversation history. This disables Responses application-state storage, **not** all provider retention: OpenAI abuse-monitoring retention and the API project's data controls still apply. Diagnostic facts now cross from Cloudflare to OpenAI, so review provider/data-processing requirements for your customers. See [OpenAI data controls](https://developers.openai.com/api/docs/guides/your-data).
+
+### Rule review note (unchanged)
+
+`checkout-without-purchase` remains **critical** when a sampled checkout session has no sampled purchase. Normal abandonment, a purchase after the observation window, or a purchase omitted by the event limit can all trigger it. Absence in this bounded sample does not establish a tracking failure. Review severity/window semantics separately; this summarizer replacement does not change them.
 
 ## Tracked Page Monitoring
 

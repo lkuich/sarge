@@ -166,8 +166,8 @@ if (Astro.request.method === "POST") {
       aiReviewRefreshError = "Edit access and a Growth plan are required to refresh AI review.";
     } else {
       const result = await refreshProjectAiReview(access, env.DATABASE_URL, selectedEnvironment.id, {
-        ai: env.AI,
-        aiSummaryModel: runtimeEnv.AI_SUMMARY_MODEL,
+        openAiApiKey: runtimeEnv.OPENAI_API_KEY,
+        aiSummaryModel: runtimeEnv.OPENAI_SUMMARY_MODEL,
       });
       if (result.success) return Astro.redirect(selectedEnvironmentHref);
       aiReviewRefreshError = result.error;

@@ -62,7 +62,7 @@ Overview loads aggregate traffic data. Sessions fetches filtered cursor pages. L
 
 The ingestion Worker runs diagnostics every 30 minutes for up to 50 active Production environments. Default samples are 200 recent events over 60 minutes. The scheduled environment selector does not currently gate by plan; portal access to AI reviews requires Growth or higher. Prior findings are replaced on each completed run.
 
-Deterministic rules produce findings and Workers AI summarizes nonempty results. The configured model is `@cf/meta/llama-3.1-8b-instruct-fp8`. Tracked-page checks select recent captured URLs, with a 25-URL per-environment ceiling, 10-URL shared run budget, and 5-second timeout by default. This is bounded monitoring, not a crawl or guaranteed coverage of every environment/page on every run. See [AI_FEATURES.md](AI_FEATURES.md).
+Deterministic rules produce findings; scheduled and manual reviews use OpenAI to summarize a redacted copy of nonempty results. The default model is `gpt-6-luna`, configurable through `OPENAI_SUMMARY_MODEL`, with a server-side `OPENAI_API_KEY` secret on both workers. AI failures preserve the deterministic findings. Tracked-page checks select recent captured URLs, with a 25-URL per-environment ceiling, 10-URL shared run budget, and 5-second timeout by default. This is bounded monitoring, not a crawl or guaranteed coverage of every environment/page on every run. See [AI_FEATURES.md](AI_FEATURES.md).
 
 ## Traffic reporting and flow completeness
 

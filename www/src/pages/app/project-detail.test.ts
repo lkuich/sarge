@@ -266,13 +266,14 @@ describe("project detail install panel", () => {
     expect(projectDetail).toContain("canRefreshAiReview");
     expect(projectDetail).toContain("Refresh insights");
     expect(projectDetail).toContain('name="intent" value="refresh-ai-review"');
-    expect(projectDetail).toContain("env.AI");
+    expect(projectDetail).toContain("openAiApiKey: runtimeEnv.OPENAI_API_KEY");
     expect(demoData).toContain("export const refreshProjectAiReview");
     expect(demoData).toContain('DELETE FROM "DiagnosticFinding" WHERE "siteEnvironmentId" = ${siteEnvironmentId}');
     expect(demoData).toContain('DELETE FROM "DiagnosticRun" WHERE "siteEnvironmentId" = ${siteEnvironmentId}');
     expect(demoData).toContain('INSERT INTO "DiagnosticRun"');
     expect(demoData).toContain("selectTrackedPageCandidates");
-    expect(wranglerConfig).toContain('"binding": "AI"');
+    expect(wranglerConfig).not.toContain('"binding": "AI"');
+    expect(wranglerConfig).toContain('"OPENAI_SUMMARY_MODEL": "gpt-6-luna"');
   });
 
   it("includes a test impersonation helper with copy and live-update hooks", () => {

@@ -2,13 +2,24 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it, vi } from "vitest";
-import { UsageLimitExceededError, type TrackedPageHealthResult } from "@sarge/core";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { analyzeEvents, UsageLimitExceededError, type TrackedPageHealthResult } from "@sarge/core";
 import { createWorkerHandler } from "./index.js";
 import { runScheduledMaintenance } from "./data-maintenance.js";
 import type { EventExportQuery, EventStore, ExportedEvent, StoredDiagnosticRun, StoredEvent, WorkerEnv } from "./types.js";
 
 vi.mock("./data-maintenance.js", () => ({ runScheduledMaintenance: vi.fn().mockResolvedValue(undefined) }));
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
+
+const summaryResponse = (text: string) => Response.json({
+  status: "completed",
+  output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text }] }],
+});
 
 const sourcePath = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 
@@ -810,6 +821,10 @@ describe("Cloudflare Worker hosted API", () => {
     const { ctx, promises } = createExecutionContext();
     const { diagnosticEvents, diagnosticRuns, store } = createMemoryStore();
     const aiCalls: unknown[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
+      aiCalls.push(JSON.parse(init.body));
+      return summaryResponse("Checkout started but no purchase event arrived. Ask an agent to wire purchase.completed.");
+    }));
     const handler = createWorkerHandler({ store, pageHealthChecker: async () => [] });
     diagnosticEvents.push(
       {
@@ -837,12 +852,7 @@ describe("Cloudflare Worker hosted API", () => {
     );
 
     await handler.scheduled(createScheduledController(), createEnv({
-      AI: {
-        async run(model, input) {
-          aiCalls.push({ model, input });
-          return { response: "Checkout started but no purchase event arrived. Ask an agent to wire purchase.completed." };
-        }
-      }
+      OPENAI_API_KEY: "test-key"
     }), ctx);
     await Promise.all(promises);
 
@@ -863,10 +873,45 @@ describe("Cloudflare Worker hosted API", () => {
     });
   });
 
+  it.each(["missing key", "unauthorized", "rate limit", "server error", "network", "malformed", "empty", "timeout"])(
+    "persists unchanged deterministic findings when scheduled summarization fails: %s", async (failure) => {
+      vi.useFakeTimers();
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const { ctx, promises } = createExecutionContext();
+      const { diagnosticEvents, diagnosticRuns, store } = createMemoryStore();
+      diagnosticEvents.push({
+        id: "evt_checkout", siteId: "env_shared_production", name: "checkout.started",
+        occurredAt: "2026-06-19T12:01:00.000Z", sessionId: "sess_private", userId: "user_private",
+        properties: { value: 84, currency: "USD" },
+      });
+      const fetcher = vi.fn(async (_url, init) => {
+        if (failure === "timeout") return new Promise<Response>((_resolve, reject) => {
+          init.signal.addEventListener("abort", () => reject(new Error("timeout")));
+        });
+        if (failure === "network") throw new Error("network");
+        if (failure === "malformed") return Response.json({ unexpected: true });
+        if (failure === "empty") return summaryResponse(" ");
+        return new Response("failure", { status: failure === "unauthorized" ? 401 : failure === "rate limit" ? 429 : 500 });
+      });
+      vi.stubGlobal("fetch", fetcher);
+      const handler = createWorkerHandler({ store, pageHealthChecker: async () => [] });
+      await handler.scheduled(createScheduledController(), createEnv({
+        OPENAI_API_KEY: failure === "missing key" ? undefined : "test-key",
+      }), ctx);
+      await vi.advanceTimersByTimeAsync(10_000);
+      await Promise.all(promises);
+      expect(diagnosticRuns).toHaveLength(1);
+      expect(diagnosticRuns[0]).toMatchObject({ status: "completed", aiSummary: null, findingCount: 2 });
+      expect(diagnosticRuns[0].findings).toEqual(analyzeEvents(diagnosticEvents).map((finding) => ({ ...finding, ruleId: finding.id })));
+      expect(fetcher).toHaveBeenCalledTimes(failure === "missing key" ? 0 : 1);
+    },
+  );
+
   it("ignores scheduled diagnostic events from hosts outside the configured project host", async () => {
     const { ctx, promises } = createExecutionContext();
     const { diagnosticEvents, diagnosticRuns, store } = createMemoryStore();
-    const ai = { run: vi.fn(async () => ({ response: "Should not run" })) };
+    const ai = vi.fn();
+    vi.stubGlobal("fetch", ai);
     const pageHealthChecker = vi.fn(async () => []);
     const handler = createWorkerHandler({ store, pageHealthChecker });
     diagnosticEvents.push(
@@ -894,10 +939,10 @@ describe("Cloudflare Worker hosted API", () => {
       }
     );
 
-    await handler.scheduled(createScheduledController(), createEnv({ AI: ai }), ctx);
+    await handler.scheduled(createScheduledController(), createEnv({ OPENAI_API_KEY: "test-key" }), ctx);
     await Promise.all(promises);
 
-    expect(ai.run).not.toHaveBeenCalled();
+    expect(ai).not.toHaveBeenCalled();
     expect(pageHealthChecker).toHaveBeenCalledWith(
       expect.arrayContaining([expect.objectContaining({ url: "https://shop.example.com/" })]),
       expect.any(Object)
@@ -1012,6 +1057,10 @@ describe("Cloudflare Worker hosted API", () => {
     const { ctx, promises } = createExecutionContext();
     const { diagnosticEvents, store } = createMemoryStore();
     const aiCalls: unknown[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
+      aiCalls.push(JSON.parse(init.body));
+      return summaryResponse("Checkout started but no purchase event arrived. Ask an agent to wire purchase.completed.");
+    }));
     const handler = createWorkerHandler({
       store,
       pageHealthChecker: async () => [
@@ -1035,17 +1084,12 @@ describe("Cloudflare Worker hosted API", () => {
     });
 
     await handler.scheduled(createScheduledController(), createEnv({
-      AI: {
-        async run(model, input) {
-          aiCalls.push(input);
-          return { response: "The checkout page returned 404." };
-        }
-      }
+      OPENAI_API_KEY: "test-key"
     }), ctx);
     await Promise.all(promises);
 
     expect(JSON.stringify(aiCalls[0])).toContain("tracked_page_missing");
-    expect(JSON.stringify(aiCalls[0])).toContain("https://shop.example.com/checkout returned HTTP 404");
+    expect(JSON.stringify(aiCalls[0])).toContain("[tracked page] returned HTTP 404");
   });
 
   it("passes configured page health URL limit and timeout to scheduled diagnostics checker", async () => {
@@ -1276,6 +1320,10 @@ describe("Cloudflare Worker hosted API", () => {
     const { ctx, promises } = createExecutionContext();
     const { diagnosticEvents, diagnosticRuns, store } = createMemoryStore();
     const aiCalls: unknown[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
+      aiCalls.push(JSON.parse(init.body));
+      return summaryResponse("Checkout started but no purchase event arrived. Ask an agent to wire purchase.completed.");
+    }));
     const handler = createWorkerHandler({ store, pageHealthChecker: async () => [] });
     diagnosticEvents.push(
       {
@@ -1314,12 +1362,7 @@ describe("Cloudflare Worker hosted API", () => {
     );
 
     await handler.scheduled(createScheduledController(), createEnv({
-      AI: {
-        async run(model, input) {
-          aiCalls.push({ model, input });
-          return { response: "Should not be called" };
-        }
-      }
+      OPENAI_API_KEY: "test-key"
     }), ctx);
     await Promise.all(promises);
 

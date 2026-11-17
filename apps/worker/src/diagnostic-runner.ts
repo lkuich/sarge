@@ -1,5 +1,7 @@
 import {
   analyzeEvents,
+  createOpenAiSummaryProvider,
+  summarizeDiagnosticFindings,
   buildTrackedPageFinding,
   eventMatchesConfiguredHost,
   selectTrackedPageCandidates,
@@ -9,7 +11,6 @@ import {
 } from "@sarge/core";
 import { checkTrackedPageCandidates } from "./page-health-checker.js";
 import type {
-  AiBinding,
   EventStore,
   SiteRecord,
   StoredDiagnosticFinding,
@@ -21,7 +22,6 @@ import type {
 const DEFAULT_LOOKBACK_MINUTES = 60;
 const DEFAULT_EVENT_LIMIT = 200;
 const DEFAULT_SITE_LIMIT = 50;
-const DEFAULT_AI_MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8";
 const DEFAULT_PAGE_HEALTH_URL_LIMIT = 25;
 const DEFAULT_PAGE_HEALTH_TIMEOUT_MS = 5_000;
 const DEFAULT_PAGE_HEALTH_RUN_URL_LIMIT = 10;
@@ -99,7 +99,7 @@ const runSiteDiagnostics = async (
     : { findings: [], checkedUrlCount: 0 };
   const pageFindings = pageHealthResult.findings;
   const findings = [...eventFindings, ...pageFindings];
-  const aiSummary = findings.length > 0 ? await summarizeFindings(env.AI, env.AI_SUMMARY_MODEL, site, findings) : null;
+  const aiSummary = await summarizeDiagnosticFindings(findings, createOpenAiSummaryProvider(env.OPENAI_API_KEY, env.OPENAI_SUMMARY_MODEL));
   const completedAt = new Date();
 
   const run: StoredDiagnosticRun = {
@@ -156,50 +156,6 @@ const buildTrackedPageFindings = async (
 const defaultPageHealthChecker: PageHealthChecker = (candidates, options) =>
   checkTrackedPageCandidates(candidates, options);
 
-const summarizeFindings = async (
-  ai: AiBinding | undefined,
-  model: string | undefined,
-  site: SiteRecord,
-  findings: StoredDiagnosticFinding[]
-) => {
-  if (!ai) return null;
-
-  try {
-    const response = await ai.run(model || DEFAULT_AI_MODEL, {
-      messages: [
-        {
-          role: "system",
-          content:
-            "You summarize Sarge tracking diagnostics for a technical marketer or engineer. Return concise Markdown, at most 80 words total. Use 2-4 bullets, cite only supplied evidence, avoid a Summary heading, and end with the most useful agentic coding prompt."
-        },
-        {
-          role: "user",
-          content: JSON.stringify({
-            site: {
-              id: site.id,
-              endpointHost: site.endpointHost
-            },
-            findings: findings.map((finding) => ({
-              ruleId: finding.ruleId,
-              severity: finding.severity,
-              title: finding.title,
-              summary: finding.summary,
-              evidence: finding.evidence,
-              recommendation: finding.recommendation,
-              agentPrompt: finding.agentPrompt
-            }))
-          })
-        }
-      ]
-    });
-
-    return readAiText(response);
-  } catch (error) {
-    console.error("Unable to summarize diagnostic findings", error);
-    return null;
-  }
-};
-
 const toDiagnosticEvent = (event: StoredEvent): DiagnosticEvent => ({
   name: event.name,
   occurredAt: event.occurredAt,
@@ -216,23 +172,6 @@ const toStoredFinding = (
   ...finding,
   ruleId: finding.ruleId ?? finding.id
 });
-
-const readAiText = (response: unknown) => {
-  if (typeof response === "string") return response;
-  if (!response || typeof response !== "object") return null;
-
-  const responseRecord = response as Record<string, unknown>;
-  if (typeof responseRecord.response === "string") return responseRecord.response;
-  if (typeof responseRecord.result === "string") return responseRecord.result;
-
-  const result = responseRecord.result;
-  if (result && typeof result === "object") {
-    const resultRecord = result as Record<string, unknown>;
-    if (typeof resultRecord.response === "string") return resultRecord.response;
-  }
-
-  return null;
-};
 
 const readPositiveInteger = (value: string | undefined, fallback: number) => {
   const parsed = Number.parseInt(value ?? "", 10);

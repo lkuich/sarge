@@ -1,9 +1,5 @@
 import type { DiagnosticFinding, DiagnosticSeverity, EventPayload, EventSource, PrivacySettings } from "@sarge/core";
 
-export interface AiBinding {
-  run(model: string, input: unknown): Promise<unknown>;
-}
-
 export interface WorkerEnv {
   DATABASE_URL: string;
   MANAGEMENT_MCP?: { fetch(request: Request): Promise<Response> };
@@ -14,8 +10,8 @@ export interface WorkerEnv {
   PAGE_HEALTH_URL_LIMIT?: string;
   PAGE_HEALTH_RUN_URL_LIMIT?: string;
   PAGE_HEALTH_TIMEOUT_MS?: string;
-  AI_SUMMARY_MODEL?: string;
-  AI?: AiBinding;
+  OPENAI_SUMMARY_MODEL?: string;
+  OPENAI_API_KEY?: string;
 }
 
 export interface SiteRecord {

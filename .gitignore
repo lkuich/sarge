@@ -7,3 +7,6 @@ dist/
 !.env.example
 *.log
 .DS_Store
+.dev.vars
+.dev.vars.*
+.notes

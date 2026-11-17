@@ -14,8 +14,8 @@ export interface ManagementPrincipal {
 
 interface ManagementEnv extends StripeBillingEnv {
   DATABASE_URL?: string;
-  AI?: sarge.AiReviewBinding;
-  AI_SUMMARY_MODEL?: string;
+  OPENAI_API_KEY?: string;
+  OPENAI_SUMMARY_MODEL?: string;
   EMAIL?: sarge.ProjectInviteEmailOptions["emailSender"];
   SARGE_EMAIL_FROM?: string;
 }
@@ -121,7 +121,7 @@ export const handleManagementMcp = async (
     }, false, true);
     register("refresh_diagnostics", "Run a Production AI review, including tracked-page checks. Requires Growth or higher. Read results with get_project(view=diagnostics).", { environmentId: id }, async ({ environmentId }) => {
       await targetEnvironment(environmentId);
-      return sarge.refreshProjectAiReview(access, databaseUrl, environmentId, { ai: env.AI, aiSummaryModel: env.AI_SUMMARY_MODEL });
+      return sarge.refreshProjectAiReview(access, databaseUrl, environmentId, { openAiApiKey: env.OPENAI_API_KEY, aiSummaryModel: env.OPENAI_SUMMARY_MODEL });
     });
     register("create_environment_credential", "Create or rotate a server-event secret, postback token, or API read token. Revokes the previous credential of this kind. The new secret is returned once; store it securely.", {
       environmentId: id, kind: z.enum(["server", "postback", "api-read"]),

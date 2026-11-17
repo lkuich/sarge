@@ -10,6 +10,9 @@ import { Label } from "@/components/ui/label";
 import InstallPanel from "@/components/InstallPanel";
 import ProjectShareDialog from "@/components/ProjectShareDialog";
 import { SessionFlowExplorer } from "@/components/SessionFlowExplorer";
+import { InsightsPanel } from "@/components/InsightsPanel";
+import { diagnosticChecks } from "@/lib/diagnostic-checks";
+import { Sparkles } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import AppLayout from "@/layouts/AppLayout.astro";
 import { getProjectTab, projectTabHref, projectTabs } from "@/lib/project-navigation";
@@ -73,7 +76,7 @@ const environmentOptions = projectEnvironmentOptions.map((environment) => ({
 }));
 const selectedEnvironmentHref = projectTabHref(project.siteId, selectedEnvironment.environment, activeTab);
 const activeTabDetails = projectTabs.find((tab) => tab.id === activeTab)!;
-const tabIcons = { overview: Activity, sessions: UserRound, events: Radio, diagnostics: Bot, setup: TerminalSquare, settings: Settings2 };
+const tabIcons = { overview: Activity, sessions: UserRound, events: Radio, diagnostics: Bot, insights: Sparkles, setup: TerminalSquare, settings: Settings2 };
 
 const canShareProject = project.ownership === "owned" && canAdministerAccount(account);
 const canUseAiReview = canUseFeature(account.planId, "aiReview");
@@ -1165,6 +1168,12 @@ function resolveSargeTrackingDomain(value: string) {
       </details>
     )}
 
+    {activeTab === "insights" && (
+      <section class="min-w-0 lg:col-span-2" aria-label="Project insights">
+        <InsightsPanel environmentId={selectedEnvironment.id} client:load />
+      </section>
+    )}
+
     {activeTab === "diagnostics" && (
       <Card className="min-w-0 lg:col-span-2" data-ai-review-card data-dismiss-storage-key={diagnosticDismissalStorageKey}>
         <CardHeader>
@@ -1187,7 +1196,7 @@ function resolveSargeTrackingDomain(value: string) {
                       type="submit"
                       disabled={!canRefreshAiReview}
                     >
-                      <RefreshCw className="size-3.5" /> Refresh insights
+                      <RefreshCw className="size-3.5" /> Refresh diagnostics
                     </button>
                   </form>
                 )
@@ -1198,6 +1207,19 @@ function resolveSargeTrackingDomain(value: string) {
           </div>
         </CardHeader>
         <CardContent className="grid min-w-0 gap-3">
+          <details class="min-w-0 rounded-md border p-4" open>
+            <summary class="cursor-pointer text-sm font-medium">Deterministic checks · {diagnosticChecks.length} rules</summary>
+            <p class="mt-2 text-xs leading-5 text-muted-foreground">Event checks use up to 200 recent events from the last 60 minutes and exclude marked test traffic. Page checks inspect eligible tracked URLs within a bounded request budget; not every page is checked. An empty sample produces no event findings. A rule listed here is not a passing test result.</p>
+            <div class="mt-3 grid gap-3 sm:grid-cols-2">
+              {diagnosticChecks.map(check => (
+                <div class="rounded-md border bg-background p-3">
+                  <div class="flex flex-wrap items-center justify-between gap-2"><p class="text-xs font-medium">{check.name}</p><Badge variant="outline">{check.severity}</Badge></div>
+                  <p class="mt-2 text-xs leading-5 text-muted-foreground">{check.condition}</p>
+                </div>
+              ))}
+            </div>
+            <p class="mt-3 text-xs text-muted-foreground">AI summarizes findings after these rules trigger. For proactive trends and questions about your data, open <a class="underline underline-offset-4" href={projectTabHref(project.siteId, selectedEnvironment.environment, 'insights')}>Insights</a>.</p>
+          </details>
           {
             aiReviewRefreshError && (
               <Alert variant="destructive">
@@ -1216,7 +1238,7 @@ function resolveSargeTrackingDomain(value: string) {
           }
           {
             isAiReviewEnabled ? (
-              <p class="text-xs text-muted-foreground">Last scheduled review: {diagnosticRunLabel}</p>
+              <p class="text-xs text-muted-foreground">Last review: {diagnosticRunLabel}</p>
             ) : (
               <div class="rounded-md border border-dashed p-6 text-sm text-muted-foreground">
                 {!canUseAiReview

@@ -51,8 +51,8 @@ describe('view-scoped account loading', () => {
     expect(values).toContain('production');
   });
 
-  it('leaves session pagination to the event API', async () => {
-    await getViewerAccount(access, 'postgres://test', { projectId, view: 'sessions' });
+  it.each(['sessions', 'insights'] as const)('leaves %s data loading to its scoped API', async (view) => {
+    await getViewerAccount(access, 'postgres://test', { projectId, view });
     expect(queries()).not.toContain('FROM "Event"');
   });
 
@@ -88,12 +88,13 @@ describe('view-scoped account loading', () => {
 
 describe('event environment authorization', () => {
   it('uses one parameterized query with organization and share checks, without loading traffic', async () => {
-    database.query.mockResolvedValueOnce([{ id: environment.id, canManage: false }]);
+    database.query.mockResolvedValueOnce([{ id: environment.id, canManage: false, planId: 'growth' }]);
     const result = await getProjectEnvironmentAccess(access, 'postgres://test', environment.id, [' VIEWER@EXAMPLE.COM ']);
-    expect(result).toEqual({ id: environment.id, canManage: false });
+    expect(result).toEqual({ id: environment.id, canManage: false, planId: 'growth' });
     expect(database.query).toHaveBeenCalledTimes(1);
     const [query, values] = database.query.mock.calls[0];
     expect(query).toContain('WHERE se.id = ?');
+    expect(query).toContain('SELECT se.id, w."planId"');
     expect(query).toContain('w."clerkOrganizationId" = ?');
     expect(query).toContain('ps."siteId" = s.id');
     expect(query).toContain('ps.role = \'edit\'');

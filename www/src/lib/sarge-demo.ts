@@ -228,7 +228,7 @@ interface GetViewerAccountOptions {
   members?: AccountMember[];
   projectId?: string;
   environment?: ProjectEnvironment;
-  view?: 'dashboard' | 'overview' | 'sessions' | 'events' | 'diagnostics' | 'setup' | 'settings';
+  view?: 'dashboard' | 'overview' | 'sessions' | 'events' | 'diagnostics' | 'insights' | 'setup' | 'settings';
 }
 
 export interface CreateWebhookInput {
@@ -936,12 +936,12 @@ export const getProjectEnvironmentAccess = async (
   databaseUrl: string | undefined,
   environmentId: string,
   viewerEmails: string[],
-): Promise<{ id: string; canManage: boolean } | null> => {
+): Promise<{ id: string; canManage: boolean; planId: PlanId } | null> => {
   if (!databaseUrl) throw new Error('Live traffic data is unavailable. Please retry.');
   const sql = neon(databaseUrl);
   const emails = normalizeEmails(viewerEmails);
   const rows = await sql`
-    SELECT se.id,
+    SELECT se.id, w."planId",
       CASE WHEN w."clerkOrganizationId" = ${access.organizationId}
         THEN ${access.role === 'admin'}
         ELSE EXISTS (
@@ -961,7 +961,7 @@ export const getProjectEnvironmentAccess = async (
       ))
     LIMIT 1
   `;
-  return (rows[0] as { id: string; canManage: boolean } | undefined) ?? null;
+  return (rows[0] as { id: string; canManage: boolean; planId: PlanId } | undefined) ?? null;
 };
 
 export const getPublicEventStream = async (

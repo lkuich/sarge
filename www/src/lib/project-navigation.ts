@@ -3,6 +3,7 @@ export const projectTabs = [
   { id: 'sessions', label: 'Sessions', description: 'Follow users and sessions through your site.' },
   { id: 'events', label: 'Live events', description: 'Inspect incoming events and their captured properties.' },
   { id: 'diagnostics', label: 'Diagnostics', description: 'Review tracking issues and recommended fixes.' },
+  { id: 'insights', label: 'Insights', description: 'Spot changes in your events and ask questions about your data.' },
   { id: 'setup', label: 'Setup', description: 'Install your pixel, test tracking, and connect integrations.' },
   { id: 'settings', label: 'Settings', description: 'Manage privacy and data controls for this project.' },
 ] as const;

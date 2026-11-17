@@ -264,7 +264,7 @@ describe("project detail install panel", () => {
     expect(projectDetail).toContain("refreshProjectAiReview");
     expect(projectDetail).toContain('intent === "refresh-ai-review"');
     expect(projectDetail).toContain("canRefreshAiReview");
-    expect(projectDetail).toContain("Refresh insights");
+    expect(projectDetail).toContain("Refresh diagnostics");
     expect(projectDetail).toContain('name="intent" value="refresh-ai-review"');
     expect(projectDetail).toContain("openAiApiKey: runtimeEnv.OPENAI_API_KEY");
     expect(demoData).toContain("export const refreshProjectAiReview");

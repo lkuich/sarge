@@ -18,6 +18,7 @@
     "test": "pnpm docs:check && vitest run"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^4.0.118",
     "@astrojs/cloudflare": "^13.7.0",
     "@astrojs/react": "^5.0.7",
     "@base-ui/react": "^1.6.0",
@@ -28,6 +29,7 @@
     "@sarge/core": "workspace:*",
     "@tailwindcss/vite": "^4.3.1",
     "@xyflow/react": "^12.11.0",
+    "ai": "^7.0.173",
     "astro": "^6.4.7",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

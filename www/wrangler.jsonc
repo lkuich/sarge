@@ -12,6 +12,9 @@
   "observability": {
     "enabled": true
   },
+  "ratelimits": [
+    { "name": "INSIGHTS_RATE_LIMITER", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } }
+  ],
   "send_email": [
     {
       "name": "EMAIL"

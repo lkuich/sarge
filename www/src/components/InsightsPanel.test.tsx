@@ -28,6 +28,24 @@ afterEach(() => { act(() => root.unmount()); container.remove(); vi.unstubAllGlo
 async function render() { await act(async () => { root.render(<InsightsPanel environmentId="env/private" />); await settle(); }); }
 
 describe('Insights panel', () => {
+  it.each([
+    [120, 100, '+20%', 'text-emerald-600'],
+    [80, 100, '-20%', 'text-rose-600'],
+    [100, 100, '0%', 'text-muted-foreground'],
+    [1001, 1000, '0%', 'text-muted-foreground'],
+    [12, 0, 'No previous activity', 'text-muted-foreground'],
+    [0, 0, 'No activity in either period', 'text-muted-foreground'],
+  ])('colors %s vs %s without implying a trend for zero or missing comparisons', async (current, previous, label, color) => {
+    fetchMock.mockResolvedValueOnce(Response.json({
+      ...insightFixture,
+      current: { ...insightFixture.current, events: current },
+      previous: { ...insightFixture.previous, events: previous },
+    }));
+    await render();
+    const change = [...container.querySelectorAll('p')].find(element => element.textContent?.startsWith(label));
+    expect(change?.classList.contains(color)).toBe(true);
+  });
+
   it('shows aggregates and streams proactive analysis before completion, then sends chat questions', async () => {
     await render();
     expect(fetchMock.mock.calls[0][0]).toBe('/api/project-insights/env%2Fprivate');

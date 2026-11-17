@@ -109,10 +109,15 @@ export function InsightsPanel({ environmentId }: { environmentId: string }) {
       </div>
       <Button variant="outline" size="sm" disabled={Boolean(busy) || !hasData} onClick={() => void analyze('overview')}><RefreshCw className="size-3.5" /> Analyze again</Button>
     </div>
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{metrics.map(([label, key]) => <Card key={key}><CardContent className="py-4">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{metrics.map(([label, key]) => {
+      const change = changeLabel(data.current[key], data.previous[key]);
+      const changeColor = change.startsWith('+') ? 'text-emerald-600 dark:text-emerald-300'
+        : change.startsWith('-') ? 'text-rose-600 dark:text-rose-300' : 'text-muted-foreground';
+      return <Card key={key}><CardContent className="py-4">
       <p className="text-xs text-muted-foreground">{label}</p><p className="mt-2 text-2xl font-semibold tabular-nums">{count(data.current[key])}</p>
-      <p className="mt-1 text-xs text-muted-foreground">{changeLabel(data.current[key], data.previous[key])}</p>
-    </CardContent></Card>)}</div>
+      <p className={`mt-1 text-xs ${changeColor}`}>{change}</p>
+    </CardContent></Card>;
+    })}</div>
     {(data.current.activeDays < 7 || data.previous.activeDays < 7) && <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">Limited observation: primary events appear on {data.current.activeDays}/7 recent days and {data.previous.activeDays}/7 comparison days. New tracking or quiet days can make comparisons misleading.</p>}
     <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
       <div className="grid min-w-0 content-start gap-4">

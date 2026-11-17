@@ -23,7 +23,13 @@ export function streamInsights(
   const abort = new AbortController();
   const result = streamText({
     model: createOpenAI({ apiKey }).responses(model),
-    system: `${insightsInstructions}\nAggregate evidence (JSON):\n${JSON.stringify(data)}`,
+    system: `${insightsInstructions}${input.mode === 'overview' ? `
+For this overview, use sections instead of bullets. Select at most 3 distinct observations, prioritizing the most useful change or gap rather than listing every metric. Keep the entire overview under 140 words.
+Format each observation exactly as:
+### Short takeaway (at most 6 words)
+One short sentence with the key comparison counts and any material uncertainty.
+Next check: One concrete action, at most 12 words.
+Separate sections with a blank line. Use backticks only for event names. Do not add a preamble, bold markup, nested lists, or repeat the general AI disclaimer and scope limitations already displayed in the interface. If data is insufficient, use one short section explaining why.` : ''}\nAggregate evidence (JSON):\n${JSON.stringify(data)}`,
     messages: input.mode === 'overview'
       ? [{ role: 'user', content: 'What looks unusual or worth investigating in this data?' }]
       : input.messages,

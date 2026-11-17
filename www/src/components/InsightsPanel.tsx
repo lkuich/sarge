@@ -8,6 +8,26 @@ type Message = { role: 'user' | 'assistant'; content: string };
 const questions = ['What changed most this week?', 'How does checkout activity compare with purchases?', 'Are there signs of tracking quality getting worse?'];
 const count = (value: number) => value.toLocaleString();
 
+function InsightOverview({ text }: { text: string }) {
+  const inline = (value: string) => value.split(/(`[^`]+`)/g).map((part, index) =>
+    part.startsWith('`') && part.endsWith('`')
+      ? <code key={index} className="rounded bg-muted px-1 py-0.5 text-[0.9em]">{part.slice(1, -1)}</code> : part);
+  return <div className="divide-y" data-insight-observations>{text.trim().split(/(?=^### |^[-*] )/m).filter(Boolean).map((section, index) => {
+    const lines = section.trim().split(/\r?\n/).filter(line => line.trim());
+    const title = lines[0]?.startsWith('### ') ? lines.shift()!.slice(4) : null;
+    return <section key={index} className="space-y-2 py-4 first:pt-0 last:pb-0">
+      {title && <h3 className="text-sm font-semibold leading-5">{inline(title)}</h3>}
+      {lines.map((line, lineIndex) => {
+        const nextCheck = line.startsWith('Next check:');
+        return <p key={lineIndex} className={`break-words text-sm leading-6 ${nextCheck ? '' : 'text-muted-foreground'}`}>
+          {nextCheck && <span className="font-medium">Next check: </span>}
+          {inline(nextCheck ? line.slice('Next check:'.length).trim() : line.replace(/^[-*] /, ''))}
+        </p>;
+      })}
+    </section>;
+  })}</div>;
+}
+
 export function InsightsPanel({ environmentId }: { environmentId: string }) {
   const [data, setData] = useState<ProjectInsights>();
   const [loadError, setLoadError] = useState('');
@@ -122,7 +142,7 @@ export function InsightsPanel({ environmentId }: { environmentId: string }) {
     <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
       <div className="grid min-w-0 content-start gap-4">
         <Card><CardHeader><CardTitle className="flex items-center gap-2 text-sm"><Sparkles className="size-4" /> Worth a closer look</CardTitle></CardHeader>
-          <CardContent><div className="whitespace-pre-wrap break-words text-sm leading-6" aria-busy={busy === 'overview'}>{overview || (busy === 'overview' ? 'Looking for changes across both periods…' : hasData ? 'Run an analysis to explore these aggregates.' : 'No events were recorded in this window. There is not enough data to identify trends.')}</div>
+          <CardContent><div className="break-words text-sm leading-6" aria-busy={busy === 'overview'}>{overview ? <InsightOverview text={overview} /> : (busy === 'overview' ? 'Looking for changes across both periods…' : hasData ? 'Run an analysis to explore these aggregates.' : 'No events were recorded in this window. There is not enough data to identify trends.')}</div>
             <p className="mt-4 text-xs text-muted-foreground">AI observations are hypotheses to verify, not diagnostic findings.</p>
           </CardContent></Card>
         <Card><CardHeader><CardTitle className="text-sm">Daily activity</CardTitle></CardHeader><CardContent>

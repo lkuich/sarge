@@ -34,6 +34,14 @@ describe('insights streaming', () => {
       providerOptions: { openai: { store: false, reasoningEffort: 'none' } },
     });
     expect(mocks.streamText.mock.calls[0][0].system).toContain(JSON.stringify(insightFixture));
+    expect(mocks.streamText.mock.calls[0][0].system).toContain('under 140 words');
+    expect(mocks.streamText.mock.calls[0][0].system).toContain('at most 3 distinct observations');
+  });
+
+  it('keeps the concise overview format out of follow-up chat instructions', async () => {
+    chunks([{ type: 'text-delta', text: 'Answer' }, { type: 'finish', finishReason: 'stop' }]);
+    await streamInsights(insightFixture, { mode: 'chat', messages: [{ role: 'user', content: 'What changed?' }] }, 'key', 'model', new AbortController().signal).text();
+    expect(mocks.streamText.mock.calls[0][0].system).not.toContain('Format each observation exactly as:');
   });
 
   it.each([

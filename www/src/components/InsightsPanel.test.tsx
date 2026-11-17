@@ -71,6 +71,26 @@ describe('Insights panel', () => {
     expect(button('Analyze again').disabled).toBe(false);
   });
 
+  it('separates streamed observations into takeaways, evidence and next checks, escaping model content', async () => {
+    await render();
+    await act(async () => {
+      send({ text: '### More checkout activity\n`checkout.started` rose from 3 to 8 sessions.\nNext check: Compare purchase timing.' });
+      await settle();
+    });
+    expect(container.querySelector('[data-insight-observations] h3')?.textContent).toBe('More checkout activity');
+    expect(container.querySelector('[data-insight-observations] code')?.textContent).toBe('checkout.started');
+    await act(async () => {
+      send({ text: '\n\n### Meta gap persists\nBoth purchases lack an observation. <img src=x onerror=alert(1)>\nNext check: Review consent.' });
+      send({ done: true }); output.close(); await settle();
+    });
+    const observations = container.querySelector('[data-insight-observations]')!;
+    expect(observations.querySelectorAll('section')).toHaveLength(2);
+    expect(observations.querySelectorAll('h3')).toHaveLength(2);
+    expect(observations.querySelectorAll('p span.font-medium')).toHaveLength(2);
+    expect(observations.querySelector('img')).toBeNull();
+    expect(observations.textContent).toContain('<img src=x onerror=alert(1)>');
+  });
+
   it('shows access/load errors without starting an AI request', async () => {
     fetchMock.mockResolvedValue(Response.json({ error: 'Insights is available on Growth and higher.' }, { status: 403 }));
     await render();
